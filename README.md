@@ -26,10 +26,14 @@ Each step writes to the repo or reads from it. The chat is disposable; the spine
 
 ## Capabilities
 
+A shell exit code is an observation. It is not necessarily a failure.
+
+A successful command is an observation. It is not necessarily progress.
+
 What v0.1.1 ships:
 
 - **Repo adoption.** `bff init` lays down the Doc-Spine files, the `hygiene.md` router and four skills; existing files are preserved. `bff check` validates the bound spine; `bff hydrate` prints bound context for one workstream without changing files.
-- **Project checks.** `bff check --run` executes the argv commands you declare in `.bff.json`, with your machine permissions, and reports the result. A shell exit code is an observation, not a verdict: verify that the tests actually ran.
+- **Project checks.** `bff check --run` executes the argv commands you declare in `.bff.json`, with your machine permissions, and reports the result.
 - **Osiris workbench for BB.** Native chat in the centre, Work on the left, current-workspace Changes on the right, with Trace and Problems replacing the right pane when needed.
 - **Toolcalls explorer.** A separate BB sidebar entry with its own search and failure view across scanned retained history.
 - **Provider capture.** `bff herdr` records bounded, metadata-only snapshots of local Claude Code and Codex transcripts.
