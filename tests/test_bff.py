@@ -22,8 +22,12 @@ spec.loader.exec_module(installer)
 
 
 def tree(root):
+    # The interpreter may write __pycache__ beside an installed release the first time its launcher
+    # runs (some Pythons do, some redirect the cache). Bytecode is not release content, and the
+    # installer's own inventory skips it, so a before/after comparison must too.
     return {str(path.relative_to(root)): path.read_bytes()
-            for path in root.rglob("*") if path.is_file() and not path.is_symlink()}
+            for path in root.rglob("*")
+            if path.is_file() and not path.is_symlink() and "__pycache__" not in path.parts}
 
 
 class Scratch(unittest.TestCase):

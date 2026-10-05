@@ -6,6 +6,9 @@ Versioning policy: [Semantic Versioning](https://semver.org/). While BFF is 0.x,
 
 ## [Unreleased]
 
+### Fixed
+- `tests/test_bff.py` no longer fails on interpreters that write `__pycache__` next to an installed release the first time its launcher runs (found by the first CI run on Python 3.12; the 0.1.1 source tag still contains the old test).
+
 ## [0.1.1] - 2026-10-05
 
 ### Added

@@ -47,3 +47,9 @@ v0.1.0 had the version number written in seven places and no record of what chan
 - Commits for this release are listed in `CHANGELOG.md` and `evidence/v0.1.1-release-2026-10-05.md`
 - `scripts/versioning.py`, `scripts/release.py`, `tests/test_version.py`, `tests/test_release_script.py`, `tests/test_doctor_self.py`, `.github/workflows/tests.yml`
 - Still open: full agent lineage and worktree joins, manual PTY capture, enforced hooks and CI adoption, Beads/Gas/DSH adapters and evals.
+
+## Addendum: release outcome (appended after publishing)
+- v0.1.1 was published from `7f4afcd`: plain push to `main`, annotated tag, GitHub release with the archive and `SHA256SUMS`. Details and numbers are in `evidence/v0.1.1-release-2026-10-05.md`.
+- The remote install rehearsal passed: the pinned `install.sh` from the tag, read first, installed into a scratch prefix; `bff --version` and `bff doctor --json` worked. The installer then upgraded the owner's real install in place and kept the old release for rollback.
+- Surprise: the first CI run on GitHub failed on Python 3.12. An installer test compared an installed release before and after running its launcher, and that Python wrote `__pycache__` there; the local Python did not. The product was fine, the test was too strict about bytecode. We fixed the test (still a byte-exact comparison of release content) and did not move the tag.
+- Lesson: "green on my machine" is one interpreter. A CI run on a different Python found a test that depended on how the local one caches bytecode. We should have run CI on a branch before tagging; the release script now has an obvious place to add that check.
