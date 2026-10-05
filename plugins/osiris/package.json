@@ -1,0 +1,34 @@
+{
+  "name": "bb-plugin-tool-observer",
+  "version": "0.2.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "Osiris: native BB workbench and searchable retained tool-call observer",
+  "engines": {
+    "bb": ">=0.45.0",
+    "bbPluginSdk": "0.6.15"
+  },
+  "bb": {
+    "name": "Osiris",
+    "description": "Native conversation, actual Changes, scoped traces and a separate Toolcalls explorer",
+    "branding": {
+      "icon": "ChartNoAxesCombined"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "dependencies": {
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.6.15",
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "react": "19.3.0",
+    "typescript": "5.9.3"
+  },
+  "scripts": {
+    "build": "bb plugin build .",
+    "typecheck": "tsc --noEmit --skipLibCheck --strict --target ES2022 --module ESNext --moduleResolution bundler --jsx react-jsx --allowImportingTsExtensions --types node app.tsx analytics.ts live-observer.ts herdr-feed.ts server.ts"
+  }
+}

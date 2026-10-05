@@ -1,0 +1,133 @@
+Osiris — third-party notices
+
+Osiris-specific code: MIT, Copyright (c) 2026 triunai (see LICENSE).
+The upstream materials below retain their own copyright and MIT grants.
+
+Boundaries
+----------
+BB itself, @get-bb/plugin-sdk 0.6.15, and React 19.3.0 are host-provided
+externals; their npm packages, implementation bundles and node_modules are
+not included here. BB-generated public-runtime adapters/scaffold-derived
+material use the upstream BB notice below. This does not relicense BB or React.
+Zod 4.6.5 code is included in dist/server.js and retains its full MIT notice.
+Generated dist/app.css includes Tailwind CSS 4.3.0 and BB-embedded animation
+properties; their license notices and attribution limits follow. TypeScript and @types packages are
+build/typecheck tools named in devDependencies, not distributed implementations.
+
+BB scaffold/templates and generated public-runtime adapters
+----------------------------------------------------------
+Upstream: https://github.com/get-bb/bb
+License source: https://github.com/get-bb/bb/blob/f6cd19aac550dc4c405af3dac7afdfbf71450217/LICENSE
+Inspected on 2026-10-05. BB runtime/build used: 0.45.0.
+
+MIT License
+
+Copyright (c) 2026 Michael Yong
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+Zod 4.6.5 — bundled server dependency
+------------------------------------
+Upstream: https://github.com/colinhacks/zod
+License copied verbatim from the installed zod 4.6.5 package.
+
+MIT License
+
+Copyright (c) 2025 Colin McDonnell
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+Tailwind CSS 4.3.0 — generated stylesheet material
+------------------------------------------------
+Upstream/license: https://github.com/tailwindlabs/tailwindcss/blob/v4.3.0/LICENSE
+
+MIT License
+
+Copyright (c) Tailwind Labs, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+BB-generated animation properties — conservative upstream notice
+----------------------------------------------------------------
+Actual input: BB 0.45.0's embedded builder stylesheet, injected during CSS
+compilation. The builder chunk SHA-256 is
+ da951873322805a2e252ba1c25e4490c678e7061d36e306e43dc7df480ddb1aa.
+The host does not expose an upstream animation package version/revision.
+The properties resemble tw-animate-css; no direct dependency or exact
+upstream build-input identity is established. This notice is retained
+conservatively and does not claim that the linked revision was compiled.
+License text inspected at the fixed revision below (not a build-source pin):
+https://github.com/Wombosvideo/tw-animate-css/blob/62095dfbe3f703f8637118b62d1c9ade662c930f/LICENSE
+
+MIT License
+
+Copyright (c) 2025 Wombosvideo
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "router": "hygiene.md",
+  "spine": {
+    "board": "docs/workstreams.md",
+    "hot_state": "docs/hot-state.md",
+    "decisions": "docs/decisions.md",
+    "backlog": "docs/state-backlog.md",
+    "journal": "docs/project-log.md",
+    "seed": "docs/NEXT-SESSION-SEED.md"
+  },
+  "checks": {}
+}

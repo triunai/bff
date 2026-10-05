@@ -1,0 +1,16 @@
+{
+  "name": "bff-development",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:osiris": "node --test tests/osiris/*.test.ts tests/osiris/*.test.mjs"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.6.15",
+    "zod": "4.6.5",
+    "better-sqlite3": "12.11.1",
+    "cron-parser": "5.10.1",
+    "hono": "4.13.13"
+  }
+}
