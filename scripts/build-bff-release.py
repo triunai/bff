@@ -6,7 +6,11 @@ import io
 import json
 from pathlib import Path
 import re
+import sys
 import tarfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import versioning  # noqa: E402  (sibling module; the single version source)
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 SOURCE = REPOSITORY / "sdk" if (REPOSITORY / "sdk").is_dir() else REPOSITORY
@@ -17,7 +21,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    version = "0.1.0"
+    version = versioning.read_version(SOURCE)
+    drift = versioning.check_pins(SOURCE)
+    if drift:
+        raise SystemExit("Version pins disagree with bff/__init__.py: " + "; ".join(drift))
     specification = json.loads((SOURCE / "release-files.json").read_text())
     declared = specification.get("files")
     if not isinstance(declared, list) or len(declared) != len(set(declared)):

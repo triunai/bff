@@ -13,7 +13,7 @@ from unittest import mock
 
 SDK = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SDK))
-from bff import cli
+from bff import __version__, cli
 from bff.project import PROFILE, init_repo, load_profile, repo_root
 
 spec = importlib.util.spec_from_file_location("bff_installer", SDK / "install.py")
@@ -67,7 +67,7 @@ class InstallationTests(Scratch):
         command = self.prefix / "bin" / "bff"
         run = subprocess.run([str(command), "--version"], capture_output=True, text=True)
         self.assertEqual(run.returncode, 0, run.stderr)
-        self.assertEqual(run.stdout.strip(), "bff 0.1.0")
+        self.assertEqual(run.stdout.strip(), "bff " + __version__)
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(installer.main(["--prefix", str(self.prefix), "--disable"]), 0)
         self.assertFalse(command.exists())
@@ -133,7 +133,7 @@ class InstallationTests(Scratch):
         installer.install(self.prefix, source=self.source, interpreter=interpreter)
         result = subprocess.run([str(self.prefix / "bin" / "bff"), "--version"], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "bff 0.1.0")
+        self.assertEqual(result.stdout.strip(), "bff " + __version__)
 
     def test_source_allowlist_and_no_symlink_vendoring(self):
         for name in ("LICENSE", "PROVENANCE.md", "install.sh"):
@@ -162,7 +162,7 @@ class InstallationTests(Scratch):
 
     def test_archive_manifest_tamper_extra_and_traversal_refusal(self):
         shutil.copy2(str(SDK / "install.py"), str(self.source / "install.py"))
-        manifest = {"version": "0.1.0", "files": installer.inventory(self.source)}
+        manifest = {"version": installer.__version__, "files": installer.inventory(self.source)}
         path = self.source / "release-manifest.json"
         path.write_text(json.dumps(manifest))
         installer.verify_source_manifest(self.source)

@@ -2,7 +2,7 @@
 
 Your repo’s operating model, reproducible: a thread-aware Doc-Spine, one `hygiene.md` router, task contracts, independent quality reviews, coordinated wraps, a checked context graph, and Osiris for tool-call inspection in BB.
 
-**Version 0.1.0 is a bootstrap release.** It ships the portable CLI, fresh-repo conventions/skills and Osiris’s native-chat workbench plus separate searchable Toolcalls tab. Automatic hook/CI adoption, full agent lineage/landing visualizations, manual terminal recording and live Beads/Gas/DSH eval adapters remain future work. Existing OMC/OMX/Claude/Codex configuration stays user-owned.
+**BFF is a bootstrap-stage release.** See [CHANGELOG.md](CHANGELOG.md) for what each version ships. It ships the portable CLI, fresh-repo conventions/skills and Osiris’s native-chat workbench plus separate searchable Toolcalls tab. Automatic hook/CI adoption, full agent lineage/landing visualizations, manual terminal recording and live Beads/Gas/DSH eval adapters remain future work. Existing OMC/OMX/Claude/Codex configuration stays user-owned.
 
 ## Install
 
