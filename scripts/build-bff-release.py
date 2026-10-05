@@ -42,6 +42,13 @@ def main():
             data = path.read_bytes()
             if re.search(rb"/(?:Users|home)/[^/\s]+/", data):
                 raise SystemExit("Machine-specific content in release: " + str(rel))
+            secret_patterns = (
+                rb"-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----",
+                rb"\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|sk-ant-[A-Za-z0-9_-]{30,})\b",
+                rb"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b",
+            )
+            if any(re.search(pattern, data) for pattern in secret_patterns):
+                raise SystemExit("Secret-shaped content in release: " + str(rel) + "; remove/redact it and rerun the builder.")
             if len(data) > 10 * 1024 * 1024:
                 raise SystemExit("Oversize release file: " + str(rel))
             files[rel.as_posix()] = data
