@@ -1,7 +1,7 @@
 #!/bin/sh
 # Pinned BFF bootstrap. Downloads only when not invoked from a local source tree.
 set -eu
-BFF_VERSION=0.1.0
+BFF_VERSION=0.1.1
 BFF_REPO=triunai/bff
 command -v python3 >/dev/null 2>&1 || { echo 'BFF requires Python 3.9+.' >&2; exit 1; }
 python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else "BFF requires Python 3.9+.")'

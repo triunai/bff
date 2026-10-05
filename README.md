@@ -9,7 +9,7 @@ Your repo’s operating model, reproducible: a thread-aware Doc-Spine, one `hygi
 Requires Python 3.9+, curl, and Git for repo adoption. BB and Herdr are separate upstream applications; install/run them through their own supported setup before opening their interfaces. The bootstrap installs no Python/Node dependencies or agent runtimes.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/triunai/bff/v0.1.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/triunai/bff/v0.1.1/install.sh | sh
 ```
 
 The pinned bootstrap downloads the release archive, verifies its checksum and file inventory, preserves a version under `~/.local/share/bff/releases/`, and exposes `~/.local/bin/bff`. It reports a missing PATH entry without editing shell startup files. Use the printed absolute command in that case. Checksum and archive share the GitHub publisher trust boundary; this is not an independently signed release.
@@ -55,7 +55,7 @@ Claude Bash and Codex commandExecution calls are included; manually typed termin
 To install and open the two interfaces, then keep provider capture running, this is also one shell line:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/triunai/bff/v0.1.0/install.sh | sh && "$HOME/.local/bin/bff" osiris --install && "$HOME/.local/bin/bff" start && "$HOME/.local/bin/bff" herdr
+curl -fsSL https://raw.githubusercontent.com/triunai/bff/v0.1.1/install.sh | sh && "$HOME/.local/bin/bff" osiris --install && "$HOME/.local/bin/bff" start && "$HOME/.local/bin/bff" herdr
 ```
 
 ## Adopt a fresh repo
