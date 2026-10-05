@@ -1,7 +1,7 @@
 """`bff doctor`: detect companion tools, plan installs/upgrades, run them only on consent.
 
-Safety contract: argv lists only (never shell=True), package-manager binaries resolved with
-shutil.which, no sudo, no downloaded-script piping, a timeout per step, every command printed
+Safety contract: argv lists only (no shell invocation), package-manager binaries resolved with
+shutil.which, no privilege escalation, no downloaded-script piping, a timeout per step, every command printed
 before it runs, stable releases only, and nothing runs without a prompt or --yes.
 """
 

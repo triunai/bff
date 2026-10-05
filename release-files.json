@@ -8,6 +8,7 @@
     "bff/__init__.py",
     "bff/__main__.py",
     "bff/cli.py",
+    "bff/doctor.py",
     "bff/herdr.py",
     "bff/herdr_observer.py",
     "bff/launch.py",

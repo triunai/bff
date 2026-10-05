@@ -357,7 +357,7 @@ class ProjectTests(Scratch):
 
     def test_doctor_does_not_execute_or_read_configs(self):
         with mock.patch("bff.cli.shutil.which", return_value="/mock/available"), mock.patch("subprocess.run") as run:
-            code, stdout, _ = self.command(["doctor"])
+            code, stdout, _ = self.command(["doctor", "--json"])
             self.assertEqual(code, 0)
             self.assertIn('"integration": "unverified"', stdout)
             run.assert_not_called()
