@@ -65,7 +65,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="bff", description="BFF — Built Fucking Fast. Explicit, portable repo tooling.")
     parser.add_argument("--version", action="version", version="bff " + __version__)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("doctor", help="Report executable availability without reading configuration")
+    doc = commands.add_parser("doctor", help="Report companion tools; offer to install missing and upgrade outdated ones")
+    doc.add_argument("--json", action="store_true", help="Machine-readable availability report; runs nothing")
+    doc.add_argument("--yes", action="store_true", help="Run the install/upgrade plan without prompting")
+    doc.add_argument("--no-upgrade", action="store_true", help="Install missing tools only; do not upgrade")
     start = commands.add_parser("start", help="Open running BB Osiris and request an independent Herdr session")
     start.add_argument("--print-plan", action="store_true", help="Print argv and targets without launching or writing")
     herdr = commands.add_parser("herdr", help="Capture bounded local Claude/Codex transcript metadata; Herdr pane membership is unknown")
@@ -100,8 +103,11 @@ def main(argv=None):
                 raise ValueError("Provider capture unavailable: " + str(exc))
             return capture(args)
         if args.command == "doctor":
-            print(json.dumps(doctor(), indent=2))
-            return 0
+            if args.json:
+                print(json.dumps(doctor(), indent=2))
+                return 0
+            from .doctor import run_doctor
+            return run_doctor(assume_yes=args.yes, upgrade=not args.no_upgrade)
         if args.command == "osiris":
             return launch_osiris(args.url, args.print_url, args.install)
         repo = repo_root(args.repo)
