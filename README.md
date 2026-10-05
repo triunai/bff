@@ -1,5 +1,24 @@
 # BFF — Built Fucking Fast
 
+## Why the name?
+
+Because "Enterprise Agentic Software Development Lifecycle Orchestration Framework" has multiple implementations already, this is just what works for me
+
+And because speed is not how quickly an agent can emit code.
+
+Speed is:
+
+- not rederiving existing common shapes that were already spotted once before
+- not repeating decisions that were already made
+- not reviewing your own work with bias and calling it independent
+- not losing context at the end of a thread
+- not discovering three days later that the test suite never exercised the path
+- not burning tokens recovering from preventable tool mistakes
+
+Measure the work, keep the evidence & leave less bullshit for the next run.
+
+# The actual Why
+
 Agentic development gets slow in surprisingly stupid ways.
 
 The model forgets what it was doing. Two agents edit the same assumption. A review says "looks good." Nobody remembers why a migration exists. A tool call fails, the agent burns another ten thousand tokens recovering from it, and the only record left is a red line in a transcript nobody will read again.
@@ -424,26 +443,3 @@ Those are roadmap items, not creatively worded existing features.
 See [CHANGELOG.md](CHANGELOG.md) for the exact shipped surface by release.
 
 ---
-
-## Why the name?
-
-Because "Enterprise Agentic Software Development Lifecycle Orchestration Framework" was available.
-
-And because speed is not how quickly an agent can emit code.
-
-Speed is:
-
-- not rereading the repository every morning
-- not repeating decisions that were already made
-- not reviewing your own work and calling it independent
-- not losing context at the end of a thread
-- not discovering three days later that the test suite never exercised the path
-- not burning tokens recovering from preventable tool mistakes
-
-Measure the work.
-
-Keep the evidence.
-
-Leave less bullshit for the next run.
-
-Built Fucking Fast.
