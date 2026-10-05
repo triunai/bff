@@ -1,22 +1,55 @@
 # BFF — Built Fucking Fast
 
-Your repo’s operating model, reproducible: a thread-aware Doc-Spine, one `hygiene.md` router, task contracts, independent quality reviews, coordinated wraps, a checked context graph, and Osiris for tool-call inspection in BB.
+**The repository is the memory. The chat is just a process.**
 
-**BFF is a bootstrap-stage release.** See [CHANGELOG.md](CHANGELOG.md) for what each version ships. It ships the portable CLI, fresh-repo conventions/skills and Osiris’s native-chat workbench plus separate searchable Toolcalls tab. Automatic hook/CI adoption, full agent lineage/landing visualizations, manual terminal recording and live Beads/Gas/DSH eval adapters remain future work. Existing OMC/OMX/Claude/Codex configuration stays user-owned.
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-3776AB)](#install)
+[![TypeScript](https://img.shields.io/badge/osiris-TypeScript-3178C6)](plugins/osiris)
+[![Node 24 (dev only)](https://img.shields.io/badge/node-24%20(dev%20only)-5FA04E)](#rollback-and-development)
+[![MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/triunai/bff)](https://github.com/triunai/bff/releases)
+
+BFF is a portable CLI and a set of repo conventions for running coding agents without losing the plot: a thread-aware Doc-Spine, one `hygiene.md` router, task contracts, independent quality reviews, coordinated wraps and a checked context graph. Osiris, its workbench for BB, shows what the agents actually did.
+
+![Osiris workbench: native chat in the centre, Work threads on the left, current-workspace Changes on the right](docs/assets/osiris-workbench.png)
+
+*Osiris in BB: native chat in the centre, Work on the left, Changes on the right.*
+
+## What BFF is
+
+Most agent work starts as a prompt and ends as archaeology: someone scrolls a chat to find out what was decided, what ran, and whether it passed. BFF replaces that with a loop that leaves artifacts in the repository:
+
+```text
+intent -> hydrate -> contract -> lane -> evidence -> review -> fitness -> wrap
+```
+
+Each step writes to the repo or reads from it. The chat is disposable; the spine, the contracts, the commits and the check output are not. Boring ownership rules are cheaper than clever merge conflicts: one orchestrator writes spine state and mints numbers, and lanes write committed evidence in their own worktrees.
+
+## Capabilities
+
+What v0.1.1 ships:
+
+- **Repo adoption.** `bff init` lays down the Doc-Spine files, the `hygiene.md` router and four skills; existing files are preserved. `bff check` validates the bound spine; `bff hydrate` prints bound context for one workstream without changing files.
+- **Project checks.** `bff check --run` executes the argv commands you declare in `.bff.json`, with your machine permissions, and reports the result. A shell exit code is an observation, not a verdict: verify that the tests actually ran.
+- **Osiris workbench for BB.** Native chat in the centre, Work on the left, current-workspace Changes on the right, with Trace and Problems replacing the right pane when needed.
+- **Toolcalls explorer.** A separate BB sidebar entry with its own search and failure view across scanned retained history.
+- **Provider capture.** `bff herdr` records bounded, metadata-only snapshots of local Claude Code and Codex transcripts.
+- **Companion tools.** `bff doctor` reports Herdr, Beads, OMC, OMX, BB and aeh, and with your consent installs missing tools and upgrades outdated ones.
+- **Verified install and rollback.** Pinned one-line installer with checksum and file-inventory verification, preserved versions, and `--activate` / `--disable`.
 
 ## Install
 
-Requires Python 3.9+, curl, and Git for repo adoption. BB and Herdr are separate upstream applications; install/run them through their own supported setup before opening their interfaces. The bootstrap installs no Python/Node dependencies or agent runtimes.
+Requires Python 3.9+, curl and Git. BB and Herdr are separate upstream applications; install them through their own supported setup. The bootstrap installs no Python or Node dependencies and no agent runtimes.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/triunai/bff/v0.1.1/install.sh | sh
+bff doctor     # what is present, what is missing, what it would do
 ```
 
-The pinned bootstrap downloads the release archive, verifies its checksum and file inventory, preserves a version under `~/.local/share/bff/releases/`, and exposes `~/.local/bin/bff`. It reports a missing PATH entry without editing shell startup files. Use the printed absolute command in that case. Checksum and archive share the GitHub publisher trust boundary; this is not an independently signed release.
+If `bff` is not on your PATH, the installer prints the absolute command to use. It does not edit shell startup files.
 
-From a downloaded source/release directory, `sh install.sh` installs locally. Use `--prefix <scratch-directory>` to rehearse safely.
+The pinned bootstrap downloads the release archive, verifies its checksum and file inventory, preserves a version under `~/.local/share/bff/releases/`, and exposes `~/.local/bin/bff`. Checksum and archive share the GitHub publisher trust boundary; this is not an independently signed release. From a downloaded source or release directory, `sh install.sh` installs locally; `--prefix <scratch-directory>` rehearses safely.
 
-## Open Osiris
+## Osiris
 
 With BB running:
 
@@ -24,9 +57,86 @@ With BB running:
 bff osiris --install
 ```
 
-This explicitly installs the included prebuilt plugin through BB and opens Osiris. BB 0.45+ and its public SDK 0.6.15 surface are the tested baseline; upstream compatibility still applies. Main Osiris keeps native chat central, Work on the left and current-workspace Changes on the right; Trace and Problems replace that inspection pane. **Toolcalls** is a separate BB sidebar entry with its own search and failure view across scanned retained history. Search examples: `status:error`, `tool:Bash`, `provider:codex`, `duration:>5s`.
+This installs the included prebuilt plugin through BB and opens Osiris. BB 0.45+ and its public SDK 0.6.15 surface are the tested baseline; upstream compatibility still applies.
 
-`bff start` opens the existing BB workbench and requests an independent named Herdr session in a terminal (macOS and platforms providing `x-terminal-emulator`). It does not install BB/Herdr or prove Herdr startup. `bff start --print-plan` is read-only. `bff osiris --print-url` prints the local URL.
+Main Osiris keeps native chat central, Work on the left and current-workspace Changes on the right. Trace and Problems replace the right pane. **Toolcalls** is a separate sidebar entry with its own search and failure view across scanned retained history. Search examples: `status:error`, `tool:Bash`, `provider:codex`, `duration:>5s`.
+
+![Toolcalls: searchable list of recorded tool calls across scanned threads](docs/assets/osiris-toolcalls.png)
+
+*Toolcalls, filtered with `status:error`.*
+
+![Failed-call inspector: metadata for one selected failed tool call](docs/assets/osiris-failed-call.png)
+
+*Selected-call inspector for a failed call. It shows the metadata the collector actually has, not an inferred root cause.*
+
+![Osiris in use: opening Toolcalls, searching, selecting a failed call](docs/assets/osiris-demo.gif)
+
+Osiris reports retained-history caps, scan failures and unknown outcomes as such: no complete-fleet percentage without a known denominator, and no recovered or root-cause labels without evidence. Metadata exports exclude prompts, tool inputs and outputs, and credentials. Details: [plugins/osiris/README.md](plugins/osiris/README.md).
+
+`bff start` opens the existing BB workbench and requests an independent named Herdr session in a terminal (macOS and platforms providing `x-terminal-emulator`). It does not install BB or Herdr or prove Herdr startup. `bff start --print-plan` is read-only. `bff osiris --print-url` prints the local URL.
+
+## How it works
+
+```text
+ your repo                                   your machine
++-------------------------------+          +--------------------------------+
+| hygiene.md   (verb order)     |          | Claude Code / Codex transcripts|
+| Doc-Spine    (scope, facts,   |          +---------------+----------------+
+|   decisions, evidence)        |                          | bff herdr
+| .bff.json    (check argv)     |                          | (bounded, metadata only)
+| .agents/skills/bff-*          |                          v
++---------------+---------------+          +--------------------------------+
+                | bff init/check/hydrate   | namespaced metadata feed       |
+                v                          +---------------+----------------+
++-------------------------------+                          |
+| BFF CLI (Python, stdlib only) |                          v
++-------------------------------+          +--------------------------------+
+                                           | Osiris (TypeScript, BB plugin) |
+ BB retained thread history ------------>  | Work | chat | Changes/Trace   |
+                                           | Toolcalls                      |
+                                           +--------------------------------+
+```
+
+The repo owns scope, decisions, evidence and process ordering. `hygiene.md` is the single procedure router; skills execute it. Osiris reads two distinct sources, BB's retained lifecycle history and BFF's local provider capture, and does not guess identity across them. See [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Architecture
+
+```text
+bff/                    Python CLI
+  cli.py                  argument parsing, subcommand dispatch
+  project.py              init / check / hydrate over the bound spine
+  doctor.py               companion-tool report, install and upgrade plan
+  herdr.py, herdr_observer.py
+                          bounded local Claude/Codex transcript capture
+  launch.py               start / osiris launchers
+plugins/osiris/         Osiris, a BB plugin (TypeScript + TSX, prebuilt in dist/)
+  app.tsx, server.ts      UI and server halves
+  analytics.ts            call metadata, search and outcome handling
+  herdr-feed.ts, live-observer.ts
+                          consume the feed written by `bff herdr`
+templates/repo/         what `bff init` writes: hygiene.md, docs/ spine, skills, CI
+install.sh, install.py  pinned installer: verify, preserve, activate, disable
+scripts/                release builder and release script
+tests/                  Python unittest suite and Osiris tests
+```
+
+Four parts, kept separate: the Python CLI, the TypeScript UI and server inside one BB plugin, the Herdr capture bridge, and the conventions that `bff init` puts into a repository.
+
+## Stack
+
+| Part | Technology | Notes |
+| --- | --- | --- |
+| CLI | Python 3.9+ | Unit tests with `unittest` |
+| Workbench | TypeScript / TSX, BB plugin SDK 0.6.15 | Prebuilt assets in `plugins/osiris/dist`; React and the SDK come from the BB host; Zod is bundled in the server artifact |
+| Host | BB 0.45+ | Separate upstream application, tested baseline |
+| Capture | Herdr bridge (`bff herdr`) | Reads local Claude Code and Codex transcripts, writes metadata only |
+| Installer | POSIX `sh` + Python | Checksum and file-inventory verification, versioned releases, rollback |
+| Dev tooling | Node 24, npm | Osiris tests and rebuild only; not needed to use BFF |
+| CI | GitHub Actions | Python test suite on push and pull request |
+
+## Why the name
+
+Because the alternative is reconstructing yesterday from a chat log. Measure the work. Keep the evidence. Leave less bullshit for the next run.
 
 ## Check and install companion tools
 
@@ -85,4 +195,22 @@ npm run test:osiris
 python3 scripts/build-bff-release.py --output /tmp/bff-release
 ```
 
-Osiris source and prebuilt assets live in `plugins/osiris`. Python CLI and TypeScript UI/server stay separate inside one SDK. See component notices for upstream licensing. MIT for BFF-authored code.
+Osiris source and prebuilt assets live in `plugins/osiris`. Python CLI and TypeScript UI/server stay separate inside one SDK. See component notices for upstream licensing.
+
+## Status
+
+BFF is a **bootstrap-stage release**. [CHANGELOG.md](CHANGELOG.md) records what each version ships; [docs/roadmap.md](docs/roadmap.md) lists candidates, not commitments.
+
+Not implemented yet, and not claimed above:
+
+- Full agent lineage and worktree joins, and landing visualizations.
+- Manual terminal (PTY) recording.
+- Enforced hooks and automatic CI adoption. Installation does not overwrite hooks or configure branch protection.
+- Live Beads / Gas / DSH adapters and their evals.
+- Osiris call-inspector improvements (untruncated values, captured inputs and error text, error classification); see the roadmap.
+
+Existing OMC / OMX / Claude / Codex configuration stays user-owned. No private vault, application case study, credentials or historical sessions are bundled; see the [source boundary](PROVENANCE.md).
+
+## License
+
+MIT for BFF-authored code ([LICENSE](LICENSE)). Osiris carries its own notices for upstream components: [plugins/osiris/THIRD_PARTY_NOTICES.txt](plugins/osiris/THIRD_PARTY_NOTICES.txt).
