@@ -16,7 +16,7 @@ BFF is a portable CLI and a set of repo conventions for running coding agents wi
 
 ## What BFF is
 
-Most agent work starts as a prompt and ends as archaeology: someone scrolls a chat to find out what was decided, what ran, and whether it passed. BFF replaces that with a loop that leaves artifacts in the repository:
+Most agent work starts as a prompt and ends as archaeology: someone scrolls a chat to find out what was decided, what ran, and whether it passed. That is a process failure, not a memory failure. BFF replaces it with a loop that leaves artifacts in the repository:
 
 ```text
 intent -> hydrate -> contract -> lane -> evidence -> review -> fitness -> wrap
@@ -136,7 +136,7 @@ Four parts, kept separate: the Python CLI, the TypeScript UI and server inside o
 
 ## Why the name
 
-Because the alternative is reconstructing yesterday from a chat log. Measure the work. Keep the evidence. Leave less bullshit for the next run.
+Because the alternative is reconstructing yesterday from a chat log, and that is slower. Measure the work. Keep the evidence. Leave less bullshit for the next run.
 
 ## Check and install companion tools
 
