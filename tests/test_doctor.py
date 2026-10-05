@@ -63,6 +63,7 @@ class Env:
 def run(env, **kwargs):
     out = io.StringIO()
     with env.patch():
+        kwargs.setdefault("offline", True)  # companion-tool tests must never touch the network
         code = doctor.run_doctor(stdout=out, **kwargs)
     return code, out.getvalue()
 

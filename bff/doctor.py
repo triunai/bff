@@ -10,7 +10,14 @@ import re
 import shutil
 import subprocess
 import sys
+import urllib.request
 
+from . import __version__
+
+SELF_RELEASE_API = "https://api.github.com/repos/triunai/bff/releases/latest"
+SELF_INSTALL_URL = "https://raw.githubusercontent.com/triunai/bff/v%s/install.sh"
+SELF_TIMEOUT = 3
+SELF_TAG = re.compile(r"v(\d+\.\d+\.\d+)")
 VERSION_TIMEOUT = 10
 QUERY_TIMEOUT = 30
 STEP_TIMEOUT = 600
@@ -120,6 +127,48 @@ def available_route(recipe):
     return None
 
 
+def fetch_latest_release(timeout=SELF_TIMEOUT, opener=urllib.request.urlopen):
+    """Latest published BFF release as X.Y.Z, or None. One unauthenticated call; never raises."""
+    request = urllib.request.Request(SELF_RELEASE_API, headers={
+        "Accept": "application/vnd.github+json", "User-Agent": "bff-doctor/" + __version__})
+    try:
+        with opener(request, timeout=timeout) as response:
+            tag = json.loads(response.read(1024 * 1024).decode("utf-8")).get("tag_name")
+    except Exception:  # offline, rate-limited, timeout, bad JSON: all mean "unknown", never a failure
+        return None
+    match = SELF_TAG.fullmatch(tag) if isinstance(tag, str) else None
+    return match.group(1) if match else None
+
+
+def check_self(installed=None, fetch=None):
+    """Compare BFF's own version with the latest release. status: current | outdated | ahead | unknown."""
+    installed = installed or __version__
+    latest = (fetch or fetch_latest_release)()
+    info = {"installed": installed, "latest": latest, "status": "unknown", "command": None}
+    if latest:
+        if version_key(installed) < version_key(latest):
+            # The tag was validated as X.Y.Z, so it is safe to interpolate into the printed command.
+            info.update(status="outdated", command="curl -fsSL " + SELF_INSTALL_URL % latest + " | sh")
+        elif version_key(installed) > version_key(latest):
+            info["status"] = "ahead"
+        else:
+            info["status"] = "current"
+    return info
+
+
+def render_self(info, out):
+    out.write("BFF %s installed; " % info["installed"])
+    if info["status"] == "unknown":
+        out.write("latest release unknown (GitHub not reachable or no answer)\n\n")
+    elif info["status"] == "outdated":
+        out.write("latest release is %s (outdated)\n  update: %s\n  (printed only; BFF never runs it for you)\n\n"
+                  % (info["latest"], info["command"]))
+    elif info["status"] == "ahead":
+        out.write("newer than the latest release %s (development build)\n\n" % info["latest"])
+    else:
+        out.write("up to date with release %s\n\n" % info["latest"])
+
+
 def survey(upgrade=True):
     """Inspect every recipe; no changes are made. Queries the registry only when useful."""
     rows = []
@@ -205,9 +254,11 @@ def execute(rows, out):
     return summary
 
 
-def run_doctor(assume_yes=False, upgrade=True, stdin=None, stdout=None):
+def run_doctor(assume_yes=False, upgrade=True, stdin=None, stdout=None, offline=False, fetch_latest=None):
     stdin = stdin if stdin is not None else sys.stdin
     out = stdout if stdout is not None else sys.stdout
+    if not offline:
+        render_self(check_self(fetch=fetch_latest), out)
     rows = survey(upgrade=upgrade)
     planned = render(rows, out)
     if not planned:

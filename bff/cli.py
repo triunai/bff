@@ -69,6 +69,7 @@ def main(argv=None):
     doc.add_argument("--json", action="store_true", help="Machine-readable availability report; runs nothing")
     doc.add_argument("--yes", action="store_true", help="Run the install/upgrade plan without prompting")
     doc.add_argument("--no-upgrade", action="store_true", help="Install missing tools only; do not upgrade")
+    doc.add_argument("--offline", action="store_true", help="Skip the one GitHub call that checks BFF's own latest release")
     start = commands.add_parser("start", help="Open running BB Osiris and request an independent Herdr session")
     start.add_argument("--print-plan", action="store_true", help="Print argv and targets without launching or writing")
     herdr = commands.add_parser("herdr", help="Capture bounded local Claude/Codex transcript metadata; Herdr pane membership is unknown")
@@ -107,7 +108,7 @@ def main(argv=None):
                 print(json.dumps(doctor(), indent=2))
                 return 0
             from .doctor import run_doctor
-            return run_doctor(assume_yes=args.yes, upgrade=not args.no_upgrade)
+            return run_doctor(assume_yes=args.yes, upgrade=not args.no_upgrade, offline=args.offline)
         if args.command == "osiris":
             return launch_osiris(args.url, args.print_url, args.install)
         repo = repo_root(args.repo)

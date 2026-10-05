@@ -34,10 +34,11 @@ This explicitly installs the included prebuilt plugin through BB and opens Osiri
 bff doctor              # table of found/missing tools, versions, planned actions, then asks once
 bff doctor --yes        # run the plan without prompting
 bff doctor --no-upgrade # install missing tools only
+bff doctor --offline    # skip the one GitHub call that checks BFF's own version
 bff doctor --json       # machine-readable availability report; runs nothing
 ```
 
-`bff doctor` checks Herdr, Beads, OMC, OMX, BB and aeh. For each it reads the installed version from the tool's own `--version` and the latest stable version from `brew info` or `npm view`, then plans installs for missing tools and upgrades for outdated ones. It asks `Install/update N items? [Y/n]`; with no TTY and no `--yes` it prints the plan and changes nothing. Items run one at a time, each command is printed first, and the executable is re-detected afterwards; one failure does not stop the rest, but the exit code is then 1 with an installed / upgraded / already current / failed / skipped summary.
+`bff doctor` first compares BFF's own version with the latest GitHub release (one unauthenticated call, 3-second timeout; any failure prints `unknown`). If a newer release exists it prints the pinned one-line install command for that tag and does not run it. It then checks Herdr, Beads, OMC, OMX, BB and aeh. For each it reads the installed version from the tool's own `--version` and the latest stable version from `brew info` or `npm view`, then plans installs for missing tools and upgrades for outdated ones. It asks `Install/update N items? [Y/n]`; with no TTY and no `--yes` it prints the plan and changes nothing. Items run one at a time, each command is printed first, and the executable is re-detected afterwards; one failure does not stop the rest, but the exit code is then 1 with an installed / upgraded / already current / failed / skipped summary.
 
 Hardcoded routes: Herdr via `brew install herdr`; Beads via `brew install beads` (or `npm install -g @beads/bd`); OMC via `npm install -g oh-my-claude-sisyphus@latest`; OMX via `npm install -g oh-my-codex@latest`. BB and aeh have no documented package-manager route, so doctor only prints manual instructions. Upgrades go through the package manager that owns the executable, to the latest stable release only. No sudo, no shell strings, no downloaded scripts.
 
