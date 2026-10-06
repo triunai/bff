@@ -115,7 +115,7 @@ def _notice(current, state_file, stdin, out, now, env, latest, apply, relaunch, 
     if apply is None:
         from . import update
         base = base or update.release_base(env)
-        apply = update.apply_update
+        apply = update.apply_with_plugin
     if relaunch is None:
         relaunch = relaunch_default
     outcome = "noticed"

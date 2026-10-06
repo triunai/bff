@@ -322,6 +322,23 @@ class CliTests(unittest.TestCase):
             self.assertTrue(stderr.startswith("bff: "), stderr)
 
 
+class DefaultApplyTests(unittest.TestCase):
+    def test_default_apply_is_apply_with_plugin(self):
+        from bff import update
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = Path(tmp) / "state.json"
+            with mock.patch.object(update, "apply_with_plugin",
+                                   return_value={"changes": "", "version": "2.0.0"}) as patched, \
+                    mock.patch.object(update, "apply_update") as bare:
+                outcome = update_notice.daily_notice(
+                    current="1.0.0", state_file=state_file, stdin=Stdin("y\n", tty=True), out=io.StringIO(),
+                    now=NOW, env={}, latest=lambda base: "2.0.0", relaunch=lambda: None,
+                    prefix=Path(tmp) / "prefix", base="file:///nowhere")
+        self.assertEqual(outcome, "updated")
+        patched.assert_called_once()
+        bare.assert_not_called()
+
+
 class NoPipeToShellTests(unittest.TestCase):
     def test_no_pipe_into_a_shell_anywhere_in_bff(self):
         pattern = re.compile(r"\|\s*(sh|bash|zsh)\b|\biex\b")
