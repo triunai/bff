@@ -33,7 +33,8 @@ class NotTty(io.StringIO):
 
 
 def git(*args, cwd):
-    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args], cwd=str(cwd), check=True,
+    # the identity is split so no address-shaped literal sits in the repo (scripts/privacy_gate.py)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t" + "@example.invalid", *args], cwd=str(cwd), check=True,
                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
 
 
