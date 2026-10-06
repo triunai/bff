@@ -21,14 +21,29 @@ def scratch_copy(directory):
     return root
 
 
+def expected_pin_files():
+    """Every file the versioning tables say carries a version pin."""
+    return ({name for name, _, _ in versioning.TEXT_PINS} | {name for name, _ in versioning.JSON_PINS}
+            | {versioning.LOCK})
+
+
+def pinned_files(root):
+    """Files where a pin regex actually matched a version (pins() records None for a regex that matched nothing)."""
+    return {name for _, name, value in versioning.pins(root) if value is not None}
+
+
 class VersionSourceTests(unittest.TestCase):
     def test_source_is_a_plain_semver_and_matches_the_import(self):
         self.assertRegex(__version__, versioning.SEMVER.pattern)
         self.assertEqual(versioning.read_version(SDK), __version__)
 
     def test_every_pin_agrees_with_the_single_source(self):
-        found = versioning.pins(SDK)
-        self.assertGreaterEqual(len(found), 8, found)  # a pin regex that matches nothing must not pass silently
+        # The floor exists to catch "a pin regex matched nothing". It counts DISTINCT pinned FILES,
+        # not occurrences: an occurrence count broke when a harmless README edit (6249415, 690e573)
+        # left one install URL where there had been two, although every pin still agreed.
+        self.assertEqual(pinned_files(SDK), expected_pin_files())
+        released = set(json.loads((SDK / "release-files.json").read_text())["files"]) | {"release-files.json"}
+        self.assertLessEqual(expected_pin_files() & released, pinned_files(SDK))  # every shipped pin file carries one
         self.assertEqual(versioning.check_pins(SDK), [])
         self.assertIn("/v" + __version__ + "/install.sh", (SDK / "README.md").read_text())
 
@@ -41,6 +56,7 @@ class VersionSourceTests(unittest.TestCase):
             root = scratch_copy(directory)
             for name, old, new in (("install.sh", "BFF_VERSION=" + __version__, "BFF_VERSION=9.9.9"),
                                    ("install.py", '__version__ = "' + __version__ + '"', '__version__ = "9.9.9"'),
+                                   ("install.ps1", "$BffVersion = '" + __version__ + "'", "$BffVersion = '9.9.9'"),
                                    ("README.md", "bff/v" + __version__ + "/install.sh", "bff/v9.9.9/install.sh")):
                 original = (root / name).read_text()
                 (root / name).write_text(original.replace(old, new))
@@ -48,6 +64,21 @@ class VersionSourceTests(unittest.TestCase):
                 self.assertTrue(problems and all("9.9.9" in p for p in problems), (name, problems))
                 (root / name).write_text(original)
             self.assertEqual(versioning.check_pins(root), [])
+
+    def test_floor_goes_red_when_a_pin_file_loses_its_pin(self):
+        # Teeth for the distinct-files floor: a pin regex that matches NOTHING in one file must fail it.
+        with tempfile.TemporaryDirectory() as directory:
+            root = scratch_copy(directory)
+            for name, pin in (("README.md", "bff/v" + __version__ + "/install.sh"),
+                              ("install.ps1", "$BffVersion = '" + __version__ + "'")):
+                original = (root / name).read_text()
+                self.assertIn(pin, original)
+                (root / name).write_text(original.replace(pin, "no pin here"))
+                self.assertNotIn(name, pinned_files(root))
+                self.assertNotEqual(pinned_files(root), expected_pin_files())
+                self.assertTrue(versioning.check_pins(root), name)
+                (root / name).write_text(original)
+            self.assertEqual(pinned_files(root), expected_pin_files())
 
     def test_apply_version_rewrites_every_pin_and_nothing_else(self):
         with tempfile.TemporaryDirectory() as directory:
