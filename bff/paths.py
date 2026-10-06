@@ -13,7 +13,7 @@ import re
 from pathlib import Path, PureWindowsPath
 
 # Single definition of the release directory name; install.py keeps its own startup-safe copy.
-RELEASE_NAME = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+-[a-f0-9]{12}")
+RELEASE_NAME = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?-[a-f0-9]{12}")
 
 
 def _context(env, system, home):

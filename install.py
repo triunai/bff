@@ -18,7 +18,8 @@ import uuid
 __version__ = "0.1.1"
 
 SOURCE = Path(__file__).resolve().parent
-RELEASE_NAME = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+-[a-f0-9]{12}")
+# `<version>-<hash12>`; the version may carry a pre-release part (0.1.2-dev-…), as older installers wrote it.
+RELEASE_NAME = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?-[a-f0-9]{12}")
 
 
 def digest(data):

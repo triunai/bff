@@ -107,6 +107,34 @@ class PathStepTests(unittest.TestCase):
             self.assertEqual(list(self.home.iterdir()), [], kwargs)
 
 
+class LegacyReleaseNameTests(unittest.TestCase):
+    """Older installers named releases `<version>-<hash>` with a pre-release version (0.1.2-dev-1668ede1b95b, on the
+    maintainer's Mac today). The new installer must recognise that link as its own, or it refuses to install."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.prefix = Path(self._tmp.name) / "p"
+        legacy = self.prefix / "share" / "bff" / "releases" / "0.1.2-dev-1668ede1b95b" / "bin"
+        legacy.mkdir(parents=True)
+        (legacy / "bff").write_text("#!/bin/sh\n")
+        (self.prefix / "bin").mkdir()
+        (self.prefix / "bin" / "bff").symlink_to(legacy / "bff")
+
+    def test_install_over_a_legacy_named_release(self):
+        result = installer.install(self.prefix, source=ROOT)
+        self.assertTrue(result["previous_target"].endswith("0.1.2-dev-1668ede1b95b/bin/bff"))
+        self.assertTrue(os.readlink(str(self.prefix / "bin" / "bff")).endswith(result["release"] + "/bin/bff"))
+
+    def test_both_copies_of_the_release_pattern_agree(self):
+        from bff import paths
+        self.assertEqual(paths.RELEASE_NAME.pattern, installer.RELEASE_NAME.pattern)
+        for name in ("0.1.1-5fb47d68299b", "0.1.2-dev-1668ede1b95b", "1.2.3-rc.1-0123456789ab"):
+            self.assertTrue(paths.RELEASE_NAME.fullmatch(name), name)
+        for name in ("0.1.1", "0.1.1-xyz", "../0.1.1-5fb47d68299b", "0.1.1-5fb47d68299b/x"):
+            self.assertIsNone(paths.RELEASE_NAME.fullmatch(name), name)
+
+
 class WindowsInstallerTests(unittest.TestCase):
     """install.ps1 cannot run here (no PowerShell); pin what can be checked as text."""
 
