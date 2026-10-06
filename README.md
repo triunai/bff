@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/bff-hero.svg" alt="BFF, Built Fucking Fast. Illustration of a Factory floor: Intake, Claim, Build, Gate, Land." width="100%">
+  <img src="docs/assets/bff-hero.svg" alt="BFF, Built Fucking Fast. Illustration of an isometric neon factory floor: Intake, Claim, Build, Gate, Land." width="100%">
 </p>
 
 <p align="center"><sub>Illustration, not a screenshot.</sub></p>
