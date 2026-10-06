@@ -92,5 +92,112 @@ class PathStepTests(unittest.TestCase):
             self.assertEqual(list(self.home.iterdir()), [], kwargs)
 
 
+def build_release(output):
+    run = subprocess.run([sys.executable, str(ROOT / "scripts" / "build-bff-release.py"), "--output", str(output)],
+                         capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr
+    return json.loads(run.stdout)
+
+
+FAKE_BB = """#!%s
+import json, sys
+args = sys.argv[1:]
+if args == ["--version"]:
+    print("0.45.0")
+elif args[:2] == ["plugin", "list"]:
+    print(json.dumps({"plugins": []}))
+else:
+    sys.exit(1)
+"""
+
+
+class InstallShTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.base = Path(cls._tmp.name)
+        cls.version = installer.__version__
+        cls.srv = cls.base / "srv"
+        cls.download = cls.srv / "download" / ("v" + cls.version)
+        cls.download.mkdir(parents=True)
+        build_release(cls.download)
+        cls.script_dir = cls.base / "script"
+        cls.script_dir.mkdir()
+        shutil.copy(str(ROOT / "install.sh"), str(cls.script_dir / "install.sh"))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def setUp(self):
+        self._case = tempfile.TemporaryDirectory()
+        self.addCleanup(self._case.cleanup)
+        self.tmp = Path(self._case.name)
+        self.home = self.tmp / "home"
+        self.home.mkdir()
+        self.fakebin = self.tmp / "fakebin"
+        self.fakebin.mkdir()
+        (self.fakebin / "python3").symlink_to(sys.executable)
+        self.prefix = self.tmp / "p"
+
+    def add_fake_bb(self):
+        bb = self.fakebin / "bb"
+        bb.write_text(FAKE_BB % sys.executable)
+        bb.chmod(0o755)
+
+    def run_sh(self, *args, base=None, env_extra=None):
+        env = {"HOME": str(self.home), "PATH": str(self.fakebin) + ":/usr/bin:/bin", "TMPDIR": str(self.tmp), "PYTHONDONTWRITEBYTECODE": "1",
+               "BFF_RELEASE_BASE": base or ("file://" + str(self.srv))}
+        env.update(env_extra or {})
+        return subprocess.run(["sh", str(self.script_dir / "install.sh"), *args], env=env, capture_output=True,
+                              text=True, stdin=subprocess.DEVNULL)
+
+    def test_download_install_runs_new_bff(self):
+        run = self.run_sh("--prefix", str(self.prefix), "--no-modify-path")
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("release source: file://", run.stderr)
+        result = json.loads(run.stdout)
+        self.assertFalse(result["path_modified"])
+        self.assertEqual(list(self.home.iterdir()), [])
+        version = subprocess.run([str(self.prefix / "bin" / "bff"), "--version"], capture_output=True, text=True)
+        self.assertEqual(version.stdout.strip(), "bff " + self.version)
+
+    def test_tampered_tarball_installs_nothing(self):
+        srv = self.tmp / "tampered"
+        shutil.copytree(str(self.srv), str(srv))
+        archive = srv / "download" / ("v" + self.version) / ("bff-" + self.version + ".tar.gz")
+        archive.write_bytes(archive.read_bytes() + b"x")
+        run = self.run_sh("--prefix", str(self.prefix), "--no-modify-path", base="file://" + str(srv))
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("checksum mismatch", run.stderr)
+        self.assertFalse((self.prefix / "bin" / "bff").exists())
+        self.assertEqual(list(self.home.iterdir()), [])
+
+    def test_setup_waits_on_prerequisites_with_exit_3(self):
+        self.add_fake_bb()
+        run = self.run_sh("--setup", "--prefix", str(self.prefix), "--no-modify-path")
+        self.assertEqual(run.returncode, 3, run.stdout + run.stderr)
+        self.assertIn("No public Osiris release is pinned", run.stdout)  # the installed bff ran `osiris setup`
+        self.assertIn("bff is installed; Osiris setup is waiting on the prerequisites", run.stderr)
+        self.assertTrue((self.prefix / "bin" / "bff").is_symlink())
+
+    def test_setup_without_bb_is_still_exit_3(self):
+        run = self.run_sh("--setup", "--yes", "--prefix", str(self.prefix))
+        self.assertEqual(run.returncode, 3, run.stdout + run.stderr)
+        self.assertEqual(list(self.home.iterdir()), [])  # --yes never edits a startup file
+
+    def test_http_release_base_is_refused(self):
+        run = self.run_sh("--prefix", str(self.prefix), base="http://example.com/releases")
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("https:// or file://", run.stderr)
+        self.assertFalse(self.prefix.exists())
+
+    def test_old_flags_still_pass_through(self):
+        run = self.run_sh("--prefix", str(self.prefix), "--stage-only")
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertTrue(json.loads(run.stdout)["created"])
+        self.assertFalse((self.prefix / "bin" / "bff").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
