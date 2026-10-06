@@ -62,21 +62,35 @@ The chat is disposable. The spine, the contracts, the commits and the check outp
 
 ## Install in 30 seconds
 
-This installs the BFF command-line tool. Osiris also needs BB, which you install separately first (see the top of this page); then run `bff osiris --install`.
-
-Needs Python 3.9+, Git and `curl`. BB and Herdr (the separate terminal-session app BFF uses to capture agent runs) are upstream applications; BFF does not quietly install agent runtimes, rewrite your shell profile or seize your hooks.
+Three commands. That is the whole surface:
 
 ```sh
-curl -fsSLO https://raw.githubusercontent.com/triunai/bff/v0.1.1/install.sh
-sh install.sh
-bff doctor     # what is present, what is missing, what it would do
+bff osiris install   # install Osiris, and run it again any time to update (safe to re-run)
+bff osiris           # open it
+bff osiris doctor    # something wrong? checks everything and prints the one next step
 ```
 
-Download first, then run. You can read `install.sh` before it does anything. BFF does not ask you to pipe a script into a shell.
+On a machine with no `bff` yet, get it once (download, read it if you like, then run; never piped into a shell):
 
-The bootstrap downloads the tagged release archive, verifies its checksum and file inventory, preserves the release under `~/.local/share/bff/releases/`, exposes `~/.local/bin/bff`, and tells you if that directory is missing from `PATH`. It does not edit your shell startup files. Checksum and archive share GitHub's publisher trust boundary; this is not an independently signed distribution. Adults may make their own threat-model decisions.
+```sh
+curl -fsSLO https://raw.githubusercontent.com/triunai/bff/v0.1.1/install.sh && sh install.sh
+```
+
+Needs Python 3.9+, Git and `curl`; Osiris also needs [BB](https://github.com/get-bb/bb) (`npx bb-app@latest`, Node 22.19+). `bff osiris install` prints anything missing, in order, and never installs BB, Node or Homebrew for you.
+
+> **Version note.** `bff osiris install` and `bff osiris doctor` arrive in v0.2.0. The v0.1.1 that the line above installs spells them `bff osiris --install` and `bff doctor`. Until Osiris itself is published, `bff osiris install` builds it from its private repository, so it needs GitHub read access on that machine (`gh auth login`, or an SSH key).
+
+What `bff osiris install` does, every time: it prints a plan, asks once (`Install? [Y/n]`; Enter is yes, `n` or Ctrl-D is no; with no terminal it changes nothing unless you pass `--yes`), then verifies before it swaps anything. bff updates are checked against `SHA256SUMS` and, when `gh` is installed, GitHub's build attestation. The Osiris plugin is gated on a fresh copy the way BB builds it, and a failed install puts the previous plugin back. `bff rollback` undoes the last update. `--dry-run` shows the plan and changes nothing.
+
+`bff osiris` checks for updates at most once a day. In a terminal it asks `Press Enter to update, n to skip [Y/n]`, which runs the same install. Turn the check off with `bff config set update.check false`; `bff config set update.auto true` installs verified updates without asking (off by default).
+
+**Windows:** BB runs on Windows only inside WSL2, so bff does too. Run `install.ps1` in PowerShell for the exact steps, or do them yourself: `wsl --install -d Ubuntu`, then the commands above inside Ubuntu, then open `http://localhost:38886` in your Windows browser.
+
+The bootstrap downloads the tagged release archive, verifies its checksum and file inventory, preserves the release under `~/.local/share/bff/releases/`, exposes `~/.local/bin/bff`, and offers once to add that directory to your `PATH` (a single marked line in your shell's startup file; `--yes` or `--no-modify-path` never edit it). Checksum and archive share GitHub's publisher trust boundary; this is not an independently signed distribution. Adults may make their own threat-model decisions.
 
 Rehearse without touching the normal prefix: `sh install.sh --prefix /tmp/bff-test`.
+
+Exit codes for the `bff osiris` commands: `0` ok, `1` failed (the error on stderr names the one next action), `2` usage error, `3` waiting on a prerequisite you install yourself.
 
 ## Osiris
 
@@ -106,10 +120,10 @@ What the public build (v0.1.1) includes today: native-chat inspection inside the
 Osiris is evidence-first. A shell exit code is an observation, not necessarily a failure. A successful command is an observation, not necessarily progress.
 
 ```sh
-bff osiris --install    # with BB already running (v0.1.1 behaviour)
+bff osiris install    # with BB running; v0.1.1 spells it bff osiris --install
 ```
 
-BFF installs the included prebuilt Osiris plugin through BB and opens it. The tested baseline is BB 0.45+ against public SDK 0.6.15. Upstream compatibility remains upstream compatibility; BFF does not claim clairvoyance.
+BFF installs the Osiris plugin through BB, gated on a fresh copy, and `bff osiris` opens it. (v0.1.1 installed a plugin bundled inside its own release; that bundle is stale and v0.2.0 never installs it.) The tested baseline is BB 0.45+ against public SDK 0.6.15. Upstream compatibility remains upstream compatibility; BFF does not claim clairvoyance.
 
 ## How it works
 
@@ -214,11 +228,11 @@ bff osiris --print-url   # the Osiris URL only
 There are enough agent-development tools now that remembering which package manager owns which one has become an embarrassing use of human memory.
 
 ```sh
-bff doctor              # inspect, plan, ask once
-bff doctor --yes        # execute the plan
-bff doctor --no-upgrade # install missing tools only
-bff doctor --offline    # skip BFF's release check
-bff doctor --json       # report only; machine-readable
+bff osiris doctor              # check everything, plan companion tools, ask once
+bff osiris doctor --yes        # execute the companion-tool plan
+bff osiris doctor --no-upgrade # install missing tools only
+bff osiris doctor --offline    # no network checks (release, registries, private repo)
+bff osiris doctor --json       # report only; machine-readable; installs nothing
 ```
 
 `doctor` checks BFF, Herdr, Beads, OMC, OMX, BB and aeh. For tools with documented package-manager ownership, it compares the installed version with the latest stable version and plans the appropriate install or upgrade. For tools without a supported automated route, it says so.
@@ -348,8 +362,8 @@ BFF is bootstrap-stage software. That means two things: it already has a real jo
 | `bff doctor` (install and upgrade companion tools after one prompt) | Shipped, v0.1.1 |
 | `bff herdr`, `bff start`, Osiris tool-call observer and Toolcalls search | Shipped, v0.1.1 bundle |
 | Osiris Work surface (board, graph, decisions), Factory view, themes | Preview. Built in the maintainer's development build, **not in any public release** |
-| One-command installer (`install.sh --setup`), `bff update`, `bff rollback`, `install.ps1` | Coming in v0.2.0. Designed and being built; **not available today** |
-| Windows | Designed, untested |
+| `bff osiris install` (install + update), `bff osiris doctor`, `bff rollback`, the daily update question | Coming in v0.2.0. Built on a branch; **not in a release today** |
+| Windows | WSL2 only (BB's own rule); `install.ps1` prints the steps. Untested on a real Windows machine |
 | Full agent lineage, landing visualisation, manual terminal (PTY) recording | Not implemented |
 | Enforced hooks and automatic CI adoption | Not implemented. Installation never overwrites hooks or configures branch protection |
 | Live Beads / Gas / DSH adapters and their evals | Not implemented |
@@ -358,17 +372,9 @@ Those are roadmap items, not creatively worded existing features. [CHANGELOG.md]
 
 v0.1.1's `bff doctor` prints its own one-line install hint when a newer release exists. Prefer the download-then-run form in [Install](#install-in-30-seconds), and read the script first.
 
-## Coming in v0.2.0 (not released; none of this works today)
+## Coming in v0.2.0 (not released yet)
 
-The planned shape is three commands. Do not copy them yet; they fail on v0.1.1:
-
-```text
-curl -fsSLO https://github.com/triunai/bff/releases/latest/download/install.sh && sh install.sh --setup   # get + first-time setup
-bff osiris                                                                                              # run
-bff update                                                                                              # update bff and the Osiris plugin
-```
-
-`bff update` is planned to show *current → target* and ask `Update available? [Y/n]`, `bff rollback` to switch back to the previous release, and `install.ps1` to bring a Windows preview. Windows is untested. Until a release says otherwise, treat all of this as design, not as a feature. Details are in [docs/roadmap.md](docs/roadmap.md) and the [CHANGELOG](CHANGELOG.md).
+The surface is the three commands at the top of [Install](#install-in-30-seconds): `bff osiris install` (install and update), `bff osiris` (open), `bff osiris doctor` (check). `bff rollback` undoes an update. Older spellings (`bff osiris setup`, `bff osiris update`, `bff update`, `bff doctor`, `install.sh --setup`) keep working as aliases of the same code but are not documented verbs. Details are in [docs/roadmap.md](docs/roadmap.md) and the [CHANGELOG](CHANGELOG.md).
 
 ## Get v0.2.0
 

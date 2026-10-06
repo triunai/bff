@@ -7,10 +7,13 @@ Versioning policy: [Semantic Versioning](https://semver.org/). While BFF is 0.x,
 ## [Unreleased]
 
 ### Added
+- **Three commands** (D-128): `bff osiris install` installs Osiris and, run again, updates it (bff itself plus the Osiris build it pins); `bff osiris` (or `bff osiris open`) opens it; `bff osiris doctor` checks everything and prints the one next step. `bff osiris setup`, `bff osiris update`, `bff update`, `bff doctor` and `install.sh --setup` remain as undocumented aliases of the same code; `bff rollback` stays.
+- `bff osiris install` plans first, asks once (`Install? [Y/n]`, EOF is no), and with no terminal changes nothing unless `-y/--yes` is given (exit 1, "Re-run with --yes"). `--dry-run` prints the plan. A re-run with nothing new changes nothing and fetches nothing.
+- While Osiris is unpublished, `bff osiris install` builds the commit pinned in `compat.json` (`osiris.private`) from the private repository: SSH (BatchMode) or the GitHub CLI's credentials, HEAD verified to be the pinned commit, `npm ci --omit=dev --ignore-scripts`, then the repository's own stage-and-gate script. No access prints `gh auth login` as the next step. On a machine with staged builds (`~/.local/share/osiris-worktrees/install-*`) the newest one wins and nothing is fetched. `--ref` builds another commit; `BFF_OSIRIS_REPO_URL` points at a mirror.
+- `bff osiris doctor` checks the platform (native Windows fails with the WSL2 step; WSL2 is named), bff and PATH, the latest bff release, BB present and answering, the Osiris plugin and whether a newer gated build exists, private-repo access, Herdr at a path Osiris trusts, the Herdr server, capture freshness (30 s, as Osiris judges it), whether BB has a running terminal Osiris can attach (why the Osiris terminal is empty), beads, git and gh. `--json`, `--offline`; exit 1 only when a check fails. The companion-tool plan of the old `bff doctor` follows, behind the same [Y/n].
+- `install.ps1` checks WSL, prints the five WSL2 steps, offers once to run the Linux installer inside WSL (EOF is no) and exits 3.
 - `bff init` ends with `Next: edit hygiene.md, run bff check, then bd init` (printed on stderr; stdout stays JSON).
 - `bff config set update.auto true` prints a one-line warning and how to undo it; `bff config --help` explains `update.check` and `update.auto`.
-- `bff osiris setup` and `bff osiris update` exit 4 (not 3) when Osiris is not publicly released yet. Exit 3 still means a prerequisite is missing. The setup plan says what a missing `bd` or `herdr` is needed for.
-- `install.ps1` prints `PREVIEW: use WSL` and stops before any download; `BFF_WINDOWS_PREVIEW=1` runs the rest for developers.
 
 ### Changed
 - The unpublished-Osiris message reads `Osiris is not publicly released yet; nothing to install.` (no internal decision id).
@@ -18,8 +21,15 @@ Versioning policy: [Semantic Versioning](https://semver.org/). While BFF is 0.x,
 - The daily update prompt reads `bff X is available (you have Y). Press Enter to update, n to skip [Y/n]`; the plugin step of `bff update` prints a progress line first; a missing `gh` names `https://cli.github.com` and the way around it.
 - `bff osiris` with BB stopped says `BB is not running at <url>. Start BB, then run bff osiris again` instead of `[Errno 61]`.
 - `bff herdr` options and `--repo`/`--url` have plain-words help.
+- Exit codes for the Osiris commands (`bff osiris …`, `bff update`, `bff rollback`, `bff doctor`): 0 ok, 1 failed, 2 usage error, 3 waiting on a prerequisite. A failure used to exit 2.
+- When no browser can be opened (SSH, headless, WSL without a bridge), `bff osiris` prints the URL and exits 0.
 
 ### Fixed
+- A failed `bb plugin install` of a build with the same version as the running one (every 0.2.16 rc is `0.2.16-dev`) was reported as "Installed"; success now needs bb's exit 0 and BB serving that directory, else the previous source is restored.
+- `install.sh` no longer runs an unrelated `install.py` that sits next to the downloaded script; only a bff tree counts as a local source.
+- The PATH offer no longer says "Already added" because of a line another `--prefix` install added.
+- `bff update` no longer offers an older "latest" release as an update.
+- Every child process whose output bff captures gets an empty stdin, so none can wait unseen on a question.
 - `bff rollback --plugin` no longer re-installs the previous plugin when there is no terminal to ask on; it prints `no changes made; re-run with --yes to apply`.
 - `tests/test_bff.py` no longer fails on interpreters that write `__pycache__` next to an installed release the first time its launcher runs (found by the first CI run on Python 3.12; the 0.1.1 source tag still contains the old test).
 
