@@ -169,7 +169,12 @@ def run_install(*, yes=False, dry_run=False, from_dir=None, ref=None, switch=Fal
     me = plan_self(env)
     bb = which("bb")
     rows = osiris.prerequisites(None, which, run, compat, bb)
-    status = osiris.plugin_status(bb, run, compat["osiris"]["id"]) if bb else {"present": False}
+    try:
+        status = osiris.plugin_status(bb, run, compat["osiris"]["id"]) if bb else {"present": False}
+    except ValueError as error:  # BB installed but its server is down, or an old bb
+        _err("bff: " + str(error) + ". Is BB running? Start it (npx bb-app@latest, or the BB app), then run: "
+             "bff osiris install")
+        return 1
     plugin = plan_plugin(compat, status, from_dir=from_dir, ref=ref, staging_root=staging_root,
                          builds_root=builds_root, switch=switch) if bb else {"action": "blocked"}
     osiris._say(out, "bff osiris install plan")

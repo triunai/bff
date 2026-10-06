@@ -182,6 +182,14 @@ class ConsentTests(InstallFixture):
         self.assertEqual(self.installs(), [])
 
 
+class BbDownTests(InstallFixture):
+    def test_bb_that_cannot_list_plugins_names_starting_bb(self):
+        os.environ["FAKE_BB_LIST_EXIT"] = "1"
+        self.assertEqual(self.install(), 1)
+        self.assertIn("Is BB running? Start it (npx bb-app@latest", self.err.getvalue())
+        self.assertEqual(self.installs(), [])
+
+
 class ChannelTests(InstallFixture):
     def test_newest_staged_build_wins_on_a_developer_box(self):
         old = self.plugin("install-0.2.16-rc3-2b12d6e", "0.2.16-dev")
