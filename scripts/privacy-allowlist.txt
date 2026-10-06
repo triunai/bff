@@ -1,0 +1,2 @@
+# <path-glob> <pattern-name> <reason>
+tests/test_privacy_gate.py email per-command git identity on the reserved example domain, not a real address
