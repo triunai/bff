@@ -222,6 +222,11 @@ def _say(out, text):
     print(text, file=out)
 
 
+def _answer_is_yes(line):
+    # Mirrors bff/prompt.answer_is_yes (EOF "" is never consent); install.py cannot import bff before it is staged.
+    return line != "" and line.strip().lower() in ("", "y", "yes")
+
+
 def offer_path(bin_dir, *, env, stdin, out, home, system, yes=False, no_modify=False):
     """D7: ask ONCE to add bin to PATH. Never edits under --yes, --no-modify-path or a non-TTY."""
     shell = env.get("SHELL", "")
@@ -239,8 +244,7 @@ def offer_path(bin_dir, *, env, stdin, out, home, system, yes=False, no_modify=F
         return {"path_modified": False, "path_hint": "Already added to " + str(rc)}
     out.write("Add " + str(bin_dir) + " to PATH in " + str(rc) + "? [Y/n] ")
     out.flush()
-    answer = stdin.readline().strip().lower()
-    if answer not in ("", "y", "yes"):
+    if not _answer_is_yes(stdin.readline()):
         _say(out, hint)
         return {"path_modified": False, "path_hint": hint}
     rc.parent.mkdir(parents=True, exist_ok=True)

@@ -14,6 +14,7 @@ import webbrowser
 from . import __version__, osiris, state
 from .paths import active_state_path
 from .project import blocks, init_repo, inspect_spine, load_profile, repo_root, run_checks
+from .prompt import confirm
 
 OSIRIS_URL = "http://localhost:38886/plugins/tool-observer/overview"
 
@@ -133,11 +134,7 @@ def self_update(args):
         if not sys.stdin.isatty():
             print("no changes made; re-run with --yes to apply")
             return 0
-        try:
-            answer = input("Update bff " + __version__ + " -> " + target + "? [Y/n] ")
-        except EOFError:
-            answer = "n"
-        if answer.strip().lower() not in ("", "y", "yes"):
+        if not confirm("Update bff " + __version__ + " -> " + target + "? [Y/n] ", sys.stdin, sys.stdout):
             print("cancelled")
             return 0
     result = update.apply_with_plugin(target, prefix=prefix, base=base, require_attestation=args.require_attestation)

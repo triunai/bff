@@ -13,6 +13,7 @@ import sys
 import urllib.request
 
 from . import __version__
+from .prompt import answer_is_yes
 
 SELF_RELEASE_API = "https://api.github.com/repos/triunai/bff/releases/latest"
 SELF_TIMEOUT = 3
@@ -267,7 +268,7 @@ def run_doctor(assume_yes=False, upgrade=True, stdin=None, stdout=None, offline=
             return 0
         out.write("\nInstall/update %d items? [Y/n] " % len(planned))
         out.flush()
-        if stdin.readline().strip().lower() not in ("", "y", "yes"):
+        if not answer_is_yes(stdin.readline()):
             out.write("No changes made.\n")
             return 0
     summary = execute(rows, out)

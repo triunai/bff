@@ -9,11 +9,11 @@ is silent and nothing here may ever stop `bff osiris` from opening.
 """
 import os
 import re
-import shutil
 import sys
 from datetime import datetime, timedelta, timezone
 
 from . import paths, state
+from .prompt import answer_is_yes
 
 INTERVAL = timedelta(hours=24)
 RELAUNCHED = "BFF_RELAUNCHED"
@@ -54,10 +54,15 @@ def _mark_prompted(state_file, now):
 
 
 def relaunch_default():
-    argv0 = shutil.which("bff") or os.path.abspath(sys.argv[0])
+    """Exec THIS install's own bin/bff; never PATH or argv[0] (under the launcher argv[0] is "-c")."""
+    prefix = paths.install_prefix()
+    target = paths.command_path(prefix=prefix) if prefix is not None else None
+    if target is None or not target.exists():
+        sys.stdout.write("restart bff to use the new version\n")
+        return
     env = dict(os.environ)
     env[RELAUNCHED] = "1"
-    os.execve(argv0, [argv0] + sys.argv[1:], env)
+    os.execve(str(target), [str(target)] + sys.argv[1:], env)
 
 
 def _method_hint():
@@ -68,10 +73,6 @@ def _report_success(result, out):
     if result.get("changes"):
         out.write(str(result["changes"]).rstrip() + "\n")
     out.write("undo: bff rollback\n")
-
-
-def _answer_is_yes(line):
-    return line.strip().lower() in ("", "y", "yes")
 
 
 def daily_notice(*, current, state_file, stdin, out, now=None, env=None, latest=None, apply=None,
@@ -134,7 +135,7 @@ def _notice(current, state_file, stdin, out, now, env, latest, apply, relaunch, 
         out.write("bff %s is available. Update now? [Y/n] " % found)
         out.flush()
         _mark_prompted(state_file, now)
-        if _answer_is_yes(stdin.readline()):
+        if answer_is_yes(stdin.readline()):
             try:
                 result = apply(found, prefix=prefix, base=base)
             except ValueError as error:
