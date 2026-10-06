@@ -13,8 +13,9 @@ for arg do
     *) if [ "$arg" = --yes ]; then BFF_YES=1; fi; set -- "$@" "$arg" ;;
   esac
 done
-command -v python3 >/dev/null 2>&1 || { echo 'BFF requires Python 3.9+.' >&2; exit 1; }
-python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else "BFF requires Python 3.9+.")'
+BFF_PYTHON_HELP='BFF needs Python 3.9 or newer. Install it from https://www.python.org/downloads/ (or with your package manager), then run this installer again.'
+command -v python3 >/dev/null 2>&1 || { echo "$BFF_PYTHON_HELP" >&2; exit 1; }
+python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' || { echo "$BFF_PYTHON_HELP" >&2; exit 1; }
 BFF_SOURCE_DIR=
 if [ -f "$0" ]; then
   BFF_SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
@@ -23,7 +24,7 @@ fi
 if [ -n "$BFF_SOURCE_DIR" ]; then
   BFF_INSTALLER=$BFF_SOURCE_DIR/install.py
 else
-  command -v curl >/dev/null 2>&1 || { echo 'BFF download requires curl.' >&2; exit 1; }
+  command -v curl >/dev/null 2>&1 || { echo 'BFF download needs curl. Install curl with your package manager, then run this installer again.' >&2; exit 1; }
   BFF_RELEASES=${BFF_RELEASE_BASE:-https://github.com/$BFF_REPO/releases}
   case $BFF_RELEASES in
     https://*|file://*) ;;
@@ -33,8 +34,9 @@ else
   BFF_STAGE=$(mktemp -d "${TMPDIR:-/tmp}/bff-download.XXXXXXXX")
   trap 'rm -rf "$BFF_STAGE"' EXIT HUP INT TERM
   BFF_BASE="$BFF_RELEASES/download/v$BFF_VERSION"
-  curl --fail --silent --show-error --location "$BFF_BASE/bff-$BFF_VERSION.tar.gz" -o "$BFF_STAGE/release.tar.gz"
-  curl --fail --silent --show-error --location "$BFF_BASE/SHA256SUMS" -o "$BFF_STAGE/SHA256SUMS"
+  BFF_DOWNLOAD_HELP='BFF download failed. Check your network and that github.com is reachable, then run this installer again.'
+  curl --fail --silent --show-error --location "$BFF_BASE/bff-$BFF_VERSION.tar.gz" -o "$BFF_STAGE/release.tar.gz" || { echo "$BFF_DOWNLOAD_HELP" >&2; exit 1; }
+  curl --fail --silent --show-error --location "$BFF_BASE/SHA256SUMS" -o "$BFF_STAGE/SHA256SUMS" || { echo "$BFF_DOWNLOAD_HELP" >&2; exit 1; }
   python3 - "$BFF_STAGE" "$BFF_VERSION" <<'PY'
 import hashlib, pathlib, sys, tarfile
 stage, version = pathlib.Path(sys.argv[1]), sys.argv[2]
@@ -42,19 +44,19 @@ archive = stage / 'release.tar.gz'
 rows = [r.split() for r in (stage / 'SHA256SUMS').read_text().splitlines() if r.strip()]
 expected = [r[0] for r in rows if len(r) == 2 and r[1] == 'bff-' + version + '.tar.gz']
 if len(expected) != 1 or hashlib.sha256(archive.read_bytes()).hexdigest() != expected[0]:
-    raise SystemExit('BFF archive checksum mismatch; installation stopped.')
+    raise SystemExit('BFF archive checksum mismatch; installation stopped. Run the installer again; if it keeps failing, download it by hand from https://github.com/triunai/bff/releases.')
 root = 'bff-' + version
 with tarfile.open(archive, 'r:gz') as tf:
     members = tf.getmembers()
     if len(members) > 5000 or sum(m.size for m in members) > 100 * 1024 * 1024:
-        raise SystemExit('BFF archive exceeds bounded release limits.')
+        raise SystemExit('BFF archive exceeds bounded release limits. This should not happen with an official release; download it by hand from https://github.com/triunai/bff/releases.')
     seen = set()
     for m in members:
         path = pathlib.PurePosixPath(m.name)
         if (path.is_absolute() or '..' in path.parts or not path.parts or
                 path.parts[0] != root or not (m.isfile() or m.isdir()) or
                 m.name != path.as_posix() or path.as_posix() in seen):
-            raise SystemExit('BFF archive contains an unsafe entry.')
+            raise SystemExit('BFF archive contains an unsafe entry. This should not happen with an official release; download it by hand from https://github.com/triunai/bff/releases.')
         seen.add(path.as_posix())
     for m in members:
         target = stage / m.name
@@ -74,11 +76,12 @@ fi
 BFF_RESULT=$(python3 "$BFF_INSTALLER" "$@") || exit $?
 printf '%s\n' "$BFF_RESULT"
 BFF_COMMAND=$(printf '%s' "$BFF_RESULT" | python3 -c 'import json, sys; print(json.load(sys.stdin).get("command", ""))')
-if [ -z "$BFF_COMMAND" ]; then echo '--setup needs an install that activates bff.' >&2; exit 2; fi
+if [ -z "$BFF_COMMAND" ]; then echo '--setup could not find the bff command after installing. Run this installer again without --setup, then run: bff osiris setup' >&2; exit 2; fi
 if [ "$BFF_YES" = 1 ]; then
   if "$BFF_COMMAND" osiris setup --yes; then BFF_RC=0; else BFF_RC=$?; fi
 else
   if "$BFF_COMMAND" osiris setup; then BFF_RC=0; else BFF_RC=$?; fi
 fi
-if [ "$BFF_RC" = 3 ]; then echo 'bff is installed; Osiris setup is waiting on the prerequisites listed above.' >&2; fi
+if [ "$BFF_RC" = 3 ]; then echo 'bff is installed; Osiris setup is waiting on the prerequisites listed above. Install them, then run: bff osiris setup' >&2; fi
+if [ "$BFF_RC" = 4 ]; then echo 'bff is installed. Osiris is not publicly released yet, so there is nothing more to set up; run: bff --help' >&2; fi
 exit "$BFF_RC"

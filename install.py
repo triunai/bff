@@ -258,7 +258,7 @@ def offer_path(bin_dir, *, env, stdin, out, home, system, yes=False, no_modify=F
 def stage(prefix, source=SOURCE, interpreter=None):
     """Verify and stage a release without activating it. Returns (release dir, created)."""
     if sys.version_info < (3, 9):
-        raise ValueError("Python 3.9+ required")
+        raise ValueError("Python 3.9+ required: install Python 3.9 or newer, then run the installer again")
     prefix = prefix.expanduser().resolve()
     verify_source_manifest(source)
     releases, command = preflight(prefix)
@@ -337,7 +337,8 @@ def main(argv=None):
         print(json.dumps(result, indent=2))
         return 0
     except (ValueError, OSError, KeyError, TypeError) as exc:
-        print(json.dumps({"error": str(exc)}), file=sys.stderr)
+        print(json.dumps({"error": str(exc), "next": "Fix the problem named in error, then run the installer again; "
+                          "if it keeps failing, report it at https://github.com/triunai/bff/issues"}), file=sys.stderr)
         return 2
 
 
