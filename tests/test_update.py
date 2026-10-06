@@ -267,6 +267,86 @@ class UpdateFlow(Fixture):
         self.assertUnchanged(before)
 
 
+class PluginStep(Fixture):
+    def test_without_bb_it_skips_and_runs_nothing(self):
+        lines, calls = [], []
+        outcome = update.plugin_step(self.prefix, run=lambda *a, **k: calls.append(a), which=lambda name: None,
+                                     out=lines.append)
+        self.assertEqual((outcome, calls), ("skipped", []))
+        self.assertEqual(lines, ["Osiris plugin: skipped (BB not found)"])
+
+    def test_exit_codes_map_to_outcomes_and_argv_is_the_new_bff(self):
+        for code, expected in ((0, "ok"), (3, "waiting"), (1, "failed"), (7, "failed")):
+            with self.subTest(code):
+                calls, lines = [], []
+
+                def run(argv, **kwargs):
+                    calls.append((argv, kwargs))
+                    return subprocess.CompletedProcess(argv, code, stdout="from osiris\n", stderr="")
+                outcome = update.plugin_step(self.prefix, run=run, which=lambda name: "/fake/bb", out=lines.append)
+                self.assertEqual(outcome, expected)
+                self.assertEqual(calls[0][0], [str(self.prefix / "bin" / "bff"), "osiris", "update", "--yes"])
+                self.assertEqual(calls[0][1]["timeout"], 900)
+                self.assertIn("from osiris", lines)
+                self.assertEqual("bff itself is updated" in "".join(lines), expected == "failed")
+
+    def test_it_never_raises(self):
+        for error in (OSError("gone"), subprocess.TimeoutExpired("bff", 900), RuntimeError("boom")):
+            with self.subTest(type(error).__name__):
+                def run(argv, **kwargs):
+                    raise error
+                lines = []
+                outcome = update.plugin_step(self.prefix, run=run, which=lambda name: "/fake/bb", out=lines.append)
+                self.assertEqual(outcome, "failed")
+                self.assertIn("Retry: bff osiris update", " ".join(lines))
+
+    def test_default_which_is_resolved_at_call_time(self):
+        with mock.patch.object(update.shutil, "which", return_value=None):
+            self.assertEqual(update.plugin_step(self.prefix, out=lambda line: None), "skipped")
+
+
+class ApplyWithPlugin(Fixture):
+    def test_plugin_step_runs_after_the_flip_with_the_new_binary_path(self):
+        order = []
+
+        def step(prefix, out=None):
+            order.append(("plugin", self.version(), Path(prefix) / "bin" / "bff"))
+            return "waiting"
+        with mock.patch.object(update, "plugin_step", side_effect=step) as patched:
+            result = update.apply_with_plugin(NEW, prefix=self.prefix, base=self.base, gh=False,
+                                              out=lambda line: None)
+        self.assertEqual(order, [("plugin", "bff " + NEW, self.prefix / "bin" / "bff")])
+        self.assertEqual(patched.call_count, 1)
+        self.assertEqual(result["plugin"], "waiting")
+        self.assertEqual(result["version"], NEW)
+
+    def test_the_real_step_runs_the_flipped_launcher(self):
+        seen = []
+
+        def run(argv, **kwargs):
+            seen.append((argv, subprocess.run([argv[0], "--version"], stdout=subprocess.PIPE,
+                                              universal_newlines=True).stdout.strip()))
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        real = update.plugin_step
+        with mock.patch.object(update, "plugin_step",
+                               side_effect=lambda prefix, out=None: real(prefix, run=run, which=lambda n: "/fake/bb", out=out)):
+            result = update.apply_with_plugin(NEW, prefix=self.prefix, base=self.base, gh=False, out=lambda line: None)
+        self.assertEqual(result["plugin"], "ok")
+        self.assertEqual(seen[0][0], [str(self.prefix / "bin" / "bff"), "osiris", "update", "--yes"])
+        self.assertEqual(seen[0][1], "bff " + NEW)
+
+    def test_a_failed_bff_update_never_runs_the_plugin_step(self):
+        before = self.snapshot()
+        data = bytearray(self.tarball().read_bytes())
+        data[len(data) // 2] ^= 0xFF
+        self.tarball().write_bytes(bytes(data))
+        with mock.patch.object(update, "plugin_step") as patched:
+            with self.assertRaisesRegex(update.UpdateError, "checksum"):
+                update.apply_with_plugin(NEW, prefix=self.prefix, base=self.base, gh=False, out=lambda line: None)
+        patched.assert_not_called()
+        self.assertUnchanged(before)
+
+
 class Rollback(Fixture):
     def test_rollback_toggles(self):
         result = self.update()
@@ -402,12 +482,12 @@ class StageOnly(Fixture):
 
 
 class Commands(Fixture):
-    def run_cli(self, args, env=None, prefix=True, method="script"):
+    def run_cli(self, args, env=None, prefix=True, method="script", which=None):
         stdout, stderr = io.StringIO(), io.StringIO()
         patches = [mock.patch.dict(os.environ, env or {}),
                    mock.patch.object(paths, "install_prefix", return_value=self.prefix if prefix else None),
                    mock.patch.object(paths, "install_method", return_value=method),
-                   mock.patch.object(update.shutil, "which", return_value=None)]
+                   mock.patch.object(update.shutil, "which", return_value=which)]
         with contextlib.ExitStack() as stack:
             for item in patches:
                 stack.enter_context(item)
@@ -474,8 +554,9 @@ class Commands(Fixture):
                 self.assertEqual(code, 1)
                 self.assertIn(line, out)
                 self.assertNotIn("| sh", out)
-        code, out, _ = self.run_cli(["rollback", "--yes"], prefix=False, method="dev")
+        code, out, _ = self.run_cli(["rollback", "--self", "--yes"], prefix=False, method="dev")
         self.assertEqual(code, 1)
+        self.assertIn("only applies to installs made by install.sh", out)
 
     def test_dev_checkout_without_patches_is_gated(self):
         stdout = io.StringIO()
@@ -488,6 +569,85 @@ class Commands(Fixture):
         code, out, err = self.run_cli(["rollback", "--yes"])
         self.assertEqual((code, err), (0, ""))
         self.assertEqual(self.version(), "bff " + OLD)
+
+    def run_with(self, args, patches=(), prefix=True, env=None, which=None):
+        with contextlib.ExitStack() as stack:
+            for item in patches:
+                stack.enter_context(item)
+            return self.run_cli(args, env=env, prefix=prefix, which=which)
+
+    def rollback_run(self, args, plugin_rc=0, previous=True, bb="/fake/bb", prefix=True, self_error=None):
+        order = []
+        data = {"plugin": {"previous_source": "path:/x"}} if previous else {}
+        self.state_file.parent.mkdir(parents=True, exist_ok=True)
+        self.state_file.write_text(json.dumps(data))
+
+        def self_side(**kwargs):
+            order.append("self")
+            if self_error:
+                raise self_error
+        patches = [mock.patch.object(paths, "active_state_path", return_value=self.state_file),
+                   mock.patch.object(cli.osiris, "rollback_plugin",
+                                     side_effect=lambda *a, **k: order.append("plugin") or plugin_rc),
+                   mock.patch.object(update, "rollback", side_effect=self_side)]
+        code, out, err = self.run_with(args, patches, prefix=prefix, which=bb)
+        return code, out, err, order
+
+    def test_rollback_defaults_to_both_plugin_first(self):
+        code, _, _, order = self.rollback_run(["rollback", "--yes"])
+        self.assertEqual((code, order), (0, ["plugin", "self"]))
+
+    def test_rollback_self_and_plugin_choose_one(self):
+        self.assertEqual(self.rollback_run(["rollback", "--self", "--yes"])[::3], (0, ["self"]))
+        self.assertEqual(self.rollback_run(["rollback", "--plugin", "--yes"])[::3], (0, ["plugin"]))
+
+    def test_rollback_self_and_plugin_together_is_a_usage_error(self):
+        with self.assertRaises(SystemExit) as raised:
+            self.rollback_run(["rollback", "--self", "--plugin"])
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_rollback_without_a_previous_plugin_source_is_success(self):
+        code, out, _, order = self.rollback_run(["rollback", "--plugin", "--yes"], previous=False)
+        self.assertEqual((code, order), (0, []))
+        self.assertIn("Osiris plugin: no previous source recorded", out)
+        code, _, _, order = self.rollback_run(["rollback", "--yes"], previous=False)
+        self.assertEqual((code, order), (0, ["self"]))
+
+    def test_rollback_exit_is_1_if_any_requested_part_failed(self):
+        code, _, _, order = self.rollback_run(["rollback", "--yes"], plugin_rc=1)
+        self.assertEqual((code, order), (1, ["plugin", "self"]))
+
+    def test_rollback_plugin_only_without_bb_is_1(self):
+        code, out, _, order = self.rollback_run(["rollback", "--plugin", "--yes"], bb=None)
+        self.assertEqual((code, order), (1, []))
+        self.assertIn("BB not found", out)
+
+    def test_rollback_both_without_bb_skips_the_plugin_and_rolls_back_bff(self):
+        code, out, _, order = self.rollback_run(["rollback", "--yes"], bb=None)
+        self.assertEqual((code, order), (0, ["self"]))
+        self.assertIn("Osiris plugin: skipped (BB not found)", out)
+
+    def test_rollback_both_on_a_non_script_install_skips_self(self):
+        code, out, _, order = self.rollback_run(["rollback", "--yes"], prefix=False)
+        self.assertEqual((code, order), (0, ["plugin"]))
+        self.assertIn("bff itself: skipped", out)
+        code, _, _, order = self.rollback_run(["rollback", "--self", "--yes"], prefix=False)
+        self.assertEqual((code, order), (1, []))
+
+    def test_update_exit_1_when_the_plugin_failed_but_bff_is_updated(self):
+        real = update.plugin_step
+        step = mock.patch.object(update, "plugin_step", side_effect=lambda prefix, out=None: real(
+            prefix, run=lambda argv, **k: subprocess.CompletedProcess(argv, 1, stdout="", stderr=""),
+            which=lambda n: "/fake/bb", out=out))
+        code, out, _ = self.run_with(["update", "--yes"], [step], env={"BFF_RELEASE_BASE": self.base})
+        self.assertEqual(code, 1)
+        self.assertIn("bff itself is updated", out)
+        self.assertEqual(self.version(), "bff " + NEW)
+
+    def test_update_exit_0_when_the_plugin_is_waiting(self):
+        step = mock.patch.object(update, "plugin_step", return_value="waiting")
+        code, _, _ = self.run_with(["update", "--yes"], [step], env={"BFF_RELEASE_BASE": self.base})
+        self.assertEqual(code, 0)
 
 
 if __name__ == "__main__":

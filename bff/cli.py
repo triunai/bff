@@ -57,20 +57,52 @@ GATES = {"dev": "this is a source checkout; update it with git pull", "uv": "uv 
 REINSTALL = "curl -fsSLO https://github.com/triunai/bff/releases/latest/download/install.sh && sh install.sh"
 
 
-def self_update(args):
-    from . import paths, state, update
+def _rollback_plugin(args, paths, state):
+    """True when the plugin rollback succeeded (or had nothing to do)."""
+    bb = shutil.which("bb")
+    if bb is None:
+        print("BB not found" if args.plugin else "Osiris plugin: skipped (BB not found)")
+        return not args.plugin
+    state_file = paths.active_state_path()
+    recorded = state.load(state_file).get("plugin")
+    if not (isinstance(recorded, dict) and recorded.get("previous_source")):
+        print("Osiris plugin: no previous source recorded")
+        return True
+    return osiris.rollback_plugin(bb, yes=args.yes, state_file=state_file,
+                                  stdin=None if args.yes else sys.stdin) == 0
+
+
+def _rollback_self(args, paths, update):
     prefix = paths.install_prefix()
     if prefix is None:
-        method = paths.install_method()
-        if args.command == "rollback":
-            print("bff rollback only applies to installs made by install.sh (this one is: " + method + ")")
+        print("bff rollback only applies to installs made by install.sh (this one is: " + paths.install_method() + ")")
+        return False
+    update.rollback(prefix=prefix, state_file=paths.state_path(prefix=prefix), yes=args.yes)
+    return True
+
+
+def run_rollback(args, paths, state, update):
+    want_self, want_plugin = not args.plugin, not args.self_only
+    ok = True
+    if want_plugin:
+        ok = _rollback_plugin(args, paths, state)
+    if want_self:
+        if paths.install_prefix() is None and want_plugin:
+            print("bff itself: skipped (not a script install)")
         else:
-            print(GATES.get(method, "re-run the installer: " + REINSTALL))
+            ok = _rollback_self(args, paths, update) and ok
+    return 0 if ok else 1
+
+
+def self_update(args):
+    from . import paths, state, update
+    if args.command == "rollback":
+        return run_rollback(args, paths, state, update)
+    prefix = paths.install_prefix()
+    if prefix is None:
+        print(GATES.get(paths.install_method(), "re-run the installer: " + REINSTALL))
         return 1
     state_file = paths.state_path(prefix=prefix)
-    if args.command == "rollback":
-        update.rollback(prefix=prefix, state_file=state_file, yes=args.yes)
-        return 0
     base = update.release_base()
     if base != update.DEFAULT_BASE:
         print("release source: " + base)
@@ -108,12 +140,12 @@ def self_update(args):
         if answer.strip().lower() not in ("", "y", "yes"):
             print("cancelled")
             return 0
-    result = update.apply_update(target, prefix=prefix, base=base, require_attestation=args.require_attestation)
+    result = update.apply_with_plugin(target, prefix=prefix, base=base, require_attestation=args.require_attestation)
     if result["changes"]:
         print(result["changes"])
     print("updated bff " + __version__ + " -> " + result["version"])
     print("undo: bff rollback")
-    return 0
+    return 1 if result.get("plugin") == "failed" else 0
 
 
 def run_config(args):
@@ -198,7 +230,10 @@ def main(argv=None):
     upgrade.add_argument("--version", dest="target", metavar="X.Y.Z", help="Install this release instead of the latest")
     upgrade.add_argument("--require-attestation", action="store_true", help="Refuse to update unless gh verifies provenance")
     upgrade.add_argument("--yes", action="store_true", help="Update without prompting")
-    back = commands.add_parser("rollback", help="Switch bff back to the previous release")
+    back = commands.add_parser("rollback", help="Switch bff and the Osiris plugin back to the previous release")
+    which = back.add_mutually_exclusive_group()
+    which.add_argument("--self", dest="self_only", action="store_true", help="Roll back bff only")
+    which.add_argument("--plugin", action="store_true", help="Roll back the Osiris plugin only")
     back.add_argument("--yes", action="store_true", help="Roll back without prompting")
     observer.add_argument("--no-update-check", action="store_true", help="Skip the once-a-day update notice for this run")
     config = commands.add_parser("config", help="Read or change bff settings (update.check, update.auto)")
