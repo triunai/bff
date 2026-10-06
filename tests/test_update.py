@@ -341,6 +341,17 @@ class Engine(unittest.TestCase):
         self.assertIsNone(paths.install_prefix(str(prefix / "share" / "bff" / "releases" / "not-a-release" / "bff" / "x.py")))
         self.assertIsNone(paths.install_prefix(str(SDK / "bff" / "__init__.py")))
 
+    def test_active_state_path_follows_the_running_install(self):
+        # update, the daily notice, bff config and bff osiris must all share ONE state file.
+        prefix = Path(tempfile.mkdtemp()).resolve() / "custom prefix"
+        self.addCleanup(shutil.rmtree, str(prefix.parent))
+        package = prefix / "share" / "bff" / "releases" / ("0.2.0-" + "a" * 12) / "bff"
+        package.mkdir(parents=True)
+        self.assertEqual(paths.active_state_path(str(package / "__init__.py")),
+                         paths.state_path(prefix=prefix))
+        dev = paths.active_state_path(str(SDK / "bff" / "__init__.py"), env={"BFF_PREFIX": str(prefix)})
+        self.assertEqual(dev, paths.state_path(prefix=prefix))
+
 
 class StageOnly(Fixture):
     def run_installer(self, *args):

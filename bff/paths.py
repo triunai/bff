@@ -121,3 +121,8 @@ def install_prefix(module_file=None):
             and data.name == "bff" and data.parent.name == "share"):
         return data.parent.parent
     return None
+
+
+def active_state_path(module_file=None, **kw):
+    """The running install's own state file (under its prefix), else the default location."""
+    return state_path(prefix=install_prefix(module_file), **kw)

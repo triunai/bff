@@ -61,7 +61,7 @@ def source_files(source):
     selected.update({"templates/" + name: value for name, value in inventory(templates).items()})
     if not any(name.startswith("templates/repo/") for name in selected):
         raise ValueError("Missing repo templates")
-    for name in ("README.md", "LICENSE", "PROVENANCE.md", "ARCHITECTURE.md", "install.sh", "install.py"):
+    for name in ("README.md", "LICENSE", "PROVENANCE.md", "ARCHITECTURE.md", "install.sh", "install.py", "compat.json"):
         path = source / name
         if os.path.lexists(str(path)):
             if path.is_symlink() or not path.is_file():
@@ -74,17 +74,6 @@ def source_files(source):
         for name, value in inventory(docs).items():
             if "/" not in name and name.endswith(".md"):
                 selected["docs/" + name] = value
-    plugin = source / "plugins" / "osiris"
-    if os.path.lexists(str(source / "plugins")):
-        if (source / "plugins").is_symlink() or not (source / "plugins").is_dir():
-            raise ValueError("plugins must be a regular directory")
-    if os.path.lexists(str(plugin)):
-        if plugin.is_symlink() or not plugin.is_dir():
-            raise ValueError("Osiris bundle must be a regular directory")
-        for name, value in inventory(plugin).items():
-            if not plugin_file_allowed(name):
-                raise ValueError("Unapproved Osiris bundle input: " + name)
-            selected["plugins/osiris/" + name] = value
     return selected
 
 
@@ -162,9 +151,10 @@ def verify_release(release):
     if not isinstance(expected, dict) or not {"bff/cli.py", "bin/bff"} <= set(expected):
         raise ValueError("Incomplete release manifest")
     for name, checksum in expected.items():
-        valid = (name in ("bin/bff", "README.md", "LICENSE", "PROVENANCE.md", "ARCHITECTURE.md", "install.sh", "install.py") or
+        valid = (name in ("bin/bff", "README.md", "LICENSE", "PROVENANCE.md", "ARCHITECTURE.md", "install.sh", "install.py", "compat.json") or
                  (name.startswith("bff/") and "/" not in name[4:] and name.endswith(".py")) or
                  (name.startswith("docs/") and "/" not in name[5:] and name.endswith(".md")) or
+                 # Kept so a rollback to an old 0.1.x release, which bundled the plugin, still verifies.
                  (name.startswith("plugins/osiris/") and plugin_file_allowed(name[len("plugins/osiris/"):])) or
                  name.startswith("templates/"))
         if not valid or Path(name).is_absolute() or ".." in Path(name).parts:

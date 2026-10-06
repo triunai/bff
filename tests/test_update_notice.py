@@ -279,7 +279,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(self.run_cli(["osiris"])[0], 0)
         notice.assert_called_once()
         self.assertEqual(notice.call_args[1]["current"], cli.__version__)
-        self.assertEqual(notice.call_args[1]["state_file"], cli.state_path())
+        self.assertEqual(notice.call_args[1]["state_file"], cli.active_state_path())
         launch.assert_called_once()
 
     def test_no_update_check_flag_and_print_url_skip_the_notice(self):

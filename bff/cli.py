@@ -11,8 +11,8 @@ import sys
 from urllib.parse import urlsplit
 import webbrowser
 
-from . import __version__, state
-from .paths import state_path
+from . import __version__, osiris, state
+from .paths import active_state_path
 from .project import blocks, init_repo, inspect_spine, load_profile, repo_root, run_checks
 
 OSIRIS_URL = "http://localhost:38886/plugins/tool-observer/overview"
@@ -30,25 +30,14 @@ def doctor():
             "note": "Executable availability does not establish a working integration."}
 
 
-def launch_osiris(url, print_only, install=False):
-    if install and print_only:
-        raise ValueError("Choose --install or the read-only --print-url")
+def launch_osiris(url, print_only):
     if print_only:
         print(url)
         return 0
     parsed = urlsplit(url)
     if parsed.scheme != "http" or parsed.hostname not in ("localhost", "127.0.0.1", "::1"):
         raise ValueError("Osiris launch requires an explicit local HTTP URL")
-    if install:
-        executable = shutil.which("bb")
-        if executable is None:
-            raise ValueError("BB executable unavailable; install BB separately")
-        bundle = Path(__file__).resolve().parents[1] / "plugins" / "osiris"
-        if not bundle.is_dir() or bundle.is_symlink() or not (bundle / "package.json").is_file():
-            raise ValueError("No bundled Osiris plugin in this release")
-        result = subprocess.run([executable, "plugin", "install", str(bundle), "--yes"], timeout=120)
-        if result.returncode:
-            raise ValueError("BB plugin install failed with exit " + str(result.returncode))
+    check_osiris_plugin()
     connection = http.client.HTTPConnection(parsed.hostname, parsed.port or 80, timeout=2)
     try:
         connection.request("GET", parsed.path + ("?" + parsed.query if parsed.query else ""))
@@ -127,12 +116,6 @@ def self_update(args):
     return 0
 
 
-def active_state_path():
-    """The running install's own state file (its prefix), else the default location."""
-    from .paths import install_prefix
-    return state_path(prefix=install_prefix())
-
-
 def run_config(args):
     state_file = active_state_path()
     if args.action == "set":
@@ -147,6 +130,25 @@ def run_config(args):
         value = state.get_config(data, key)
         print(key + " = " + str(value).lower() + ("" if value != state.CONFIG_KEYS[key][1] else " (default)"))
     return 0
+
+
+def check_osiris_plugin():
+    executable = shutil.which("bb")
+    if executable is None:
+        raise ValueError(osiris.NO_BB)
+    status = osiris.plugin_status(executable)
+    if not status["present"]:
+        raise ValueError("Osiris plugin not installed: run bff osiris setup")
+    if status["status"] != "running" or not status["enabled"]:
+        raise ValueError("Osiris plugin is " + str(status["status"] if status["status"] != "running" else "disabled")
+                         + ": enable it in BB, or run bff osiris setup")
+    if status["kind"] == "path" and not status["stale_bundled"]:
+        print("Osiris dev channel: " + status["display"])
+        return
+    compat = osiris.load_compat()["osiris"]
+    if compat["published"] and status["version"] != compat["version"]:
+        print("bff: Osiris " + str(status["version"]) + " is off the pinned " + compat["version"]
+              + "; run bff osiris update", file=sys.stderr)
 
 
 def main(argv=None):
@@ -175,10 +177,22 @@ def main(argv=None):
             command.add_argument("--run", action="store_true", help="Explicitly execute the profile's named argv checks")
         elif name == "hydrate":
             command.add_argument("--ws", help="Select one canonical workstream block")
-    observer = commands.add_parser("osiris", help="Open the existing BB observer after checking the local URL")
+    observer = commands.add_parser("osiris", help="Open the BB observer, or set up and update the Osiris plugin")
     observer.add_argument("--url", default=OSIRIS_URL)
     observer.add_argument("--print-url", action="store_true", help="Print only; no connection or browser launch")
-    observer.add_argument("--install", action="store_true", help="Explicitly install the bundled prebuilt observer through BB, then open it")
+    observer.add_argument("--install", action="store_true", help="Deprecated: renamed to bff osiris setup")
+    osiris_commands = observer.add_subparsers(dest="osiris_command")
+    setup = osiris_commands.add_parser("setup", help="Check prerequisites and install the pinned Osiris plugin through BB")
+    setup.add_argument("--yes", action="store_true", help="Install without asking (never replaces a path: dev install)")
+    setup.add_argument("--dry-run", action="store_true", help="Print the plan; change nothing")
+    setup.add_argument("--switch-to-release", action="store_true", help="Replace a path: dev install with the pinned release")
+    upgrade = osiris_commands.add_parser("update", help="Move the Osiris plugin to the pinned release or a local build")
+    upgrade.add_argument("--version", help="Install this release instead of the pinned one")
+    source = upgrade.add_mutually_exclusive_group()
+    source.add_argument("--from", dest="from_dir", help="Gate a build directory on a copy, then install it")
+    source.add_argument("--from-latest-staged", action="store_true", help="Same, for the newest usable staged install-* build")
+    upgrade.add_argument("--switch-to-release", action="store_true", help="Replace a path: dev install with the pinned release")
+    upgrade.add_argument("--yes", action="store_true", help="Install without asking")
     upgrade = commands.add_parser("update", help="Update bff itself to the latest verified release")
     upgrade.add_argument("--check", action="store_true", help="Only report the latest release; change nothing")
     upgrade.add_argument("--version", dest="target", metavar="X.Y.Z", help="Install this release instead of the latest")
@@ -218,10 +232,19 @@ def main(argv=None):
         if args.command == "config":
             return run_config(args)
         if args.command == "osiris":
+            if args.osiris_command == "setup":
+                return osiris.setup(args.yes, args.dry_run, args.switch_to_release)
+            if args.osiris_command == "update":
+                return osiris.update(args.version, args.from_dir, args.from_latest_staged, args.switch_to_release, args.yes)
+            if args.install:
+                if args.print_url:
+                    raise ValueError("Choose --install or the read-only --print-url")
+                print("bff osiris --install is renamed: use bff osiris setup", file=sys.stderr)
+                return osiris.setup()
             if not args.print_url and not args.no_update_check:
                 from .update_notice import daily_notice
                 daily_notice(current=__version__, state_file=active_state_path(), stdin=sys.stdin, out=sys.stdout)
-            return launch_osiris(args.url, args.print_url, args.install)
+            return launch_osiris(args.url, args.print_url)
         repo = repo_root(args.repo)
         if args.command == "init":
             print(json.dumps(init_repo(repo, Path(__file__).resolve().parents[1] / "templates" / "repo"), indent=2))
