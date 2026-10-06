@@ -256,6 +256,45 @@ class AutoTests(NoticeCase):
         self.assertEqual(stdin.reads, 1)
 
 
+class PluginOfferTests(NoticeCase):
+    """bff itself is current, but a newer gated Osiris build exists: the same one-key question runs the same install."""
+
+    def hooks(self, offer="0.2.16-rc3.1 build", code=0):
+        self.applied = []
+        return (lambda: offer), (lambda: self.applied.append(1) or code)
+
+    def test_enter_runs_the_install(self):
+        outcome, text = self.notice(stdin=Stdin("\n", True), calls=Calls(latest="1.0.0"), plugin=self.hooks())
+        self.assertEqual(outcome, "updated")
+        self.assertEqual(self.applied, [1])
+        self.assertIn("Osiris 0.2.16-rc3.1 build is ready. Press Enter to install it, n to skip [Y/n] ", text)
+
+    def test_eof_and_n_are_no(self):
+        for answer in ("", "n\n"):
+            with self.subTest(repr(answer)):
+                self.state_file.unlink(missing_ok=True)  # a fresh day for each answer
+                outcome, _ = self.notice(stdin=Stdin(answer, True), calls=Calls(latest="1.0.0"), plugin=self.hooks())
+                self.assertEqual((outcome, self.applied), ("declined", []))
+
+    def test_no_terminal_prints_one_line_and_never_reads(self):
+        stdin = Stdin("\n", False)
+        outcome, text = self.notice(stdin=stdin, calls=Calls(latest="1.0.0"), plugin=self.hooks())
+        self.assertEqual((outcome, stdin.reads, self.applied), ("noticed", 0, []))
+        self.assertEqual(text, "Osiris 0.2.16-rc3.1 build is ready: run bff osiris install\n")
+
+    def test_offline_still_offers_a_local_build_and_nothing_new_is_silent(self):
+        outcome, _ = self.notice(stdin=Stdin("", False), calls=Calls(latest=None), plugin=self.hooks())
+        self.assertEqual(outcome, "noticed")
+        outcome, text = self.notice(stdin=Stdin("", False), calls=Calls(latest="1.0.0"), plugin=self.hooks(offer=None),
+                                    now=NOW + timedelta(days=2))
+        self.assertEqual((outcome, text), ("no-update", ""))
+
+    def test_a_newer_bff_wins_and_the_plugin_is_not_asked_about(self):
+        checked = []
+        outcome, _ = self.notice(stdin=Stdin("", False), plugin=(lambda: checked.append(1), lambda: 0))
+        self.assertEqual((outcome, checked), ("noticed", []))
+
+
 class CannotSelfUpdateTests(NoticeCase):
     def test_prefix_none_prints_the_hint_and_never_applies(self):
         self.configure(update_auto="true")

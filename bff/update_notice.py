@@ -76,17 +76,36 @@ def _report_success(result, out):
 
 
 def daily_notice(*, current, state_file, stdin, out, now=None, env=None, latest=None, apply=None,
-                 relaunch=None, prefix=_UNSET, base=None):
-    """Returns one outcome string; never raises."""
+                 relaunch=None, prefix=_UNSET, base=None, plugin=None):
+    """Returns one outcome string; never raises.
+
+    `plugin` (optional, the CLI passes osiris_install.notice_hooks()): (check, apply). When bff itself is current,
+    `check()` names a newer gated Osiris build or returns None, and Enter runs `apply()`: the same install path."""
     try:
-        return _notice(current, state_file, stdin, out, now, env, latest, apply, relaunch, prefix, base)
+        return _notice(current, state_file, stdin, out, now, env, latest, apply, relaunch, prefix, base, plugin)
     except Exception as error:  # the notice must never stop bff osiris from opening
         out.write("update check failed: " + str(error) + ". bff osiris still opens; to stop these checks run: "
                   "bff config set update.check false\n")
         return "unknown"
 
 
-def _notice(current, state_file, stdin, out, now, env, latest, apply, relaunch, prefix, base):
+def _plugin_offer(plugin, stdin, out):
+    check, apply = plugin
+    offer = check()
+    if not offer:
+        return "no-update"
+    if not stdin.isatty():
+        out.write("Osiris " + offer + " is ready: run bff osiris install\n")
+        return "noticed"
+    out.write("Osiris " + offer + " is ready. Press Enter to install it, n to skip [Y/n] ")
+    out.flush()
+    if not answer_is_yes(stdin.readline()):
+        out.write("Skipped. Run bff osiris install any time; turn this off with: bff config set update.check false\n")
+        return "declined"
+    return "updated" if apply() == 0 else "update-failed"
+
+
+def _notice(current, state_file, stdin, out, now, env, latest, apply, relaunch, prefix, base, plugin=None):
     env = os.environ if env is None else env
     if env.get(RELAUNCHED):
         return "not-due"
@@ -104,10 +123,8 @@ def _notice(current, state_file, stdin, out, now, env, latest, apply, relaunch, 
         found = latest(base)
     available = bool(found) and _key(found) > _key(current)
     _record(state_file, now, current, found, available)
-    if not found:
-        return "unknown"
     if not available:
-        return "no-update"
+        return _plugin_offer(plugin, stdin, out) if plugin else ("unknown" if not found else "no-update")
     if prefix is _UNSET:
         prefix = paths.install_prefix()
     if prefix is None:

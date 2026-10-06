@@ -231,7 +231,9 @@ def _run_install(args):
 def _open(args):
     if not args.print_url and not args.no_update_check:
         from .update_notice import daily_notice
-        daily_notice(current=__version__, state_file=active_state_path(), stdin=sys.stdin, out=sys.stdout)
+        from .osiris_install import notice_hooks
+        daily_notice(current=__version__, state_file=active_state_path(), stdin=sys.stdin, out=sys.stdout,
+                     plugin=notice_hooks())
     return launch_osiris(args.url, args.print_url)
 
 

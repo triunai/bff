@@ -220,3 +220,22 @@ def run_install(*, yes=False, dry_run=False, from_dir=None, ref=None, switch=Fal
         outcome = update.plugin_step(me["prefix"], run=run, which=which, out=lambda line: osiris._say(out, line))
         return 0 if outcome in ("ok", "skipped", "unpublished") else (WAITING if outcome == "waiting" else 1)
     return _execute_plugin(plugin, compat, bb, run, out, state_file)
+
+
+def notice_hooks(which=shutil.which, run=subprocess.run):
+    """(check, apply) for the daily notice: a newer gated Osiris build for an INSTALLED plugin, and the same install."""
+    def check():
+        bb = which("bb")
+        if bb is None:
+            return None
+        try:
+            compat = osiris.load_compat()
+            status = osiris.plugin_status(bb, run, compat["osiris"]["id"])
+            plan = plan_plugin(compat, status) if status["present"] else {"action": "none"}
+        except ValueError:
+            return None
+        return plan.get("label") if plan["action"] == "install" else None
+
+    def apply():
+        return run_install(yes=True, run=run, which=which, env=dict(os.environ, **{SKIP_SELF: "1"}))
+    return check, apply
