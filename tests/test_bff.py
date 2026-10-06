@@ -184,28 +184,19 @@ class InstallationTests(Scratch):
         with self.assertRaisesRegex(ValueError, "Invalid"):
             installer.verify_source_manifest(self.source)
 
-    def test_optional_plugin_inventory_refuses_maps_and_node_modules(self):
+    def test_release_no_longer_bundles_the_plugin(self):
         plugin = self.source / "plugins" / "osiris"
         (plugin / "dist").mkdir(parents=True)
         (plugin / "package.json").write_text('{}')
-        (plugin / "dist" / "app.js").write_text("// prebuilt")
-        (plugin / "dist" / "app.meta.json").write_text('{}')
-        (plugin / "dist" / "server.meta.json").write_text('{}')
-        (plugin / "LICENSE").write_text("MIT")
-        (plugin / "THIRD_PARTY_NOTICES.txt").write_text("notices")
-        result = installer.install(self.prefix, source=self.source)
-        release = self.prefix / "share" / "bff" / "releases" / result["release"]
-        self.assertTrue((release / "plugins" / "osiris" / "dist" / "app.js").exists())
-        self.assertTrue((release / "plugins" / "osiris" / "dist" / "app.meta.json").exists())
-        self.assertTrue((release / "plugins" / "osiris" / "THIRD_PARTY_NOTICES.txt").exists())
         (plugin / "dist" / "app.js.map").write_text("source map")
-        with self.assertRaisesRegex(ValueError, "Unapproved"):
-            installer.install(self.prefix, source=self.source)
-        (plugin / "dist" / "app.js.map").unlink()
         (plugin / "node_modules").mkdir()
         (plugin / "node_modules" / "dep.js").write_text("dependency")
-        with self.assertRaisesRegex(ValueError, "Unapproved"):
-            installer.install(self.prefix, source=self.source)
+        (self.source / "compat.json").write_text((SDK / "compat.json").read_text())
+        result = installer.install(self.prefix, source=self.source)
+        release = self.prefix / "share" / "bff" / "releases" / result["release"]
+        self.assertFalse((release / "plugins").exists())
+        self.assertTrue((release / "compat.json").is_file())
+        self.assertTrue((release / "bff" / "osiris.py").is_file())
 
 
 class ProjectTests(Scratch):

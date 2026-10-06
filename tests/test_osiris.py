@@ -461,5 +461,58 @@ class CliTests(Fake):
         self.assertEqual(self.calls(), [])
 
 
+class ReleaseTests(Fake):
+    def test_release_has_compat_and_no_plugin(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("bff_installer", SDK / "install.py")
+        installer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(installer)
+        source = self.root / "src"
+        source.mkdir()
+        for name in ("bff", "templates"):
+            shutil.copytree(str(SDK / name), str(source / name), ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copy(str(SDK / "compat.json"), str(source / "compat.json"))
+        shutil.copytree(str(SDK / "plugins"), str(source / "plugins"), ignore=shutil.ignore_patterns("node_modules"))
+        (source / "README.md").write_text("scratch\n")
+        result = installer.install(self.root / "prefix2", source=source)
+        release = self.root / "prefix2" / "share" / "bff" / "releases" / result["release"]
+        self.assertTrue((release / "compat.json").is_file())
+        self.assertTrue((release / "bff" / "osiris.py").is_file())
+        self.assertFalse((release / "plugins").exists())
+
+    def test_old_manifest_with_plugin_still_verifies(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("bff_installer2", SDK / "install.py")
+        installer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(installer)
+        source = self.root / "src"
+        source.mkdir()
+        for name in ("bff", "templates"):
+            shutil.copytree(str(SDK / name), str(source / name), ignore=shutil.ignore_patterns("__pycache__"))
+        result = installer.install(self.root / "prefix3", source=source)
+        release = self.root / "prefix3" / "share" / "bff" / "releases" / result["release"]
+        installer.verify_release(release)
+        # Forge an old 0.1.x release: add the bundled plugin, then re-seal the manifest under its new identity.
+        (release / "plugins" / "osiris" / "dist").mkdir(parents=True)
+        (release / "plugins" / "osiris" / "package.json").write_text("{}")
+        (release / "plugins" / "osiris" / "dist" / "app.js").write_text("// prebuilt")
+        manifest = json.loads((release / "manifest.json").read_text())
+        manifest["files"] = installer.inventory(release)
+        manifest["files"].pop("manifest.json")
+        old = release.parent / installer.release_id(manifest)
+        (release / "manifest.json").write_text(json.dumps(manifest))
+        release.rename(old)
+        self.assertIn("plugins/osiris/package.json", installer.verify_release(old)["files"])
+        (old / "plugins" / "osiris" / "dist" / "app.js.map").write_text("map")
+        with self.assertRaises(ValueError):
+            installer.verify_release(old)
+
+    def test_no_code_path_installs_the_bundled_plugin(self):
+        for module in (SDK / "bff").glob("*.py"):
+            text = module.read_text()
+            self.assertNotIn("plugins/osiris", text, module.name)
+            self.assertNotIn('"plugins" / "osiris"', text, module.name)
+
+
 if __name__ == "__main__":
     unittest.main()

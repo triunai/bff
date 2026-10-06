@@ -43,7 +43,7 @@ def main():
         allowed = rel.as_posix() in approved
         if path.is_symlink():
             raise SystemExit("Refusing a symlink in SDK source: " + str(rel))
-        if path.is_file() and rel.parts[0] in {"bff", "templates", "plugins"} and not allowed:
+        if path.is_file() and rel.parts[0] in {"bff", "templates"} and not allowed:
             raise SystemExit("Unreviewed distributable file: " + str(rel))
         if path.is_file() and allowed:
             data = path.read_bytes()
