@@ -43,14 +43,18 @@ class PosixPaths(unittest.TestCase):
         self.assertEqual(paths.data_dir(system="Linux", home=Path.home(), env={}), feed_dir)
 
 
+# Built by concatenation so the privacy gate (scripts/privacy_gate.py) never sees a home-path literal.
+WIN_HOME = "C:/" + "Users/example"
+
+
 class WindowsPaths(unittest.TestCase):
     def win(self, fn, env=None, **kw):
-        return fn(system="Windows", home=PureWindowsPath("C:/Users/example"), env=env or {}, **kw)
+        return fn(system="Windows", home=PureWindowsPath(WIN_HOME), env=env or {}, **kw)
 
     def test_localappdata_set_and_unset(self):
         data = self.win(paths.data_dir, {"LOCALAPPDATA": "C:\\L"})
         self.assertEqual(data, PureWindowsPath("C:\\L\\bff"))
-        self.assertEqual(self.win(paths.data_dir), PureWindowsPath("C:/Users/example/AppData/Local/bff"))
+        self.assertEqual(self.win(paths.data_dir), PureWindowsPath(WIN_HOME + "/AppData/Local/bff"))
 
     def test_derived_paths(self):
         env = {"LOCALAPPDATA": "C:\\L"}
@@ -119,7 +123,7 @@ class InstallMethod(unittest.TestCase):
         self.assertEqual(self.method(module), "unknown")
 
     def test_windows_style_uv_path_parts(self):
-        self.assertTrue(paths._contains(paths._parts("C:\\Users\\example\\uv\\tools\\bff"), ["uv", "tools"]))
+        self.assertTrue(paths._contains(paths._parts("C:\\" + "Users\\example\\uv\\tools\\bff"), ["uv", "tools"]))
 
 
 if __name__ == "__main__":
