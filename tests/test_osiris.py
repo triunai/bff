@@ -210,12 +210,12 @@ class SetupTests(Fake):
     def test_switch_while_unpublished_installs_nothing(self):
         self.set_plugins(entry("path:" + HOME + "/dev/plugin"))
         code = self.call(osiris.setup, yes=True, switch_to_release=True, compat=self.compat(published=False))
-        self.assertEqual(code, 3)
+        self.assertEqual(code, 4)
         self.assertEqual(self.installs(), [])
-        self.assertIn("owner decision D1", self.output())
+        self.assertIn("not publicly released yet", self.output())
 
     def test_unpublished_returns_3_and_never_installs_the_placeholder(self):
-        self.assertEqual(self.call(osiris.setup, yes=True, compat=self.compat(published=False)), 3)
+        self.assertEqual(self.call(osiris.setup, yes=True, compat=self.compat(published=False)), 4)
         self.assertEqual(self.installs(), [])
 
     def test_stale_bundle_is_named(self):
@@ -366,7 +366,7 @@ class UpdateTests(Fake):
             self.update(bb=None, which=lambda name: None)
 
     def test_version_needs_publication_and_prints_off_pin(self):
-        self.assertEqual(self.update(version="0.4.0"), 3)
+        self.assertEqual(self.update(version="0.4.0"), 4)
         self.assertEqual(self.installs(), [])
         compat = self.compat(published=True)
         target = "git:https://github.com/triunai/bb-plugin-osiris@v0.4.0"
@@ -428,9 +428,9 @@ class CliTests(Fake):
     def test_setup_dry_run(self):
         self.set_plugins()
         code, stdout, _ = self.command(["osiris", "setup", "--dry-run"])
-        self.assertEqual(code, 3)
+        self.assertEqual(code, 4)
         self.assertIn("Osiris setup plan", stdout)
-        self.assertIn("D1", stdout)
+        self.assertIn("not publicly released yet", stdout)
         self.assertEqual(self.installs(), [])
 
     def test_run_with_plugin_missing_hints_setup(self):

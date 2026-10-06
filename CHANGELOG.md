@@ -6,7 +6,21 @@ Versioning policy: [Semantic Versioning](https://semver.org/). While BFF is 0.x,
 
 ## [Unreleased]
 
+### Added
+- `bff init` ends with `Next: edit hygiene.md, run bff check, then bd init` (printed on stderr; stdout stays JSON).
+- `bff config set update.auto true` prints a one-line warning and how to undo it; `bff config --help` explains `update.check` and `update.auto`.
+- `bff osiris setup` and `bff osiris update` exit 4 (not 3) when Osiris is not publicly released yet. Exit 3 still means a prerequisite is missing. The setup plan says what a missing `bd` or `herdr` is needed for.
+- `install.ps1` prints `PREVIEW: use WSL` and stops before any download; `BFF_WINDOWS_PREVIEW=1` runs the rest for developers.
+
+### Changed
+- The unpublished-Osiris message reads `Osiris is not publicly released yet; nothing to install.` (no internal decision id).
+- Every installer failure (Python version, curl, download, checksum, archive, install) ends with one next action; `install.py` errors carry a `next` key.
+- The daily update prompt reads `bff X is available (you have Y). Press Enter to update, n to skip [Y/n]`; the plugin step of `bff update` prints a progress line first; a missing `gh` names `https://cli.github.com` and the way around it.
+- `bff osiris` with BB stopped says `BB is not running at <url>. Start BB, then run bff osiris again` instead of `[Errno 61]`.
+- `bff herdr` options and `--repo`/`--url` have plain-words help.
+
 ### Fixed
+- `bff rollback --plugin` no longer re-installs the previous plugin when there is no terminal to ask on; it prints `no changes made; re-run with --yes to apply`.
 - `tests/test_bff.py` no longer fails on interpreters that write `__pycache__` next to an installed release the first time its launcher runs (found by the first CI run on Python 3.12; the 0.1.1 source tag still contains the old test).
 
 ## [0.1.1] - 2026-10-05

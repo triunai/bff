@@ -155,7 +155,8 @@ class CheckOutcomeTests(NoticeCase):
     def test_exception_in_latest_is_unknown_and_one_line(self):
         outcome, text = self.notice(calls=Calls(latest=RuntimeError("boom")))
         self.assertEqual(outcome, "unknown")
-        self.assertEqual(text, "update check failed: boom\n")
+        self.assertTrue(text.startswith("update check failed: boom. "))
+        self.assertEqual(text.count("\n"), 1)
 
     def test_corrupt_state_does_not_raise(self):
         self.state_file.write_text("{not json")
@@ -179,7 +180,7 @@ class PromptTests(NoticeCase):
                 self.assertFalse(kwargs.get("require_attestation", False))
                 self.assertEqual(calls.relaunches, 1)
                 self.assertEqual(stdin.reads, 1)
-                self.assertIn("bff 2.0.0 is available. Update now? [Y/n] ", text)
+                self.assertIn("bff 2.0.0 is available (you have 1.0.0). Press Enter to update, n to skip [Y/n] ", text)
                 self.assertIn("changed: 1 file", text)
                 self.assertIn("undo: bff rollback", text)
 
@@ -231,7 +232,7 @@ class AutoTests(NoticeCase):
         self.assertEqual(self.calls.apply_calls[0][1]["require_attestation"], True)
         self.assertEqual(self.calls.relaunches, 1)
         self.assertEqual(stdin.reads, 0)
-        self.assertNotIn("Update now?", text)
+        self.assertNotIn("Press Enter to update", text)
         self.assertEqual(text, "bff updated 1.0.0 -> 2.0.0 automatically.\nchanged: 1 file\nundo: bff rollback\n")
 
     def test_auto_failure_falls_back_to_the_non_tty_notice(self):
@@ -251,7 +252,7 @@ class AutoTests(NoticeCase):
         outcome, text = self.notice(stdin=stdin, calls=calls)
         self.assertEqual(outcome, "auto-failed")
         self.assertIn("auto-update skipped: no attestation", text)
-        self.assertIn("Update now? [Y/n] ", text)
+        self.assertIn("Press Enter to update, n to skip [Y/n] ", text)
         self.assertEqual(stdin.reads, 1)
 
 

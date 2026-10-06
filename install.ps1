@@ -15,26 +15,36 @@ $ErrorActionPreference = 'Stop'
 $BffVersion = '0.1.1'
 $BffRepo = 'triunai/bff'
 
+# Native Windows cannot finish this install yet (see S7 above), so stop before any download.
+# BFF_WINDOWS_PREVIEW=1 lets a developer run the rest of the script anyway.
+if ($env:BFF_WINDOWS_PREVIEW -ne '1') {
+    Write-Host 'PREVIEW: use WSL. The native Windows install is not ready yet.'
+    Write-Host 'Next: install WSL (wsl --install), then run the install.sh command from the README inside it.'
+    Write-Host 'Nothing was downloaded or changed.'
+    exit 1
+}
+
 function Find-Python {
     $candidates = @(@('py', '-3'), @('python'))
     foreach ($candidate in $candidates) {
         $found = Get-Command $candidate[0] -ErrorAction SilentlyContinue
         if (-not $found) { continue }
         if ($found.Source -match '\\WindowsApps\\') {
-            Write-Error ("Refusing the Microsoft Store Python stub at " + $found.Source + ". Install a real Python, then re-run:`n" +
+            Write-Error ("Refusing the Microsoft Store Python stub at " + $found.Source + ". Install a real Python, then run this installer again:`n" +
                 "  winget install --id=astral-sh.uv -e`n  winget install Python.Python.3.12")
         }
         return @($found.Source) + @($candidate | Select-Object -Skip 1)
     }
-    Write-Error ("BFF requires Python 3.9+. Install it, then re-run:`n" +
+    Write-Error ("BFF needs Python 3.9 or newer. Install it, then run this installer again:`n" +
         "  winget install --id=astral-sh.uv -e`n  winget install Python.Python.3.12")
 }
 
 $python = @(Find-Python)
 $pythonExe = $python[0]
 $pythonArgs = @($python | Select-Object -Skip 1)
-& $pythonExe @pythonArgs -c "import sys; sys.exit(0 if sys.version_info >= (3, 9) else 'BFF requires Python 3.9+.')"
-if ($LASTEXITCODE -ne 0) { throw 'BFF requires Python 3.9+.' }
+& $pythonExe @pythonArgs -c "import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)"
+if ($LASTEXITCODE -ne 0) { throw ("BFF needs Python 3.9 or newer. Install it, then run this installer again:`n" +
+    "  winget install --id=astral-sh.uv -e`n  winget install Python.Python.3.12") }
 
 $releases = if ($env:BFF_RELEASE_BASE) { $env:BFF_RELEASE_BASE } else { "https://github.com/$BffRepo/releases" }
 if ($releases -notmatch '^https://') { throw 'BFF_RELEASE_BASE must start with https://.' }
@@ -52,9 +62,9 @@ try {
     $wanted = 'bff-' + $BffVersion + '.tar.gz'
     $rows = @(Get-Content $sums | Where-Object { $_.Trim() } | ForEach-Object { , ($_.Trim() -split '\s+') } |
         Where-Object { $_.Count -eq 2 -and $_[1] -eq $wanted })
-    if ($rows.Count -ne 1) { throw 'BFF archive checksum mismatch; installation stopped.' }
+    if ($rows.Count -ne 1) { throw 'BFF archive checksum mismatch; installation stopped. Run the installer again; if it keeps failing, download it by hand from https://github.com/triunai/bff/releases.' }
     $actual = (Get-FileHash -Algorithm SHA256 -Path $tarball).Hash.ToLower()
-    if ($actual -ne $rows[0][0].ToLower()) { throw 'BFF archive checksum mismatch; installation stopped.' }
+    if ($actual -ne $rows[0][0].ToLower()) { throw 'BFF archive checksum mismatch; installation stopped. Run the installer again; if it keeps failing, download it by hand from https://github.com/triunai/bff/releases.' }
 
     # Same entry checks and extraction program as install.sh (tests keep the two texts identical).
     $extract = @'
@@ -64,19 +74,19 @@ archive = stage / 'release.tar.gz'
 rows = [r.split() for r in (stage / 'SHA256SUMS').read_text().splitlines() if r.strip()]
 expected = [r[0] for r in rows if len(r) == 2 and r[1] == 'bff-' + version + '.tar.gz']
 if len(expected) != 1 or hashlib.sha256(archive.read_bytes()).hexdigest() != expected[0]:
-    raise SystemExit('BFF archive checksum mismatch; installation stopped.')
+    raise SystemExit('BFF archive checksum mismatch; installation stopped. Run the installer again; if it keeps failing, download it by hand from https://github.com/triunai/bff/releases.')
 root = 'bff-' + version
 with tarfile.open(archive, 'r:gz') as tf:
     members = tf.getmembers()
     if len(members) > 5000 or sum(m.size for m in members) > 100 * 1024 * 1024:
-        raise SystemExit('BFF archive exceeds bounded release limits.')
+        raise SystemExit('BFF archive exceeds bounded release limits. This should not happen with an official release; download it by hand from https://github.com/triunai/bff/releases.')
     seen = set()
     for m in members:
         path = pathlib.PurePosixPath(m.name)
         if (path.is_absolute() or '..' in path.parts or not path.parts or
                 path.parts[0] != root or not (m.isfile() or m.isdir()) or
                 m.name != path.as_posix() or path.as_posix() in seen):
-            raise SystemExit('BFF archive contains an unsafe entry.')
+            raise SystemExit('BFF archive contains an unsafe entry. This should not happen with an official release; download it by hand from https://github.com/triunai/bff/releases.')
         seen.add(path.as_posix())
     for m in members:
         target = stage / m.name
@@ -91,14 +101,14 @@ with tarfile.open(archive, 'r:gz') as tf:
     $extractFile = Join-Path $stage 'extract.py'
     Set-Content -Path $extractFile -Value $extract -Encoding ASCII
     & $pythonExe @pythonArgs $extractFile $stage $BffVersion
-    if ($LASTEXITCODE -ne 0) { throw 'BFF archive verification failed; installation stopped.' }
+    if ($LASTEXITCODE -ne 0) { throw 'BFF archive verification failed; installation stopped. The reason is printed above this line; run this installer again, or download the release by hand from https://github.com/triunai/bff/releases.' }
 
     $installer = Join-Path $stage "bff-$BffVersion\install.py"
     $installArgs = @()
     if ($Prefix) { $installArgs += @('--prefix', $Prefix) }
     $installArgs += '--no-modify-path'
     $output = & $pythonExe @pythonArgs $installer @installArgs
-    if ($LASTEXITCODE -ne 0) { throw 'BFF install failed.' }
+    if ($LASTEXITCODE -ne 0) { throw 'BFF install failed; the reason is printed above this line. Fix it, then run this installer again.' }
     $output | ForEach-Object { Write-Host $_ }
     $result = ($output -join "`n") | ConvertFrom-Json
     $command = $result.command
@@ -127,7 +137,8 @@ with tarfile.open(archive, 'r:gz') as tf:
         if ($Yes) { $setupArgs += '--yes' }
         & $command @setupArgs
         $code = $LASTEXITCODE
-        if ($code -eq 3) { Write-Host 'bff is installed; Osiris setup is waiting on the prerequisites listed above.' }
+        if ($code -eq 3) { Write-Host 'bff is installed; Osiris setup is waiting on the prerequisites listed above. Install them, then run: bff osiris setup' }
+        if ($code -eq 4) { Write-Host 'bff is installed. Osiris is not publicly released yet, so there is nothing more to set up.' }
         exit $code
     }
 } finally {

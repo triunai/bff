@@ -81,7 +81,8 @@ def daily_notice(*, current, state_file, stdin, out, now=None, env=None, latest=
     try:
         return _notice(current, state_file, stdin, out, now, env, latest, apply, relaunch, prefix, base)
     except Exception as error:  # the notice must never stop bff osiris from opening
-        out.write("update check failed: " + str(error) + "\n")
+        out.write("update check failed: " + str(error) + ". bff osiris still opens; to stop these checks run: "
+                  "bff config set update.check false\n")
         return "unknown"
 
 
@@ -132,7 +133,7 @@ def _notice(current, state_file, stdin, out, now, env, latest, apply, relaunch, 
             relaunch()
             return "auto-updated"
     if stdin.isatty():
-        out.write("bff %s is available. Update now? [Y/n] " % found)
+        out.write("bff %s is available (you have %s). Press Enter to update, n to skip [Y/n] " % (found, current))
         out.flush()
         _mark_prompted(state_file, now)
         if answer_is_yes(stdin.readline()):

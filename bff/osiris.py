@@ -16,8 +16,10 @@ from . import paths, state
 from .prompt import answer_is_yes
 
 PLUGIN_ID = "tool-observer"
-UNPUBLISHED = ("No public Osiris release is pinned for this bff yet (owner decision D1). "
+UNPUBLISHED = ("Osiris is not publicly released yet; nothing to install. "
                "Developers: bff osiris update --from <dir>.")
+UNPUBLISHED_EXIT = 4  # distinct from 3, which means a prerequisite is missing
+NEEDED_FOR = {"bd": "needed for the Work tab", "herdr": "needed to join terminal panes"}
 NO_BB = "BB not found: run bff osiris setup to see what to install"
 
 
@@ -136,7 +138,8 @@ def _print_plan(rows, out):
         mark = "ok" if item["ok"] else ("MISSING" if item["required"] else "missing (optional)")
         if item["found"] and not item["ok"]:
             mark = "TOO OLD"
-        _say(out, "  {:<9} {:<18} {}".format(item["name"], mark, item["version"] or ""))
+        note = item["version"] or ("" if item["found"] else NEEDED_FOR.get(item["name"], ""))
+        _say(out, "  {:<9} {:<18} {}".format(item["name"], mark, note))
 
 
 def _confirm(prompt, stdin, out):
@@ -209,7 +212,7 @@ def _plugin_step(compat, bb, run, out, stdin, state_file, yes, dry_run, switch, 
         _say(out, "your Osiris plugin comes from an old bff bundle (" + str(status["version"]) + ")")
     if not osiris["published"]:
         _say(out, UNPUBLISHED)
-        return 3
+        return UNPUBLISHED_EXIT
     target = target or _target(compat)
     version = version or osiris["version"]
     if status["present"] and _healthy(status, version) and status["source"] == target:
@@ -331,7 +334,7 @@ def update(version=None, from_dir=None, from_latest_staged=False, switch_to_rele
     if version:
         if not compat["osiris"]["published"]:
             _say(out, UNPUBLISHED)
-            return 3
+            return UNPUBLISHED_EXIT
         _say(out, "off pin: compat.json pins " + compat["osiris"]["version"])
         return _plugin_step(compat, bb, run, out, stdin, state_file, yes, False, switch_to_release,
                             with_ref(compat["osiris"]["source"], "v" + version), version)
@@ -344,9 +347,14 @@ def rollback_plugin(bb, run=subprocess.run, out=None, state_file=None, yes=False
     previous = recorded.get("previous_source") if isinstance(recorded, dict) else None
     if not previous:
         raise ValueError("No previous Osiris plugin is recorded; nothing to roll back")
-    if not yes and stdin is not None and _confirm("Re-install " + _bare(previous) + "?", stdin, out) is False:
-        _say(out, "Left as is.")
-        return 0
+    if not yes:
+        answer = _confirm("Re-install " + _bare(previous) + "?", stdin, out)
+        if answer is None:  # no terminal to ask on: never apply without consent
+            _say(out, "no changes made; re-run with --yes to apply")
+            return 0
+        if not answer:
+            _say(out, "Left as is.")
+            return 0
     _install(bb, run, previous)
     status = plugin_status(bb, run, recorded.get("id") or PLUGIN_ID)
     if not _healthy(status):
