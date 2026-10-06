@@ -1,0 +1,1 @@
+{"schema_version": 1, "bb_min": "0.45.0", "osiris": {"id": "tool-observer", "version": "0.3.0", "source": "git:https://github.com/triunai/bb-plugin-osiris@v0.3.0", "commit": null, "published": false}}
