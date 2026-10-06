@@ -19,7 +19,11 @@ python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' || { e
 BFF_SOURCE_DIR=
 if [ -f "$0" ]; then
   BFF_SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
-  if [ -f "$BFF_SCRIPT_DIR/install.py" ]; then BFF_SOURCE_DIR=$BFF_SCRIPT_DIR; fi
+  # Only a bff tree (checkout or extracted release) runs locally: a bare install.py beside a downloaded
+  # install.sh may belong to whatever project the current directory is.
+  if [ -f "$BFF_SCRIPT_DIR/install.py" ] && [ -f "$BFF_SCRIPT_DIR/bff/cli.py" ] && [ -f "$BFF_SCRIPT_DIR/release-files.json" ]; then
+    BFF_SOURCE_DIR=$BFF_SCRIPT_DIR
+  fi
 fi
 if [ -n "$BFF_SOURCE_DIR" ]; then
   BFF_INSTALLER=$BFF_SOURCE_DIR/install.py

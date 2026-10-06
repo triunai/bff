@@ -260,6 +260,22 @@ class InstallShTests(unittest.TestCase):
         version = subprocess.run([str(self.prefix / "bin" / "bff"), "--version"], capture_output=True, text=True)
         self.assertEqual(version.stdout.strip(), "bff " + self.version)
 
+    def test_foreign_install_py_beside_the_download_is_never_run(self):
+        # `curl -fsSLO …/install.sh && sh install.sh` saves into the current directory, which may be any
+        # project with its own install.py; only a bff tree (source checkout or extracted release) counts.
+        here = self.tmp / "someproject"
+        here.mkdir()
+        shutil.copy(str(self.script_dir / "install.sh"), str(here / "install.sh"))
+        (here / "install.py").write_text("open(__file__ + '.RAN', 'w').close()\n")
+        env = {"HOME": str(self.home), "PATH": str(self.fakebin) + ":/usr/bin:/bin", "TMPDIR": str(self.tmp),
+               "PYTHONDONTWRITEBYTECODE": "1", "BFF_RELEASE_BASE": "file://" + str(self.srv)}
+        run = subprocess.run(["sh", "install.sh", "--prefix", str(self.prefix), "--no-modify-path"], cwd=str(here),
+                             env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertFalse((here / "install.py.RAN").exists())
+        self.assertIn("release source: file://", run.stderr)  # it downloaded and verified instead
+        self.assertTrue((self.prefix / "bin" / "bff").is_symlink())
+
     def test_tampered_tarball_installs_nothing(self):
         srv = self.tmp / "tampered"
         shutil.copytree(str(self.srv), str(srv))
