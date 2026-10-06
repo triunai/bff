@@ -197,43 +197,28 @@ BFF is opinionated about that. It is deliberately not opinionated about which mo
 
 # Reference
 
-## Start the workbench
+Everything below is detail. The top of this page is the whole pitch.
+
+<details>
+<summary><strong>Start the workbench</strong></summary>
 
 ```sh
 bff start
 ```
 
-This opens the existing BB workbench and requests an independent named Herdr session in a terminal on supported platforms.
-
-It does not install either application.
-
-It does not claim that a process started merely because it asked nicely.
-
-For the plan without execution:
+This opens the existing BB workbench and requests an independent named Herdr session in a terminal on supported platforms. It does not install either application. It does not claim that a process started merely because it asked nicely.
 
 ```sh
-bff start --print-plan
+bff start --print-plan   # the plan without execution
+bff osiris --print-url   # the Osiris URL only
 ```
 
-For the Osiris URL only:
+</details>
 
-```sh
-bff osiris --print-url
-```
-
----
-
-## Doctor
+<details>
+<summary><strong>Doctor: companion tools</strong></summary>
 
 There are enough agent-development tools now that remembering which package manager owns which one has become an embarrassing use of human memory.
-
-So:
-
-```sh
-bff doctor
-```
-
-Useful forms:
 
 ```sh
 bff doctor              # inspect, plan, ask once
@@ -243,21 +228,9 @@ bff doctor --offline    # skip BFF's release check
 bff doctor --json       # report only; machine-readable
 ```
 
-`doctor` checks BFF, Herdr, Beads, OMC, OMX, BB and aeh.
+`doctor` checks BFF, Herdr, Beads, OMC, OMX, BB and aeh. For tools with documented package-manager ownership, it compares the installed version with the latest stable version and plans the appropriate install or upgrade. For tools without a supported automated route, it says so.
 
-For tools with documented package-manager ownership, it compares the installed version with the latest stable version and plans the appropriate install or upgrade.
-
-For tools without a supported automated route, it says so.
-
-No `sudo`.
-
-No shell-string roulette.
-
-No piping mystery installers into another mystery installer.
-
-Each action is printed before execution, run independently, and verified afterwards. One failure does not prevent unrelated work from continuing.
-
-Current routes:
+No `sudo`. No shell-string roulette. No piping mystery installers into another mystery installer. Each action is printed before execution, run independently, and verified afterwards. One failure does not prevent unrelated work from continuing.
 
 ```text
 Herdr  -> brew
@@ -268,25 +241,18 @@ BB     -> manual
 aeh    -> manual
 ```
 
----
+`doctor` also compares BFF's own version with the latest GitHub release (one unauthenticated call, short timeout, `unknown` on failure) and prints the install command for a newer tag. It never runs it.
 
-## Observe Claude Code and Codex
+</details>
+
+<details>
+<summary><strong>Observe Claude Code and Codex</strong></summary>
 
 ```sh
 bff herdr
 ```
 
-Keep it running in the foreground.
-
-Then choose:
-
-```text
-••• -> Source -> Herdr / local provider capture
-```
-
-Osiris receives bounded snapshots from recent local Claude Code and Codex transcripts every five seconds.
-
-Available selectors include:
+Keep it running in the foreground, then choose `••• -> Source -> Herdr / local provider capture`. Osiris receives bounded snapshots from recent local Claude Code and Codex transcripts every five seconds.
 
 ```sh
 bff herdr --once
@@ -294,23 +260,16 @@ bff herdr --latest 4
 bff herdr --session <exact-session>
 ```
 
-Claude Bash calls and Codex `commandExecution` calls are currently observable.
+Claude Bash calls and Codex `commandExecution` calls are currently observable. Commands you typed yourself are not magically Claude's commands. Herdr pane membership is not currently proven. BB thread identity is not guessed. A fresh capture timestamp is not called a heartbeat.
 
-Commands you typed yourself are not magically Claude's commands.
+Different evidence sources stay different until there is evidence that they are the same thing. That sounds pedantic until the first time bad telemetry convinces you of something that never happened.
 
-Herdr pane membership is not currently proven.
+Osiris reports retained-history caps, scan failures and unknown outcomes as such: no complete-fleet percentage without a known denominator, and no recovered or root-cause labels without evidence. Metadata exports exclude prompts, tool inputs and outputs, and credentials. See [plugins/osiris/README.md](plugins/osiris/README.md).
 
-BB thread identity is not guessed.
+</details>
 
-A fresh capture timestamp is not called a heartbeat.
-
-Different evidence sources stay different until there is evidence that they are the same thing.
-
-That sounds pedantic until the first time bad telemetry convinces you of something that never happened.
-
----
-
-## Adopt a repository
+<details>
+<summary><strong>Adopt a repository</strong></summary>
 
 ```sh
 bff init --repo /path/to/repo
@@ -318,13 +277,7 @@ bff check --repo /path/to/repo
 bff hydrate --repo /path/to/repo --ws WS-01
 ```
 
-`init` does not flatten an existing repository into BFF's preferred worldview.
-
-Existing files are preserved.
-
-Existing documentation systems require an explicit binding or migration.
-
-The ownership model is intentionally boring:
+`init` does not flatten an existing repository into BFF's preferred worldview. Existing files are preserved. Existing documentation systems require an explicit binding or migration.
 
 ```text
 repo docs     -> scope, facts, decisions, evidence
@@ -335,25 +288,14 @@ lanes         -> committed evidence in their own worktrees
 
 Boring ownership rules are cheaper than clever merge conflicts.
 
-Canonical BFF skills live under:
+Canonical BFF skills live under `.agents/skills/bff-*`: task contracts, hydration, thermonuclear quality review and thermonuclear wraps. Use them through your agent's supported discovery mechanism. BFF does not silently install global aliases and then act surprised when your existing setup breaks.
 
-```text
-.agents/skills/bff-*
-```
+</details>
 
-Current skills cover task contracts, hydration, thermonuclear quality review and thermonuclear wraps.
+<details>
+<summary><strong>Fitness before confidence</strong></summary>
 
-Use them through your agent's supported discovery mechanism.
-
-BFF does not silently install global aliases and then act surprised when your existing setup breaks.
-
----
-
-## Fitness before confidence
-
-Configure actual project checks in `.bff.json`.
-
-Then:
+Configure actual project checks in `.bff.json`, then:
 
 ```sh
 bff check --run
@@ -361,64 +303,34 @@ bff check --run
 
 This executes the configured test, build and fitness commands with the normal permissions of the machine running BFF.
 
-A green command is evidence.
+A green command is evidence. It is not theology. Important invariants should have teeth checks. Critical paths should have real tests. The output tells you what BFF actually verified and where enforcement stops.
 
-It is not theology.
+Installation does not silently rewrite Git hooks, configure branch protection, enable CI, manufacture model reviews or declare your repository correct. Those are engineering decisions, so BFF leaves them visible.
 
-Important invariants should have teeth checks. Critical paths should have real tests. The output tells you what BFF actually verified and where enforcement stops.
+</details>
 
-Installation does not silently:
+<details>
+<summary><strong>Context is promoted, not dumped</strong></summary>
 
-- rewrite Git hooks
-- configure branch protection
-- enable CI
-- manufacture model reviews
-- declare your repository correct
+Obsidian and other external knowledge sources are additive teaching material. Hydrate what matters, record where it came from, and promote reviewed knowledge into one durable home in the repository. Do not turn a private vault into a second undocumented runtime dependency and then wonder why nobody else can reproduce the project.
 
-Those are engineering decisions, so BFF leaves them visible.
+See [ARCHITECTURE.md](ARCHITECTURE.md) and [PROVENANCE.md](PROVENANCE.md). Private vaults, credentials, historical sessions and someone's heroic laptop state are not part of the distribution.
 
----
+</details>
 
-## Context is promoted, not dumped
+<details>
+<summary><strong>Rollback</strong></summary>
 
-Obsidian and other external knowledge sources are additive teaching material.
-
-Hydrate what matters.
-
-Record where it came from.
-
-Promote reviewed knowledge into one durable home in the repository.
-
-Do not turn a private vault into a second undocumented runtime dependency and then wonder why nobody else can reproduce the project.
-
-See:
-
-- [ARCHITECTURE.md](ARCHITECTURE.md)
-- [PROVENANCE.md](PROVENANCE.md)
-
-Private vaults, credentials, historical sessions and someone's heroic laptop state are not part of the distribution.
-
----
-
-## Rollback
-
-Releases are preserved.
-
-Activate one:
+Releases are preserved. Activate one, or disable the owned command link:
 
 ```sh
 python3 install.py --activate <preserved-release>
-```
-
-Disable the owned command link:
-
-```sh
 python3 install.py --disable
 ```
 
 Neither operation pretends your project files or runtime state belong to BFF.
 
----
+</details>
 
 ## Development
 
@@ -428,39 +340,8 @@ python3 -m unittest discover -s tests -q
 npm ci
 npm run test:osiris
 
-python3 scripts/build-bff-release.py \
-  --output /tmp/bff-release
+python3 scripts/build-bff-release.py --output /tmp/bff-release
 ```
 
-Node 24 is used for Osiris development tests.
+Node 24 is used for Osiris development tests. Osiris source and prebuilt assets live under `plugins/osiris`. The Python CLI and the TypeScript UI/server are separate components shipped in one SDK. See component notices for upstream licensing.
 
-Osiris source and prebuilt assets live under:
-
-```text
-plugins/osiris
-```
-
-The Python CLI and TypeScript UI/server are separate components shipped in one SDK.
-
-See component notices for upstream licensing.
-
-BFF-authored code is MIT.
-
----
-
-## Status
-
-BFF is bootstrap-stage software.
-
-That means two things:
-
-1. it already has a real job;
-2. it is not going to lie about jobs it cannot do yet.
-
-Current gaps include automatic hook/CI adoption, complete agent-lineage and landing visualization, manual terminal recording, and live Beads/Gas/DSH evaluation adapters.
-
-Those are roadmap items, not creatively worded existing features.
-
-See [CHANGELOG.md](CHANGELOG.md) for the exact shipped surface by release.
-
----
