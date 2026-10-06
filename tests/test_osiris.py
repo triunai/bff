@@ -404,5 +404,62 @@ class RollbackTests(Fake):
         self.assertEqual(state.load(self.state_file)["plugin"], original["plugin"])
 
 
+class CliTests(Fake):
+    def command(self, args):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = cli.main(args)
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_install_flag_is_renamed_and_runs_setup(self):
+        self.set_plugins(entry("path:" + HOME + "/dev"))
+        code, stdout, stderr = self.command(["osiris", "--install"])
+        self.assertEqual(code, 0)
+        self.assertIn("bff osiris --install is renamed: use bff osiris setup", stderr)
+        self.assertIn("Osiris dev channel", stdout)
+        self.assertEqual(self.installs(), [])
+
+    def test_setup_dry_run(self):
+        self.set_plugins()
+        code, stdout, _ = self.command(["osiris", "setup", "--dry-run"])
+        self.assertEqual(code, 3)
+        self.assertIn("Osiris setup plan", stdout)
+        self.assertIn("D1", stdout)
+        self.assertEqual(self.installs(), [])
+
+    def test_run_with_plugin_missing_hints_setup(self):
+        self.set_plugins()
+        with mock.patch("bff.cli.http.client.HTTPConnection") as connection:
+            code, _, stderr = self.command(["osiris"])
+        self.assertEqual(code, 2)
+        self.assertIn("Osiris plugin not installed: run bff osiris setup", stderr)
+        connection.assert_not_called()
+
+    def test_run_with_disabled_plugin(self):
+        self.set_plugins(entry("git:x@v1", enabled=False, status="disabled"))
+        code, _, stderr = self.command(["osiris"])
+        self.assertEqual(code, 2)
+        self.assertIn("Osiris plugin is disabled: enable it in BB, or run bff osiris setup", stderr)
+
+    def test_run_without_bb(self):
+        os.environ["PATH"] = "/usr/bin:/bin"
+        code, _, stderr = self.command(["osiris"])
+        self.assertEqual(code, 2)
+        self.assertIn("BB not found: run bff osiris setup", stderr)
+
+    def test_run_prints_dev_channel_line(self):
+        self.set_plugins(entry("path:" + HOME + "/dev"))
+        with mock.patch("bff.cli.http.client.HTTPConnection") as connection, mock.patch("bff.cli.webbrowser.open", return_value=True):
+            connection.return_value.getresponse.return_value.status = 200
+            code, stdout, _ = self.command(["osiris"])
+        self.assertEqual(code, 0)
+        self.assertIn("Osiris dev channel: path:" + HOME + "/dev", stdout)
+
+    def test_print_url_makes_no_bb_call(self):
+        code, stdout, _ = self.command(["osiris", "--print-url"])
+        self.assertEqual((code, stdout.strip()), (0, cli.OSIRIS_URL))
+        self.assertEqual(self.calls(), [])
+
+
 if __name__ == "__main__":
     unittest.main()

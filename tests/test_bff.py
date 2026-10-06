@@ -367,7 +367,11 @@ class ProjectTests(Scratch):
             run.assert_not_called()
 
     def test_osiris_print_only_and_unreachable(self):
-        with mock.patch("bff.cli.http.client.HTTPConnection") as connection, mock.patch("bff.cli.webbrowser.open") as browser:
+        running = {"present": True, "enabled": True, "status": "running", "kind": "git", "stale_bundled": False,
+                   "version": "0.3.0", "display": "git:example"}
+        with mock.patch("bff.cli.http.client.HTTPConnection") as connection, mock.patch("bff.cli.webbrowser.open") as browser, \
+                mock.patch("bff.cli.shutil.which", return_value="/fake/bb"), \
+                mock.patch("bff.osiris.plugin_status", return_value=running):
             code, stdout, _ = self.command(["osiris", "--print-url"])
             self.assertEqual(code, 0)
             self.assertEqual(stdout.strip(), cli.OSIRIS_URL)
@@ -376,31 +380,6 @@ class ProjectTests(Scratch):
             connection.return_value.request.side_effect = ConnectionRefusedError("unreachable")
             self.assertEqual(self.command(["osiris"])[0], 2)
             browser.assert_not_called()
-
-    def test_osiris_install_argv_and_missing_bundle(self):
-        with mock.patch("bff.cli.shutil.which", return_value=None):
-            self.assertEqual(self.command(["osiris", "--install"])[0], 2)
-        with mock.patch("bff.cli.__file__", str(self.root / "absent release" / "bff" / "cli.py")), \
-                mock.patch("bff.cli.shutil.which", return_value="/fake/bb"), \
-                mock.patch("bff.cli.subprocess.run") as run:
-            self.assertEqual(self.command(["osiris", "--install"])[0], 2)
-            run.assert_not_called()
-        # Point the module resource root at a scratch release; no workspace/global writes.
-        package = self.root / "bundle release" / "bff"
-        package.mkdir(parents=True)
-        bundle = package.parent / "plugins" / "osiris"
-        bundle.mkdir(parents=True)
-        (bundle / "package.json").write_text('{}')
-        with mock.patch("bff.cli.__file__", str(package / "cli.py")), \
-                mock.patch("bff.cli.shutil.which", return_value="/fake/bb"), \
-                mock.patch("bff.cli.subprocess.run", return_value=subprocess.CompletedProcess([], 0)) as run, \
-                mock.patch("bff.cli.http.client.HTTPConnection") as connection, \
-                mock.patch("bff.cli.webbrowser.open", return_value=True) as browser:
-            connection.return_value.getresponse.return_value.status = 200
-            code, stdout, stderr = self.command(["osiris", "--install"])
-            self.assertEqual(code, 0, stderr)
-            run.assert_called_once_with(["/fake/bb", "plugin", "install", str(bundle.resolve()), "--yes"], timeout=120)
-            browser.assert_called_once_with(cli.OSIRIS_URL)
 
 
 if __name__ == "__main__":
