@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import re
 import shlex
 import shutil
@@ -61,7 +62,7 @@ def source_files(source):
     selected.update({"templates/" + name: value for name, value in inventory(templates).items()})
     if not any(name.startswith("templates/repo/") for name in selected):
         raise ValueError("Missing repo templates")
-    for name in ("README.md", "LICENSE", "PROVENANCE.md", "ARCHITECTURE.md", "install.sh", "install.py", "compat.json"):
+    for name in ("README.md", "LICENSE", "PROVENANCE.md", "ARCHITECTURE.md", "install.sh", "install.ps1", "install.py", "compat.json"):
         path = source / name
         if os.path.lexists(str(path)):
             if path.is_symlink() or not path.is_file():
@@ -151,7 +152,7 @@ def verify_release(release):
     if not isinstance(expected, dict) or not {"bff/cli.py", "bin/bff"} <= set(expected):
         raise ValueError("Incomplete release manifest")
     for name, checksum in expected.items():
-        valid = (name in ("bin/bff", "README.md", "LICENSE", "PROVENANCE.md", "ARCHITECTURE.md", "install.sh", "install.py", "compat.json") or
+        valid = (name in ("bin/bff", "README.md", "LICENSE", "PROVENANCE.md", "ARCHITECTURE.md", "install.sh", "install.ps1", "install.py", "compat.json") or
                  (name.startswith("bff/") and "/" not in name[4:] and name.endswith(".py")) or
                  (name.startswith("docs/") and "/" not in name[5:] and name.endswith(".md")) or
                  # Kept so a rollback to an old 0.1.x release, which bundled the plugin, still verifies.
@@ -191,6 +192,63 @@ def activate(release, prefix):
     return {"command": str(command), "release": release.name, "previous_target": previous,
             "path_available": available,
             "path_note": "bff is on PATH" if available else "Use the printed absolute command; bin directory is absent from PATH"}
+
+
+PATH_MARKER = "# added by the bff installer"
+
+
+def rc_file(shell, system, home):
+    """The startup file a login of `shell` reads; unknown shells fall back to ~/.profile."""
+    home = Path(home)
+    name = Path(shell or "").name
+    if name == "zsh":
+        return home / ".zprofile"
+    if name == "bash":
+        return home / (".bash_profile" if system == "Darwin" else ".bashrc")
+    if name == "fish":
+        return home / ".config" / "fish" / "conf.d" / "bff.fish"
+    return home / ".profile"
+
+
+def path_line(shell, bin_dir):
+    """The one line that puts `bin_dir` first on PATH, quoted for the shell."""
+    if Path(shell or "").name == "fish":
+        return "fish_add_path " + shlex.quote(str(bin_dir))
+    escaped = re.sub(r'([\\"$`])', r"\\\1", str(bin_dir))
+    return 'export PATH="' + escaped + ':$PATH"'
+
+
+def _say(out, text):
+    print(text, file=out)
+
+
+def offer_path(bin_dir, *, env, stdin, out, home, system, yes=False, no_modify=False):
+    """D7: ask ONCE to add bin to PATH. Never edits under --yes, --no-modify-path or a non-TTY."""
+    shell = env.get("SHELL", "")
+    rc = rc_file(shell, system, home)
+    line = path_line(shell, bin_dir)
+    hint = "Add this line to " + str(rc) + ": " + line
+    if system == "Windows":
+        return {"path_modified": False, "path_hint": "Add " + str(bin_dir) + " to your user PATH (install.ps1 does this)."}
+    interactive = not yes and not no_modify and bool(getattr(stdin, "isatty", lambda: False)())
+    if not interactive:
+        _say(out, hint)
+        return {"path_modified": False, "path_hint": hint}
+    existing = rc.read_text() if rc.is_file() else ""
+    if PATH_MARKER in existing:
+        return {"path_modified": False, "path_hint": "Already added to " + str(rc)}
+    out.write("Add " + str(bin_dir) + " to PATH in " + str(rc) + "? [Y/n] ")
+    out.flush()
+    answer = stdin.readline().strip().lower()
+    if answer not in ("", "y", "yes"):
+        _say(out, hint)
+        return {"path_modified": False, "path_hint": hint}
+    rc.parent.mkdir(parents=True, exist_ok=True)
+    separator = "" if not existing or existing.endswith("\n") else "\n"
+    with open(str(rc), "a") as handle:
+        handle.write(separator + PATH_MARKER + "\n" + line + "\n")
+    _say(out, "Added to " + str(rc) + ". Open a new terminal to pick it up.")
+    return {"path_modified": True, "path_hint": "Added to " + str(rc)}
 
 
 def stage(prefix, source=SOURCE, interpreter=None):
@@ -246,6 +304,8 @@ def main(argv=None):
     action.add_argument("--activate", metavar="RELEASE", help="Activate a preserved, verified release")
     action.add_argument("--disable", action="store_true", help="Remove the owned command; preserve releases")
     action.add_argument("--stage-only", action="store_true", help="Verify and stage the release; do not activate it")
+    parser.add_argument("--yes", action="store_true", help="Never prompt; PATH is not edited, only printed")
+    parser.add_argument("--no-modify-path", action="store_true", help="Never edit a shell startup file; print the PATH line")
     args = parser.parse_args(argv)
     prefix = args.prefix.expanduser().resolve()
     try:
@@ -265,6 +325,11 @@ def main(argv=None):
             result = {"release": release.name, "path": str(release), "created": created}
         else:
             result = install(prefix)
+        if "command" in result:
+            result.update({"path_modified": False, "path_hint": ""})
+        if "command" in result and not result["path_available"]:
+            result.update(offer_path(Path(result["command"]).parent, env=os.environ, stdin=sys.stdin, out=sys.stderr,
+                                     home=Path.home(), system=platform.system(), yes=args.yes, no_modify=args.no_modify_path))
         print(json.dumps(result, indent=2))
         return 0
     except (ValueError, OSError, KeyError, TypeError) as exc:

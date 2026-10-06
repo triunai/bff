@@ -14,7 +14,8 @@ import versioning  # noqa: E402  (sibling module; the single version source)
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 SOURCE = REPOSITORY / "sdk" if (REPOSITORY / "sdk").is_dir() else REPOSITORY
-ROOT_FILES = {"README.md", "LICENSE", "PROVENANCE.md", "ARCHITECTURE.md", "install.py", "install.sh", "release-files.json"}
+ROOT_FILES = {"README.md", "LICENSE", "PROVENANCE.md", "ARCHITECTURE.md", "install.py", "install.sh", "install.ps1", "release-files.json"}
+LOOSE_ASSETS = ("install.sh", "install.ps1", "compat.json")
 
 
 def main():
@@ -74,7 +75,11 @@ def main():
             member.mtime = 0
             tf.addfile(member, io.BytesIO(data))
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-    (args.output / "SHA256SUMS").write_text(digest + "  " + archive.name + "\n")
+    lines = [digest + "  " + archive.name]
+    for name in LOOSE_ASSETS:
+        (args.output / name).write_bytes(files[name])
+        lines.append(hashlib.sha256(files[name]).hexdigest() + "  " + name)
+    (args.output / "SHA256SUMS").write_text("\n".join(lines) + "\n")
     print(json.dumps({"archive": str(archive), "sha256": digest, "files": len(inventory)}))
 
 

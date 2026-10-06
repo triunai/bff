@@ -20,6 +20,7 @@
     "bff/update.py",
     "bff/update_notice.py",
     "compat.json",
+    "install.ps1",
     "install.py",
     "install.sh",
     "release-files.json",
