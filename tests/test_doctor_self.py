@@ -48,10 +48,10 @@ class FetchTests(unittest.TestCase):
 
 
 class CheckTests(unittest.TestCase):
-    def test_outdated_prints_the_pinned_install_for_the_new_tag_only(self):
+    def test_outdated_prints_bff_update_never_a_pipe(self):
         info = doctor.check_self("0.1.0", fetch=lambda: "0.1.1")
         self.assertEqual(info["status"], "outdated")
-        self.assertEqual(info["command"], "curl -fsSL https://raw.githubusercontent.com/triunai/bff/v0.1.1/install.sh | sh")
+        self.assertEqual(info["command"], "bff update")
 
     def test_current_ahead_and_unknown_have_no_command(self):
         for installed, latest, status in (("0.1.1", "0.1.1", "current"), ("0.2.0", "0.1.1", "ahead"), ("0.1.1", None, "unknown")):
@@ -68,7 +68,7 @@ class RunDoctorTests(unittest.TestCase):
         code, text = run(env, stdin=Tty(tty=False), offline=False, fetch_latest=lambda: "99.0.0")
         self.assertEqual(code, 0)
         self.assertIn("BFF %s installed; latest release is 99.0.0 (outdated)" % __version__, text)
-        self.assertIn("update: curl -fsSL https://raw.githubusercontent.com/triunai/bff/v99.0.0/install.sh | sh", text)
+        self.assertIn("update: bff update\n", text)
         self.assertIn("BFF never runs it", text)
         self.assertEqual(env.mutations, [])  # printed only: no curl, no installer
 

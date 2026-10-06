@@ -15,7 +15,6 @@ import urllib.request
 from . import __version__
 
 SELF_RELEASE_API = "https://api.github.com/repos/triunai/bff/releases/latest"
-SELF_INSTALL_URL = "https://raw.githubusercontent.com/triunai/bff/v%s/install.sh"
 SELF_TIMEOUT = 3
 SELF_TAG = re.compile(r"v(\d+\.\d+\.\d+)")
 VERSION_TIMEOUT = 10
@@ -147,8 +146,7 @@ def check_self(installed=None, fetch=None):
     info = {"installed": installed, "latest": latest, "status": "unknown", "command": None}
     if latest:
         if version_key(installed) < version_key(latest):
-            # The tag was validated as X.Y.Z, so it is safe to interpolate into the printed command.
-            info.update(status="outdated", command="curl -fsSL " + SELF_INSTALL_URL % latest + " | sh")
+            info.update(status="outdated", command="bff update")
         elif version_key(installed) > version_key(latest):
             info["status"] = "ahead"
         else:
