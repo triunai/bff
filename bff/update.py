@@ -279,6 +279,35 @@ def apply_update(version, *, prefix, base, require_attestation=False, gh=None, o
         shutil.rmtree(str(work), ignore_errors=True)
 
 
+def plugin_step(prefix, *, run=subprocess.run, which=None, out=None):
+    """Update the Osiris plugin with the NEW bff. Never raises: bff itself is already updated."""
+    if (which or shutil.which)("bb") is None:
+        _emit(out, "Osiris plugin: skipped (BB not found)")
+        return "skipped"
+    argv = [str(Path(prefix) / "bin" / "bff"), "osiris", "update", "--yes"]
+    try:
+        done = run(argv, capture_output=True, text=True, timeout=900)
+        for stream in (done.stdout, done.stderr):
+            if stream:
+                _emit(out, stream.rstrip("\n"))
+        code = done.returncode
+    except Exception:
+        code = None
+    if code == 0:
+        return "ok"
+    if code == 3:
+        return "waiting"
+    _emit(out, "Osiris plugin update failed (bff itself is updated). Retry: bff osiris update")
+    return "failed"
+
+
+def apply_with_plugin(version, **kwargs):
+    """`apply_update`, then the plugin step; a bff failure raises before the plugin step is reached."""
+    result = apply_update(version, **kwargs)
+    result["plugin"] = plugin_step(kwargs["prefix"], out=kwargs.get("out"))
+    return result
+
+
 def _load_installer():
     path = Path(__file__).resolve().parents[1] / "install.py"
     if not path.is_file():
