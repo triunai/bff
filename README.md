@@ -8,10 +8,11 @@
 [![MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/triunai/bff)](https://github.com/triunai/bff/releases)
 
-BFF is a portable CLI and a set of repo conventions for running coding agents without losing the plot. Osiris, its workbench for BB, shows what the agents actually did.
+BFF is a portable CLI and a set of repo conventions for running coding agents without losing the plot. Osiris, its workbench, shows what the agents actually did. It runs inside **BB**, a separate desktop workbench app that hosts Osiris as a plugin; BFF does not install BB, so install it first if you want Osiris (the CLI works without it). [Install the CLI](#install-in-30-seconds) below.
 
-> **Get v0.2.0 when it lands:** ⭐ Star + Watch → Releases, or join the early-access thread: [Waitlist / early access](TODO-OWNER-FILL-IN-GITHUB-DISCUSSION-URL).
-> The CLI is public and usable today (v0.1.1). The one-command installer is not out yet.
+> The CLI is public and usable today (v0.1.1). The one-command installer is not out yet; to hear when it ships, see [Get v0.2.0](#get-v020).
+
+> This README tracks `main`. The README for the release you install is at the `v0.1.1` tag, so a file linked here (for example `docs/roadmap.md`) may not exist in your install.
 
 <!-- GIF SLOT (10-20 s): docs/assets/osiris-factory.gif
      Shot: Osiris with synthetic data: open Toolcalls, type status:error, select a failed call, open Trace.
@@ -57,11 +58,13 @@ The chat is disposable. The spine, the contracts, the commits and the check outp
 - **Independent review.** The author does not approve their own work. A separate review pass does.
 - **Durable wraps.** Coordinated end-of-session updates instead of ceremonial summaries.
 - **A checked context graph.** `bff check` validates the bound spine; `bff hydrate` prints context for one workstream without changing files.
-- **Osiris.** A BB plugin that observes Claude Code and Codex tool calls, so you can inspect what happened instead of accepting the agent's recollection of it.
+- **Osiris.** A plugin for BB (the desktop workbench app above) that observes Claude Code and Codex tool calls, so you can inspect what happened instead of accepting the agent's recollection of it.
 
 ## Install in 30 seconds
 
-Needs Python 3.9+, Git and `curl`. BB and Herdr are separate upstream applications; BFF does not quietly install agent runtimes, rewrite your shell profile or seize your hooks.
+This installs the BFF command-line tool. Osiris also needs BB, which you install separately first (see the top of this page); then run `bff osiris --install`.
+
+Needs Python 3.9+, Git and `curl`. BB and Herdr (the separate terminal-session app BFF uses to capture agent runs) are upstream applications; BFF does not quietly install agent runtimes, rewrite your shell profile or seize your hooks.
 
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/triunai/bff/v0.1.1/install.sh
@@ -74,16 +77,6 @@ Download first, then run. You can read `install.sh` before it does anything. BFF
 The bootstrap downloads the tagged release archive, verifies its checksum and file inventory, preserves the release under `~/.local/share/bff/releases/`, exposes `~/.local/bin/bff`, and tells you if that directory is missing from `PATH`. It does not edit your shell startup files. Checksum and archive share GitHub's publisher trust boundary; this is not an independently signed distribution. Adults may make their own threat-model decisions.
 
 Rehearse without touching the normal prefix: `sh install.sh --prefix /tmp/bff-test`.
-
-**Coming in v0.2.0 (not released; not working today).** The planned shape is three commands:
-
-```sh
-curl -fsSLO https://github.com/triunai/bff/releases/latest/download/install.sh && sh install.sh --setup   # get + first-time setup
-bff osiris                                                                                              # run
-bff update                                                                                              # update bff and the Osiris plugin
-```
-
-`bff update` is planned to show *current → target* and ask `Update available? [Y/n]`, `bff rollback` to switch back to the previous release, and `install.ps1` to bring a Windows preview. Windows is untested. Until a release says otherwise, treat all of this as design, not as a feature. Details are in [docs/roadmap.md](docs/roadmap.md) and the [CHANGELOG](CHANGELOG.md).
 
 ## Osiris
 
@@ -365,9 +358,21 @@ Those are roadmap items, not creatively worded existing features. [CHANGELOG.md]
 
 v0.1.1's `bff doctor` prints its own one-line install hint when a newer release exists. Prefer the download-then-run form in [Install](#install-in-30-seconds), and read the script first.
 
+## Coming in v0.2.0 (not released; none of this works today)
+
+The planned shape is three commands. Do not copy them yet; they fail on v0.1.1:
+
+```text
+curl -fsSLO https://github.com/triunai/bff/releases/latest/download/install.sh && sh install.sh --setup   # get + first-time setup
+bff osiris                                                                                              # run
+bff update                                                                                              # update bff and the Osiris plugin
+```
+
+`bff update` is planned to show *current → target* and ask `Update available? [Y/n]`, `bff rollback` to switch back to the previous release, and `install.ps1` to bring a Windows preview. Windows is untested. Until a release says otherwise, treat all of this as design, not as a feature. Details are in [docs/roadmap.md](docs/roadmap.md) and the [CHANGELOG](CHANGELOG.md).
+
 ## Get v0.2.0
 
-⭐ **Star + Watch → Releases** on this repository to hear when v0.2.0 ships, or add yourself to the early-access thread: [Waitlist / early access](TODO-OWNER-FILL-IN-GITHUB-DISCUSSION-URL). No email is collected by this project; GitHub holds the subscription and you control it.
+On this repository's GitHub page choose **Watch → Custom → Releases** (and ⭐ Star if you like) to hear when v0.2.0 ships. No email is collected by this project; GitHub holds the subscription and you control it.
 
 ## License
 
