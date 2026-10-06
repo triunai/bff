@@ -71,7 +71,7 @@ def _stale_bundled(source):
 
 def plugin_status(bb, run=subprocess.run, plugin_id=PLUGIN_ID):
     try:
-        result = run([bb, "plugin", "list", "--json"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        result = run([bb, "plugin", "list", "--json"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                      universal_newlines=True, timeout=30)
     except (OSError, subprocess.TimeoutExpired) as error:
         raise ValueError("Could not run bb plugin list: " + str(error) + "; check that BB runs, then retry")
@@ -96,7 +96,8 @@ def plugin_status(bb, run=subprocess.run, plugin_id=PLUGIN_ID):
 
 def _tool_version(argv, run):
     try:
-        result = run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, timeout=10)
+        result = run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                     universal_newlines=True, timeout=10)
     except (OSError, subprocess.TimeoutExpired):
         return None
     match = re.search(r"\d+(?:\.\d+)+", result.stdout or "") if not result.returncode else None

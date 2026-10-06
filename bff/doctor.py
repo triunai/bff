@@ -59,7 +59,8 @@ OWNER_MARKERS = {"npm": ("node_modules",), "brew": ("/Cellar/", "/Caskroom/")}
 
 
 def _run(argv, timeout):
-    return subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    # stdin=DEVNULL: output is captured, so a child that asks a question would wait unseen.
+    return subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout)
 
 
 def parse_version(text):

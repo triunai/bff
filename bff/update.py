@@ -155,8 +155,8 @@ def _attest(tarball, version, gh, require, out):
     command = [str(gh), "attestation", "verify", str(tarball), "-R", REPO, "--signer-workflow", WORKFLOW,
                "--source-ref", "refs/tags/v" + version]
     try:
-        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True,
-                                timeout=120)
+        result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                universal_newlines=True, timeout=120)
     except (OSError, subprocess.TimeoutExpired) as error:
         raise UpdateError("attestation failed: " + str(error) + "; nothing was changed")
     if result.returncode:
@@ -295,7 +295,8 @@ def plugin_step(prefix, *, run=subprocess.run, which=None, out=None):
     argv = [str(Path(prefix) / "bin" / "bff"), "osiris", "update", "--yes"]
     _emit(out, "Updating the Osiris plugin through BB (this can take a few minutes; bff itself is already updated)...")
     try:
-        done = run(argv, capture_output=True, text=True, timeout=900)
+        # stdin=DEVNULL: output is captured, so a question from BB would wait unseen (and --yes asks none).
+        done = run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=900)
         for stream in (done.stdout, done.stderr):
             if stream:
                 _emit(out, stream.rstrip("\n"))
