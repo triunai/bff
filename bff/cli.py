@@ -10,7 +10,8 @@ import sys
 from urllib.parse import urlsplit
 import webbrowser
 
-from . import __version__
+from . import __version__, state
+from .paths import state_path
 from .project import blocks, init_repo, inspect_spine, load_profile, repo_root, run_checks
 
 OSIRIS_URL = "http://localhost:38886/plugins/tool-observer/overview"
@@ -61,6 +62,22 @@ def launch_osiris(url, print_only, install=False):
     return 0
 
 
+def run_config(args):
+    state_file = state_path()
+    if args.action == "set":
+        state.update(state_file, lambda data: state.set_config(data, args.key, args.value))
+        print(args.key + " = " + str(state.get_config(state.load(state_file), args.key)).lower())
+        return 0
+    data = state.load(state_file)
+    if args.action == "get":
+        print(str(state.get_config(data, args.key)).lower())
+        return 0
+    for key in sorted(state.CONFIG_KEYS):
+        value = state.get_config(data, key)
+        print(key + " = " + str(value).lower() + ("" if value != state.CONFIG_KEYS[key][1] else " (default)"))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="bff", description="BFF — Built Fucking Fast. Explicit, portable repo tooling.")
     parser.add_argument("--version", action="version", version="bff " + __version__)
@@ -91,6 +108,15 @@ def main(argv=None):
     observer.add_argument("--url", default=OSIRIS_URL)
     observer.add_argument("--print-url", action="store_true", help="Print only; no connection or browser launch")
     observer.add_argument("--install", action="store_true", help="Explicitly install the bundled prebuilt observer through BB, then open it")
+    observer.add_argument("--no-update-check", action="store_true", help="Skip the once-a-day update notice for this run")
+    config = commands.add_parser("config", help="Read or change bff settings (update.check, update.auto)")
+    config_actions = config.add_subparsers(dest="action", required=True)
+    config_actions.add_parser("list", help="Print every setting")
+    config_get = config_actions.add_parser("get", help="Print one setting")
+    config_get.add_argument("key")
+    config_set = config_actions.add_parser("set", help="Change one setting")
+    config_set.add_argument("key")
+    config_set.add_argument("value")
     args = parser.parse_args(argv)
     canary_printed = False
     try:
@@ -109,7 +135,12 @@ def main(argv=None):
                 return 0
             from .doctor import run_doctor
             return run_doctor(assume_yes=args.yes, upgrade=not args.no_upgrade, offline=args.offline)
+        if args.command == "config":
+            return run_config(args)
         if args.command == "osiris":
+            if not args.print_url and not args.no_update_check:
+                from .update_notice import daily_notice
+                daily_notice(current=__version__, state_file=state_path(), stdin=sys.stdin, out=sys.stdout)
             return launch_osiris(args.url, args.print_url, args.install)
         repo = repo_root(args.repo)
         if args.command == "init":

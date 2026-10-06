@@ -47,7 +47,9 @@ class Scratch(unittest.TestCase):
 
     def command(self, args):
         stdout, stderr = io.StringIO(), io.StringIO()
-        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+        # hermetic: the osiris update notice must never reach the network or the real home
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr), \
+                mock.patch.dict(os.environ, {"BFF_NO_UPDATE_CHECK": "1"}):
             code = cli.main(args)
         return code, stdout.getvalue(), stderr.getvalue()
 

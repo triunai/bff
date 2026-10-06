@@ -1,5 +1,7 @@
 """The once-a-day update notice (D6): rules, prompt, opt-in auto, off switches. No network, no real home."""
+import contextlib
 import io
+import os
 import re
 import sys
 import tempfile
@@ -9,7 +11,9 @@ from pathlib import Path
 
 SDK = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SDK))
-from bff import state, update_notice
+from unittest import mock
+
+from bff import cli, state, update_notice
 
 NOW = datetime(2026, 10, 6, 12, 0, 0, tzinfo=timezone.utc)
 STAMP = "%Y-%m-%dT%H:%M:%SZ"
@@ -252,6 +256,70 @@ class CannotSelfUpdateTests(NoticeCase):
         self.assertEqual(self.calls.apply_calls, [])
         self.assertIn("bff 2.0.0 is available (you have 1.0.0). This install cannot self-update: ", text)
         self.assertEqual(len(text.splitlines()), 1)
+
+
+class CliTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="bff cli ")
+        self.addCleanup(self.temporary.cleanup)
+        patcher = mock.patch.dict(os.environ, {"BFF_PREFIX": self.temporary.name})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        os.environ.pop("BFF_NO_UPDATE_CHECK", None)
+
+    def run_cli(self, args):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = cli.main(args)
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_osiris_runs_the_notice_then_opens(self):
+        with mock.patch("bff.update_notice.daily_notice", return_value="no-update") as notice, \
+                mock.patch("bff.cli.launch_osiris", return_value=0) as launch:
+            self.assertEqual(self.run_cli(["osiris"])[0], 0)
+        notice.assert_called_once()
+        self.assertEqual(notice.call_args[1]["current"], cli.__version__)
+        self.assertEqual(notice.call_args[1]["state_file"], cli.state_path())
+        launch.assert_called_once()
+
+    def test_no_update_check_flag_and_print_url_skip_the_notice(self):
+        for args in (["osiris", "--no-update-check"], ["osiris", "--print-url"]):
+            with mock.patch("bff.update_notice.daily_notice") as notice, \
+                    mock.patch("bff.cli.launch_osiris", return_value=0):
+                self.assertEqual(self.run_cli(args)[0], 0)
+            notice.assert_not_called()
+
+    def test_an_exploding_check_still_opens_osiris(self):
+        with mock.patch("bff.update_notice.state.load", side_effect=RuntimeError("boom")), \
+                mock.patch("bff.cli.launch_osiris", return_value=0) as launch:
+            code, stdout, _ = self.run_cli(["osiris"])
+        self.assertEqual(code, 0)
+        self.assertIn("update check failed: boom", stdout)
+        launch.assert_called_once()
+
+    def test_env_off_switch_means_no_network(self):
+        fake = mock.Mock()
+        with mock.patch.dict(os.environ, {"BFF_NO_UPDATE_CHECK": "1"}), \
+                mock.patch.dict(sys.modules, {"bff.update": fake}), \
+                mock.patch("bff.cli.launch_osiris", return_value=0):
+            self.assertEqual(self.run_cli(["osiris"])[0], 0)
+        fake.latest_version.assert_not_called()
+        self.assertFalse((Path(self.temporary.name) / "share" / "bff" / "state.json").exists())
+
+    def test_config_set_get_list(self):
+        self.assertEqual(self.run_cli(["config", "get", "update.auto"])[1], "false\n")
+        self.assertEqual(self.run_cli(["config", "set", "update.auto", "true"])[0], 0)
+        self.assertEqual(self.run_cli(["config", "get", "update.auto"])[1], "true\n")
+        code, text, _ = self.run_cli(["config", "list"])
+        self.assertEqual(code, 0)
+        self.assertEqual(text.splitlines(), ["update.auto = true", "update.check = true (default)"])
+        self.assertTrue((Path(self.temporary.name) / "share" / "bff" / "state.json").is_file())
+
+    def test_config_bad_key_and_bad_value_exit_2(self):
+        for args in (["config", "get", "nope"], ["config", "set", "nope", "1"], ["config", "set", "update.auto", "maybe"]):
+            code, _, stderr = self.run_cli(args)
+            self.assertEqual(code, 2, args)
+            self.assertTrue(stderr.startswith("bff: "), stderr)
 
 
 class NoPipeToShellTests(unittest.TestCase):
