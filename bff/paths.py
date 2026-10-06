@@ -107,3 +107,17 @@ def install_method(module_file=None, *, env=None, system=None, home=None, prefix
     if (root / ".git").exists() and (root / "install.py").exists():
         return "dev"
     return "unknown"
+
+
+def install_prefix(module_file=None):
+    """The prefix P when the running package is `P/share/bff/releases/<RELEASE_NAME>/bff/`, else None."""
+    if module_file is None:
+        from bff import __file__ as module_file
+    package = Path(module_file).resolve().parent
+    release = package.parent
+    releases = release.parent
+    data = releases.parent
+    if (package.name == "bff" and RELEASE_NAME.fullmatch(release.name) and releases.name == "releases"
+            and data.name == "bff" and data.parent.name == "share"):
+        return data.parent.parent
+    return None

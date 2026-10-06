@@ -61,7 +61,7 @@ def source_files(source):
     selected.update({"templates/" + name: value for name, value in inventory(templates).items()})
     if not any(name.startswith("templates/repo/") for name in selected):
         raise ValueError("Missing repo templates")
-    for name in ("README.md", "LICENSE", "PROVENANCE.md", "ARCHITECTURE.md", "install.sh"):
+    for name in ("README.md", "LICENSE", "PROVENANCE.md", "ARCHITECTURE.md", "install.sh", "install.py"):
         path = source / name
         if os.path.lexists(str(path)):
             if path.is_symlink() or not path.is_file():
@@ -162,7 +162,7 @@ def verify_release(release):
     if not isinstance(expected, dict) or not {"bff/cli.py", "bin/bff"} <= set(expected):
         raise ValueError("Incomplete release manifest")
     for name, checksum in expected.items():
-        valid = (name in ("bin/bff", "README.md", "LICENSE", "PROVENANCE.md", "ARCHITECTURE.md", "install.sh") or
+        valid = (name in ("bin/bff", "README.md", "LICENSE", "PROVENANCE.md", "ARCHITECTURE.md", "install.sh", "install.py") or
                  (name.startswith("bff/") and "/" not in name[4:] and name.endswith(".py")) or
                  (name.startswith("docs/") and "/" not in name[5:] and name.endswith(".md")) or
                  (name.startswith("plugins/osiris/") and plugin_file_allowed(name[len("plugins/osiris/"):])) or
@@ -203,7 +203,8 @@ def activate(release, prefix):
             "path_note": "bff is on PATH" if available else "Use the printed absolute command; bin directory is absent from PATH"}
 
 
-def install(prefix, source=SOURCE, interpreter=None):
+def stage(prefix, source=SOURCE, interpreter=None):
+    """Verify and stage a release without activating it. Returns (release dir, created)."""
     if sys.version_info < (3, 9):
         raise ValueError("Python 3.9+ required")
     prefix = prefix.expanduser().resolve()
@@ -219,7 +220,8 @@ def install(prefix, source=SOURCE, interpreter=None):
     files["bin/bff"] = digest(launcher)
     manifest = {"schema_version": 1, "version": __version__, "python": interpreter, "files": files}
     release = releases / release_id(manifest)
-    if os.path.lexists(str(release)):
+    created = not os.path.lexists(str(release))
+    if not created:
         if verify_release(release) != manifest:
             raise ValueError("Existing release differs from source")
     else:
@@ -239,7 +241,12 @@ def install(prefix, source=SOURCE, interpreter=None):
         finally:
             if staging.exists():
                 shutil.rmtree(str(staging))
-    return activate(release, prefix)
+    return release, created
+
+
+def install(prefix, source=SOURCE, interpreter=None):
+    release, _ = stage(prefix, source, interpreter)
+    return activate(release, prefix.expanduser().resolve())
 
 
 def main(argv=None):
@@ -248,6 +255,7 @@ def main(argv=None):
     action = parser.add_mutually_exclusive_group()
     action.add_argument("--activate", metavar="RELEASE", help="Activate a preserved, verified release")
     action.add_argument("--disable", action="store_true", help="Remove the owned command; preserve releases")
+    action.add_argument("--stage-only", action="store_true", help="Verify and stage the release; do not activate it")
     args = parser.parse_args(argv)
     prefix = args.prefix.expanduser().resolve()
     try:
@@ -262,6 +270,9 @@ def main(argv=None):
             previous = os.readlink(str(command))
             command.unlink()
             result = {"disabled": str(command), "preserved_target": previous}
+        elif args.stage_only:
+            release, created = stage(prefix)
+            result = {"release": release.name, "path": str(release), "created": created}
         else:
             result = install(prefix)
         print(json.dumps(result, indent=2))
