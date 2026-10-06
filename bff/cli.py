@@ -41,7 +41,11 @@ def launch_osiris(url, print_only):
     check_osiris_plugin()
     connection = http.client.HTTPConnection(parsed.hostname, parsed.port or 80, timeout=2)
     try:
-        connection.request("GET", parsed.path + ("?" + parsed.query if parsed.query else ""))
+        try:
+            connection.request("GET", parsed.path + ("?" + parsed.query if parsed.query else ""))
+        except OSError:
+            raise ValueError("BB is not running at " + url + ". Start BB, then run bff osiris again "
+                             "(if BB uses another address, pass --url).")
         response = connection.getresponse()
         if response.status != 200:
             raise ValueError("BB observer URL unavailable (HTTP " + str(response.status) + ")")
@@ -149,7 +153,11 @@ def run_config(args):
     state_file = active_state_path()
     if args.action == "set":
         state.update(state_file, lambda data: state.set_config(data, args.key, args.value))
-        print(args.key + " = " + str(state.get_config(state.load(state_file), args.key)).lower())
+        value = state.get_config(state.load(state_file), args.key)
+        print(args.key + " = " + str(value).lower())
+        if args.key == "update.auto" and value is True:
+            print("warning: bff will now install verified updates without asking. Undo with: "
+                  "bff config set update.auto false", file=sys.stderr)
         return 0
     data = state.load(state_file)
     if args.action == "get":
@@ -191,23 +199,24 @@ def main(argv=None):
     doc.add_argument("--offline", action="store_true", help="Skip the one GitHub call that checks BFF's own latest release")
     start = commands.add_parser("start", help="Open running BB Osiris and request an independent Herdr session")
     start.add_argument("--print-plan", action="store_true", help="Print argv and targets without launching or writing")
-    herdr = commands.add_parser("herdr", help="Capture bounded local Claude/Codex transcript metadata; Herdr pane membership is unknown")
-    herdr.add_argument("--once", action="store_true", help="Publish one feed and exit")
-    herdr.add_argument("--latest", type=int, default=8)
-    herdr.add_argument("--session", help="Exact native provider session identity")
-    herdr.add_argument("--output", type=Path, default=Path.home() / ".local" / "share" / "bff" / "herdr-feed.json")
+    herdr = commands.add_parser("herdr", help="Save metadata (not content) of recent local Claude Code and Codex sessions for Osiris; it cannot tell which Herdr pane a session ran in")
+    herdr.add_argument("--once", action="store_true", help="Write the session list once and exit (default: keep refreshing)")
+    herdr.add_argument("--latest", type=int, default=8, help="How many of the newest sessions to include (default 8)")
+    herdr.add_argument("--session", help="Capture only this session id, as shown by Claude Code or Codex")
+    herdr.add_argument("--output", type=Path, default=Path.home() / ".local" / "share" / "bff" / "herdr-feed.json",
+                       help="File to write the session list to (default: ~/.local/share/bff/herdr-feed.json)")
     herdr.add_argument("--interval", type=float, default=5, help="Capture interval in seconds, minimum 5")
     for name, help_text in (("init", "Adopt a fresh Git repository; existing files are preserved"),
                             ("check", "Read and validate the bound spine"),
                             ("hydrate", "Print bound context without changing files")):
         command = commands.add_parser(name, help=help_text)
-        command.add_argument("--repo", type=Path)
+        command.add_argument("--repo", type=Path, help="Repository to use (default: the one you are in)")
         if name == "check":
             command.add_argument("--run", action="store_true", help="Explicitly execute the profile's named argv checks")
         elif name == "hydrate":
             command.add_argument("--ws", help="Select one canonical workstream block")
     observer = commands.add_parser("osiris", help="Open the BB observer, or set up and update the Osiris plugin")
-    observer.add_argument("--url", default=OSIRIS_URL)
+    observer.add_argument("--url", default=OSIRIS_URL, help="Where BB serves Osiris (default: " + OSIRIS_URL + ")")
     observer.add_argument("--print-url", action="store_true", help="Print only; no connection or browser launch")
     observer.add_argument("--install", action="store_true", help="Deprecated: renamed to bff osiris setup")
     osiris_commands = observer.add_subparsers(dest="osiris_command")
@@ -233,7 +242,11 @@ def main(argv=None):
     which.add_argument("--plugin", action="store_true", help="Roll back the Osiris plugin only")
     back.add_argument("--yes", action="store_true", help="Roll back without prompting")
     observer.add_argument("--no-update-check", action="store_true", help="Skip the once-a-day update notice for this run")
-    config = commands.add_parser("config", help="Read or change bff settings (update.check, update.auto)")
+    config = commands.add_parser(
+        "config", description="Settings: update.check (daily update notice, default on); update.auto (install verified "
+        "updates without asking, default off, needs gh installed). Change one with: bff config set <name> true|false",
+        help="Read or change bff settings: update.check (daily update notice, default on) and "
+        "update.auto (install verified updates without asking, default off; needs gh installed)")
     config_actions = config.add_subparsers(dest="action", required=True)
     config_actions.add_parser("list", help="Print every setting")
     config_get = config_actions.add_parser("get", help="Print one setting")
@@ -280,6 +293,7 @@ def main(argv=None):
         repo = repo_root(args.repo)
         if args.command == "init":
             print(json.dumps(init_repo(repo, Path(__file__).resolve().parents[1] / "templates" / "repo"), indent=2))
+            print("Next: edit hygiene.md, run bff check, then bd init", file=sys.stderr)
             return 0
         profile, paths = load_profile(repo)
         if args.command == "hydrate":

@@ -271,12 +271,13 @@ class InstallShTests(unittest.TestCase):
         self.assertFalse((self.prefix / "bin" / "bff").exists())
         self.assertEqual(list(self.home.iterdir()), [])
 
-    def test_setup_waits_on_prerequisites_with_exit_3(self):
+    def test_setup_while_osiris_is_unpublished_exits_4(self):
         self.add_fake_bb()
         run = self.run_sh("--setup", "--prefix", str(self.prefix), "--no-modify-path")
-        self.assertEqual(run.returncode, 3, run.stdout + run.stderr)
-        self.assertIn("No public Osiris release is pinned", run.stdout)  # the installed bff ran `osiris setup`
-        self.assertIn("bff is installed; Osiris setup is waiting on the prerequisites", run.stderr)
+        self.assertEqual(run.returncode, 4, run.stdout + run.stderr)
+        self.assertIn("not publicly released yet", run.stdout)  # the installed bff ran `osiris setup`
+        self.assertIn("bff is installed. Osiris is not publicly released yet", run.stderr)
+        self.assertNotIn("waiting on the prerequisites", run.stderr)
         self.assertTrue((self.prefix / "bin" / "bff").is_symlink())
 
     def test_setup_without_bb_is_still_exit_3(self):
