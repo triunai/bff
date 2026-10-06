@@ -576,6 +576,19 @@ class Commands(Fixture):
         self.assertEqual(code, 0)
         self.assertIn("latest release unknown (offline?)", out)
 
+    def test_latest_older_than_installed_is_never_offered_as_an_update(self):
+        # e.g. after `bff update --version` to a release not marked latest, or a latest that moved back
+        older = ".".join(OLD.split(".")[:2] + [str(int(OLD.split(".")[2]) - 1)])
+        (self.srv / "latest" / "download" / "SHA256SUMS").write_text("a" * 64 + "  bff-" + older + ".tar.gz\n")
+        before = self.snapshot()
+        with mock.patch.object(update, "apply_with_plugin", side_effect=AssertionError("downgraded")) as applied:
+            code, out, _ = self.run_cli(["update", "--yes"], {"BFF_RELEASE_BASE": self.base})
+        applied.assert_not_called()
+        self.assertEqual(code, 0)
+        self.assertIn("bff " + OLD + " is up to date", out)
+        self.assertNotIn(OLD + " -> " + older, out)
+        self.assertEqual(self.snapshot(), before)
+
     def test_update_yes_switches_and_prints_undo(self):
         code, out, err = self.run_cli(["update", "--yes"], {"BFF_RELEASE_BASE": self.base})
         self.assertEqual((code, err), (0, ""))

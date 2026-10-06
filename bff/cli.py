@@ -130,7 +130,9 @@ def self_update(args):
     if target is None:
         print("latest release unknown (offline?)")
         return 1
-    if target == __version__:
+    # An older "latest" is never offered as an update; a downgrade needs an explicit --version.
+    if target == __version__ or (args.target is None and tuple(map(int, target.split("."))) < tuple(
+            map(int, __version__.split(".")))):
         print("bff " + __version__ + " is up to date")
         return 0
     print(__version__ + " -> " + target)
