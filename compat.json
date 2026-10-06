@@ -1,1 +1,1 @@
-{"schema_version": 1, "bb_min": "0.45.0", "osiris": {"id": "tool-observer", "version": "0.3.0", "source": "git:https://github.com/triunai/bb-plugin-osiris@v0.3.0", "commit": null, "published": false}}
+{"schema_version": 1, "bb_min": "0.45.0", "osiris": {"id": "tool-observer", "version": "0.3.0", "source": "git:https://github.com/triunai/bb-plugin-osiris@v0.3.0", "commit": null, "published": false, "private": {"repo": "triunai/osiris-private", "ref": "66347de63696585873e4c6df72b0d8bf8ee3e800", "version": "0.2.16-dev", "label": "0.2.16-rc3.1"}}}

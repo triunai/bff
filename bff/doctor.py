@@ -169,15 +169,15 @@ def render_self(info, out):
         out.write("up to date with release %s\n\n" % info["latest"])
 
 
-def survey(upgrade=True):
-    """Inspect every recipe; no changes are made. Queries the registry only when useful."""
+def survey(upgrade=True, registry=True):
+    """Inspect every recipe; no changes are made. Queries the registry only when useful (never when registry=False)."""
     rows = []
     for recipe in RECIPES:
         path, installed = detect(recipe)
         route = available_route(recipe)
         row = {"component": recipe["component"], "path": path, "installed": installed, "latest": None,
                "action": "none", "reason": "", "argv": None, "recipe": recipe}
-        if recipe["routes"] and route:
+        if recipe["routes"] and route and registry:
             row["latest"] = latest_stable(route[0], route[1])
         if path is None:
             if not recipe["routes"]:
@@ -254,12 +254,12 @@ def execute(rows, out):
     return summary
 
 
-def run_doctor(assume_yes=False, upgrade=True, stdin=None, stdout=None, offline=False, fetch_latest=None):
+def run_doctor(assume_yes=False, upgrade=True, stdin=None, stdout=None, offline=False, fetch_latest=None, registry=True):
     stdin = stdin if stdin is not None else sys.stdin
     out = stdout if stdout is not None else sys.stdout
     if not offline:
         render_self(check_self(fetch=fetch_latest), out)
-    rows = survey(upgrade=upgrade)
+    rows = survey(upgrade=upgrade, registry=registry)
     planned = render(rows, out)
     if not planned:
         return 0

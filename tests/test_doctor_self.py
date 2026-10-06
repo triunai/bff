@@ -94,8 +94,12 @@ class RunDoctorTests(unittest.TestCase):
 
 class CliTests(unittest.TestCase):
     def test_offline_flag_reaches_run_doctor_and_json_stays_network_free(self):
-        with mock.patch("bff.doctor.run_doctor", return_value=0) as called:
+        # `bff doctor` is the hidden alias of `bff osiris doctor`; --offline reaches both halves
+        with mock.patch("bff.osiris_doctor.run_checks", return_value=[]) as checks, \
+                mock.patch("bff.doctor.run_doctor", return_value=0) as called, \
+                mock.patch("sys.stdout", new_callable=io.StringIO):
             self.assertEqual(cli.main(["doctor", "--offline"]), 0)
+        self.assertTrue(checks.call_args.kwargs["offline"])
         self.assertTrue(called.call_args.kwargs["offline"])
         with mock.patch("bff.doctor.fetch_latest_release") as fetch, mock.patch("sys.stdout", new_callable=io.StringIO):
             self.assertEqual(cli.main(["doctor", "--json"]), 0)

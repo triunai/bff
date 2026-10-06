@@ -292,14 +292,16 @@ def plugin_step(prefix, *, run=subprocess.run, which=None, out=None):
     if (which or shutil.which)("bb") is None:
         _emit(out, "Osiris plugin: skipped (BB not found)")
         return "skipped"
+    # `osiris update` is the hidden alias of `osiris install` that every bff since 0.1.1 understands, so this
+    # also works when --version moved to an older bff. SKIP_SELF: bff itself was just switched; only the plugin.
     argv = [str(Path(prefix) / "bin" / "bff"), "osiris", "update", "--yes"]
-    _emit(out, "Updating the Osiris plugin through BB (this can take a few minutes; bff itself is already updated)...")
+    env = dict(os.environ)
+    env["BFF_SKIP_SELF_UPDATE"] = "1"
+    _emit(out, "Updating the Osiris plugin with the new bff (a first build can take a few minutes)...")
     try:
-        # stdin=DEVNULL: output is captured, so a question from BB would wait unseen (and --yes asks none).
-        done = run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=900)
-        for stream in (done.stdout, done.stderr):
-            if stream:
-                _emit(out, stream.rstrip("\n"))
+        # Streamed, not captured: a long fetch/build shows its progress. stdin=DEVNULL: --yes asks nothing, and
+        # nothing may wait on the terminal.
+        done = run(argv, stdin=subprocess.DEVNULL, env=env, timeout=1800)
         code = done.returncode
     except Exception:
         code = None
@@ -309,7 +311,7 @@ def plugin_step(prefix, *, run=subprocess.run, which=None, out=None):
         return "waiting"
     if code == 4:
         return "unpublished"
-    _emit(out, "Osiris plugin update failed (bff itself is updated). Retry: bff osiris update")
+    _emit(out, "Osiris plugin update failed (bff itself is updated). Retry: bff osiris install")
     return "failed"
 
 

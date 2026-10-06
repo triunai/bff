@@ -1,10 +1,10 @@
-# PREVIEW: not yet tested on a real Windows machine (no PowerShell was available when this was written).
-# Native Windows activation needs slice S7 (the bff.cmd shim): today install.py activates with a
-# symlink, which normal Windows accounts cannot create. Until S7 lands this script verifies and
-# stages the download but its final activation step is expected to fail on such accounts.
+# bff on Windows = bff inside WSL2 (Ubuntu), because BB, which hosts Osiris, supports Windows only through WSL2
+# (BB's README: "Windows via Ubuntu on WSL2"). Native activation needs slice S7 (a bff.cmd shim; install.py uses a
+# symlink, which normal Windows accounts cannot create), so by default this script only checks WSL, prints the steps,
+# and offers once to run the Linux installer inside WSL. NOT yet run on a real Windows machine.
 # Run it as two steps (never piped):
 #   Invoke-WebRequest https://github.com/triunai/bff/releases/latest/download/install.ps1 -OutFile install.ps1
-#   Unblock-File .\install.ps1; .\install.ps1 -Setup
+#   Unblock-File .\install.ps1; .\install.ps1
 param(
     [switch]$Setup,
     [string]$Prefix,
@@ -15,13 +15,37 @@ $ErrorActionPreference = 'Stop'
 $BffVersion = '0.1.1'
 $BffRepo = 'triunai/bff'
 
-# Native Windows cannot finish this install yet (see S7 above), so stop before any download.
-# BFF_WINDOWS_PREVIEW=1 lets a developer run the rest of the script anyway.
+# Native Windows cannot finish this install yet (see S7 above), so guide WSL2 before any download.
+# BFF_WINDOWS_PREVIEW=1 lets a developer run the native rest of the script anyway.
 if ($env:BFF_WINDOWS_PREVIEW -ne '1') {
-    Write-Host 'PREVIEW: use WSL. The native Windows install is not ready yet.'
-    Write-Host 'Next: install WSL (wsl --install), then run the install.sh command from the README inside it.'
-    Write-Host 'Nothing was downloaded or changed.'
-    exit 1
+    $bootstrap = 'cd ~ && curl -fsSLO https://raw.githubusercontent.com/' + $BffRepo + '/v' + $BffVersion + '/install.sh && sh install.sh --setup'
+    Write-Host 'bff on Windows runs inside WSL2 (Ubuntu), like BB itself. Nothing was downloaded or changed.'
+    $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
+    $distros = @()
+    if ($wsl) {
+        # `wsl --list --quiet` prints UTF-16; strip the NULs PowerShell 5 leaves in each line.
+        $distros = @(& wsl.exe --list --quiet 2>$null | ForEach-Object { ($_ -replace "`0", '').Trim() } | Where-Object { $_ })
+    }
+    if ($distros.Count -eq 0) {
+        Write-Host 'Step 1 (once, PowerShell as Administrator): wsl --install -d Ubuntu'
+        Write-Host '        restart Windows, open "Ubuntu" from the Start menu and create your Linux user, then run this again.'
+    } else {
+        Write-Host ('Step 1: done. WSL2 has: ' + ($distros -join ', '))
+    }
+    Write-Host 'Step 2 (inside Ubuntu): sudo apt update && sudo apt install -y python3 git curl'
+    Write-Host 'Step 3 (inside Ubuntu): install Node 22 or newer (https://nodejs.org), then start BB: npx bb-app@latest'
+    Write-Host ('Step 4 (inside Ubuntu): ' + $bootstrap)
+    Write-Host 'Step 5 (inside Ubuntu): bff osiris, then open http://localhost:38886 in your Windows browser. Stuck? bff osiris doctor'
+    $interactive = $distros.Count -gt 0 -and -not $Yes -and [Environment]::UserInteractive -and -not [Console]::IsInputRedirected
+    if ($interactive) {
+        $answer = Read-Host 'Run step 4 inside WSL now? [Y/n]'
+        # Read-Host returns $null at end of input: EOF is never consent.
+        if ($null -ne $answer -and ($answer -eq '' -or $answer -match '^(y|yes)$')) {
+            & wsl.exe -- sh -c $bootstrap
+            exit $LASTEXITCODE
+        }
+    }
+    exit 3
 }
 
 function Find-Python {

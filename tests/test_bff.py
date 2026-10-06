@@ -371,7 +371,7 @@ class ProjectTests(Scratch):
             connection.assert_not_called()
             browser.assert_not_called()
             connection.return_value.request.side_effect = ConnectionRefusedError("unreachable")
-            self.assertEqual(self.command(["osiris"])[0], 2)
+            self.assertEqual(self.command(["osiris"])[0], 1)  # 1 = failed; 2 is reserved for usage errors
             browser.assert_not_called()
 
 

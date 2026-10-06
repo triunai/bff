@@ -80,12 +80,12 @@ fi
 BFF_RESULT=$(python3 "$BFF_INSTALLER" "$@") || exit $?
 printf '%s\n' "$BFF_RESULT"
 BFF_COMMAND=$(printf '%s' "$BFF_RESULT" | python3 -c 'import json, sys; print(json.load(sys.stdin).get("command", ""))')
-if [ -z "$BFF_COMMAND" ]; then echo '--setup could not find the bff command after installing. Run this installer again without --setup, then run: bff osiris setup' >&2; exit 2; fi
+if [ -z "$BFF_COMMAND" ]; then echo '--setup could not find the bff command after installing. Run this installer again without --setup, then run: bff osiris install' >&2; exit 2; fi
+# --setup = the installed bff runs `bff osiris install` (the one install-and-update verb, D-128) by its full path.
 if [ "$BFF_YES" = 1 ]; then
-  if "$BFF_COMMAND" osiris setup --yes; then BFF_RC=0; else BFF_RC=$?; fi
+  if "$BFF_COMMAND" osiris install --yes; then BFF_RC=0; else BFF_RC=$?; fi
 else
-  if "$BFF_COMMAND" osiris setup; then BFF_RC=0; else BFF_RC=$?; fi
+  if "$BFF_COMMAND" osiris install; then BFF_RC=0; else BFF_RC=$?; fi
 fi
-if [ "$BFF_RC" = 3 ]; then echo 'bff is installed; Osiris setup is waiting on the prerequisites listed above. Install them, then run: bff osiris setup' >&2; fi
-if [ "$BFF_RC" = 4 ]; then echo 'bff is installed. Osiris is not publicly released yet, so there is nothing more to set up; run: bff --help' >&2; fi
+if [ "$BFF_RC" = 3 ]; then echo 'bff is installed; Osiris is waiting on the prerequisites listed above. Install them, then run: bff osiris install' >&2; fi
 exit "$BFF_RC"

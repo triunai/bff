@@ -51,8 +51,9 @@ def launch_osiris(url, print_only):
             raise ValueError("BB observer URL unavailable (HTTP " + str(response.status) + ")")
     finally:
         connection.close()
-    if not webbrowser.open(url):
-        raise ValueError("Browser could not open the reachable observer URL; use --print-url")
+    if not webbrowser.open(url):  # headless, SSH or WSL without a browser bridge: Osiris is up, so say where
+        print("Osiris is running. Open this in your browser: " + url)
+        return 0
     print(url)
     return 0
 
@@ -177,30 +178,126 @@ def check_osiris_plugin():
         raise ValueError(osiris.NO_BB)
     status = osiris.plugin_status(executable)
     if not status["present"]:
-        raise ValueError("Osiris plugin not installed: run bff osiris setup")
+        raise ValueError("Osiris plugin not installed: run bff osiris install")
     if status["status"] != "running" or not status["enabled"]:
         raise ValueError("Osiris plugin is " + str(status["status"] if status["status"] != "running" else "disabled")
-                         + ": enable it in BB, or run bff osiris setup")
+                         + ": enable it in BB, or run bff osiris install")
     if status["kind"] == "path" and not status["stale_bundled"]:
         print("Osiris dev channel: " + status["display"])
         return
     compat = osiris.load_compat()["osiris"]
     if compat["published"] and status["version"] != compat["version"]:
         print("bff: Osiris " + str(status["version"]) + " is off the pinned " + compat["version"]
-              + "; run bff osiris update", file=sys.stderr)
+              + "; run bff osiris install", file=sys.stderr)
+
+
+# Exit codes for the Osiris verbs (clig.dev): 0 ok, 1 failed, 2 usage error (argparse), 3 waiting on a prerequisite.
+OSIRIS_FAMILY = ("osiris", "doctor", "update", "rollback")
+
+
+def _install_flags(parser, hidden=False):
+    def hide(text):
+        return argparse.SUPPRESS if hidden else text
+    parser.add_argument("-y", "--yes", action="store_true", help=hide("Do it without asking (needed when not in a terminal)"))
+    parser.add_argument("--dry-run", action="store_true", help=hide("Print the plan; change nothing"))
+    parser.add_argument("--from", dest="from_dir", metavar="DIR", help=hide("Install this gated build directory instead"))
+    parser.add_argument("--ref", metavar="COMMIT", help=hide("Build this Osiris commit instead of the pinned one (advanced)"))
+    parser.add_argument("--switch-to-release", action="store_true",
+                        help=hide("Also replace a developer (path:) install that bff did not make"))
+    parser.add_argument("--require-attestation", action="store_true",
+                        help=hide("Refuse a bff update unless gh verifies its provenance"))
+
+
+def _doctor_flags(parser):
+    parser.add_argument("--json", action="store_true", help="Machine-readable report; installs nothing")
+    parser.add_argument("--offline", action="store_true", help="Skip the network checks (latest release, private repo access)")
+    parser.add_argument("-y", "--yes", action="store_true", help="Run the companion-tool install plan without asking")
+    parser.add_argument("--no-upgrade", action="store_true", help="Companion tools: install missing ones only")
+
+
+def _run_doctor(args):
+    from .osiris_doctor import run_doctor
+    return run_doctor(json_out=args.json, offline=args.offline, yes=args.yes, upgrade=not args.no_upgrade)
+
+
+def _run_install(args):
+    from .osiris_install import run_install
+    if getattr(args, "legacy_version", None):  # `bff osiris update --version X`: plugin-only, off the pin
+        return osiris.update(args.legacy_version, None, False, args.switch_to_release, args.yes)
+    return run_install(yes=args.yes, dry_run=args.dry_run, from_dir=args.from_dir, ref=args.ref,
+                       switch=args.switch_to_release, require_attestation=args.require_attestation)
+
+
+def _open(args):
+    if not args.print_url and not args.no_update_check:
+        from .update_notice import daily_notice
+        daily_notice(current=__version__, state_file=active_state_path(), stdin=sys.stdin, out=sys.stdout)
+    return launch_osiris(args.url, args.print_url)
+
+
+VISIBLE = "{osiris,rollback,config,herdr,start,init,check,hydrate}"
+OSIRIS_EPILOG = """the three things you do:
+  bff osiris install   install Osiris, and run it again any time to update (safe to re-run)
+  bff osiris           open Osiris (the same as: bff osiris open)
+  bff osiris doctor    check everything and print the one next step
+
+undo an update: bff rollback.  Exit codes: 0 ok, 1 failed, 2 usage error, 3 waiting on a prerequisite."""
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="bff", description="BFF — Built Fucking Fast. Explicit, portable repo tooling.")
-    parser.add_argument("--version", action="version", version="bff " + __version__)
-    commands = parser.add_subparsers(dest="command", required=True)
-    doc = commands.add_parser("doctor", help="Report companion tools; offer to install missing and upgrade outdated ones")
-    doc.add_argument("--json", action="store_true", help="Machine-readable availability report; runs nothing")
-    doc.add_argument("--yes", action="store_true", help="Run the install/upgrade plan without prompting")
-    doc.add_argument("--no-upgrade", action="store_true", help="Install missing tools only; do not upgrade")
-    doc.add_argument("--offline", action="store_true", help="Skip the one GitHub call that checks BFF's own latest release")
-    start = commands.add_parser("start", help="Open running BB Osiris and request an independent Herdr session")
-    start.add_argument("--print-plan", action="store_true", help="Print argv and targets without launching or writing")
+    parser = argparse.ArgumentParser(prog="bff", description="BFF — Built Fucking Fast. Explicit, portable repo tooling.",
+                                     epilog="Start here: bff osiris install, then bff osiris. Stuck? bff osiris doctor.")
+    parser.add_argument("-V", "--version", action="version", version="bff " + __version__)
+    commands = parser.add_subparsers(dest="command", required=True, metavar=VISIBLE)
+    observer = commands.add_parser("osiris", help="Install, open and check Osiris (start here)",
+                                   description="Osiris, the BB workbench for your agents.", epilog=OSIRIS_EPILOG,
+                                   formatter_class=argparse.RawDescriptionHelpFormatter)
+    observer.add_argument("-V", "--version", action="version", version="bff " + __version__)
+    observer.add_argument("--url", default=OSIRIS_URL, help="Where BB serves Osiris (default: " + OSIRIS_URL + ")")
+    observer.add_argument("--print-url", action="store_true", help="Print the URL only; no connection, no browser")
+    observer.add_argument("--no-update-check", action="store_true", help="Skip the once-a-day update question for this run")
+    observer.add_argument("--install", action="store_true", help=argparse.SUPPRESS)  # pre-0.2 spelling
+    osiris_commands = observer.add_subparsers(dest="osiris_command", metavar="{install,open,doctor}")
+    _install_flags(osiris_commands.add_parser(
+        "install", help="Install or update bff and Osiris (safe to re-run)",
+        description="Install Osiris, or update it: run it again any time. Plans first, asks once [Y/n], "
+                    "verifies before it swaps anything, and keeps the previous version for bff rollback."))
+    opener = osiris_commands.add_parser("open", help="Open Osiris in your browser (what bare `bff osiris` does)")
+    opener.add_argument("--url", default=argparse.SUPPRESS, help="Where BB serves Osiris")
+    opener.add_argument("--print-url", action="store_true", default=argparse.SUPPRESS, help="Print the URL only")
+    opener.add_argument("--no-update-check", action="store_true", default=argparse.SUPPRESS,
+                        help="Skip the once-a-day update question")
+    _doctor_flags(osiris_commands.add_parser(
+        "doctor", help="Check everything Osiris needs and print the one next step",
+        description="Checks bff, BB, the Osiris plugin and build, Herdr, the BB terminal Osiris attaches to, beads, "
+                    "PATH, private-source access and WSL. Changes nothing unless you answer [Y/n] (EOF is no)."))
+    for alias in ("setup", "update"):  # hidden compatibility spellings of `install` (D-128)
+        legacy = osiris_commands.add_parser(alias)
+        _install_flags(legacy, hidden=True)
+        legacy.add_argument("--version", dest="legacy_version", help=argparse.SUPPRESS)
+        legacy.add_argument("--from-latest-staged", action="store_true", help=argparse.SUPPRESS)
+    _doctor_flags(commands.add_parser("doctor"))  # hidden alias of `bff osiris doctor`
+    back = commands.add_parser("rollback", help="Switch bff and the Osiris plugin back to the previous version")
+    which = back.add_mutually_exclusive_group()
+    which.add_argument("--self", dest="self_only", action="store_true", help="Roll back bff only")
+    which.add_argument("--plugin", action="store_true", help="Roll back the Osiris plugin only")
+    back.add_argument("-y", "--yes", action="store_true", help="Roll back without asking")
+    upgrade = commands.add_parser("update")  # hidden alias: bff itself (then the plugin), same verified path
+    upgrade.add_argument("--check", action="store_true", help=argparse.SUPPRESS)
+    upgrade.add_argument("--version", dest="target", metavar="X.Y.Z", help=argparse.SUPPRESS)
+    upgrade.add_argument("--require-attestation", action="store_true", help=argparse.SUPPRESS)
+    upgrade.add_argument("-y", "--yes", action="store_true", help=argparse.SUPPRESS)
+    config = commands.add_parser(
+        "config", description="Settings: update.check (daily update notice, default on); update.auto (install verified "
+        "updates without asking, default off, needs gh installed). Change one with: bff config set <name> true|false",
+        help="Read or change bff settings (update.check, update.auto)")
+    config_actions = config.add_subparsers(dest="action", required=True)
+    config_actions.add_parser("list", help="Print every setting")
+    config_get = config_actions.add_parser("get", help="Print one setting")
+    config_get.add_argument("key")
+    config_set = config_actions.add_parser("set", help="Change one setting")
+    config_set.add_argument("key")
+    config_set.add_argument("value")
     herdr = commands.add_parser("herdr", help="Save metadata (not content) of recent local Claude Code and Codex sessions for Osiris; it cannot tell which Herdr pane a session ran in")
     herdr.add_argument("--once", action="store_true", help="Write the session list once and exit (default: keep refreshing)")
     herdr.add_argument("--latest", type=int, default=8, help="How many of the newest sessions to include (default 8)")
@@ -208,6 +305,8 @@ def main(argv=None):
     herdr.add_argument("--output", type=Path, default=Path.home() / ".local" / "share" / "bff" / "herdr-feed.json",
                        help="File to write the session list to (default: ~/.local/share/bff/herdr-feed.json)")
     herdr.add_argument("--interval", type=float, default=5, help="Capture interval in seconds, minimum 5")
+    start = commands.add_parser("start", help="Open running BB Osiris and request an independent Herdr session")
+    start.add_argument("--print-plan", action="store_true", help="Print argv and targets without launching or writing")
     for name, help_text in (("init", "Adopt a fresh Git repository; existing files are preserved"),
                             ("check", "Read and validate the bound spine"),
                             ("hydrate", "Print bound context without changing files")):
@@ -217,46 +316,9 @@ def main(argv=None):
             command.add_argument("--run", action="store_true", help="Explicitly execute the profile's named argv checks")
         elif name == "hydrate":
             command.add_argument("--ws", help="Select one canonical workstream block")
-    observer = commands.add_parser("osiris", help="Open the BB observer, or set up and update the Osiris plugin")
-    observer.add_argument("--url", default=OSIRIS_URL, help="Where BB serves Osiris (default: " + OSIRIS_URL + ")")
-    observer.add_argument("--print-url", action="store_true", help="Print only; no connection or browser launch")
-    observer.add_argument("--install", action="store_true", help="Deprecated: renamed to bff osiris setup")
-    osiris_commands = observer.add_subparsers(dest="osiris_command")
-    setup = osiris_commands.add_parser("setup", help="Check prerequisites and install the pinned Osiris plugin through BB")
-    setup.add_argument("--yes", action="store_true", help="Install without asking (never replaces a path: dev install)")
-    setup.add_argument("--dry-run", action="store_true", help="Print the plan; change nothing")
-    setup.add_argument("--switch-to-release", action="store_true", help="Replace a path: dev install with the pinned release")
-    upgrade = osiris_commands.add_parser("update", help="Move the Osiris plugin to the pinned release or a local build")
-    upgrade.add_argument("--version", help="Install this release instead of the pinned one")
-    source = upgrade.add_mutually_exclusive_group()
-    source.add_argument("--from", dest="from_dir", help="Gate a build directory on a copy, then install it")
-    source.add_argument("--from-latest-staged", action="store_true", help="Same, for the newest usable staged install-* build")
-    upgrade.add_argument("--switch-to-release", action="store_true", help="Replace a path: dev install with the pinned release")
-    upgrade.add_argument("--yes", action="store_true", help="Install without asking")
-    upgrade = commands.add_parser("update", help="Update bff itself to the latest verified release")
-    upgrade.add_argument("--check", action="store_true", help="Only report the latest release; change nothing")
-    upgrade.add_argument("--version", dest="target", metavar="X.Y.Z", help="Install this release instead of the latest")
-    upgrade.add_argument("--require-attestation", action="store_true", help="Refuse to update unless gh verifies provenance")
-    upgrade.add_argument("--yes", action="store_true", help="Update without prompting")
-    back = commands.add_parser("rollback", help="Switch bff and the Osiris plugin back to the previous release")
-    which = back.add_mutually_exclusive_group()
-    which.add_argument("--self", dest="self_only", action="store_true", help="Roll back bff only")
-    which.add_argument("--plugin", action="store_true", help="Roll back the Osiris plugin only")
-    back.add_argument("--yes", action="store_true", help="Roll back without prompting")
-    observer.add_argument("--no-update-check", action="store_true", help="Skip the once-a-day update notice for this run")
-    config = commands.add_parser(
-        "config", description="Settings: update.check (daily update notice, default on); update.auto (install verified "
-        "updates without asking, default off, needs gh installed). Change one with: bff config set <name> true|false",
-        help="Read or change bff settings: update.check (daily update notice, default on) and "
-        "update.auto (install verified updates without asking, default off; needs gh installed)")
-    config_actions = config.add_subparsers(dest="action", required=True)
-    config_actions.add_parser("list", help="Print every setting")
-    config_get = config_actions.add_parser("get", help="Print one setting")
-    config_get.add_argument("key")
-    config_set = config_actions.add_parser("set", help="Change one setting")
-    config_set.add_argument("key")
-    config_set.add_argument("value")
     args = parser.parse_args(argv)
+    if args.command == "osiris" and args.install and (args.print_url or args.osiris_command):
+        observer.error("--install is the old spelling of `bff osiris install`; use that alone")
     canary_printed = False
     try:
         if args.command == "start":
@@ -269,29 +331,24 @@ def main(argv=None):
                 raise ValueError("Provider capture unavailable: " + str(exc))
             return capture(args)
         if args.command == "doctor":
-            if args.json:
+            if args.json:  # v0.1.1's machine-readable shape, kept byte-compatible for scripts; runs nothing
                 print(json.dumps(doctor(), indent=2))
                 return 0
-            from .doctor import run_doctor
-            return run_doctor(assume_yes=args.yes, upgrade=not args.no_upgrade, offline=args.offline)
+            return _run_doctor(args)
         if args.command in ("update", "rollback"):
             return self_update(args)
         if args.command == "config":
             return run_config(args)
         if args.command == "osiris":
-            if args.osiris_command == "setup":
-                return osiris.setup(args.yes, args.dry_run, args.switch_to_release)
-            if args.osiris_command == "update":
-                return osiris.update(args.version, args.from_dir, args.from_latest_staged, args.switch_to_release, args.yes)
+            if args.osiris_command in ("install", "setup", "update"):
+                return _run_install(args)
+            if args.osiris_command == "doctor":
+                return _run_doctor(args)
             if args.install:
-                if args.print_url:
-                    raise ValueError("Choose --install or the read-only --print-url")
-                print("bff osiris --install is renamed: use bff osiris setup", file=sys.stderr)
-                return osiris.setup()
-            if not args.print_url and not args.no_update_check:
-                from .update_notice import daily_notice
-                daily_notice(current=__version__, state_file=active_state_path(), stdin=sys.stdin, out=sys.stdout)
-            return launch_osiris(args.url, args.print_url)
+                print("bff osiris --install is renamed: use bff osiris install", file=sys.stderr)
+                from .osiris_install import run_install
+                return run_install()
+            return _open(args)
         repo = repo_root(args.repo)
         if args.command == "init":
             print(json.dumps(init_repo(repo, Path(__file__).resolve().parents[1] / "templates" / "repo"), indent=2))
@@ -328,4 +385,4 @@ def main(argv=None):
         if args.command == "check" and not canary_printed:
             print("Threads read: unavailable (validation did not complete)")
         print("bff: " + str(exc), file=sys.stderr)
-        return 2
+        return 1 if args.command in OSIRIS_FAMILY else 2

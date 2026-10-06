@@ -52,9 +52,9 @@ class InstallShCopyTests(unittest.TestCase):
     def test_setup_exit_messages_are_distinct(self):
         text = (ROOT / "install.sh").read_text()
         self.assertIn('"$BFF_RC" = 3', text)
-        self.assertIn('"$BFF_RC" = 4', text)
-        self.assertIn("not publicly released yet", text)
-        self.assertIn("then run: bff osiris setup", text)
+        self.assertIn('osiris install --yes', text)  # --setup runs the one install-and-update verb
+        self.assertIn("then run: bff osiris install", text)
+        self.assertNotIn("osiris setup", text)
         self.assertNotIn("D1", text)
         self.assertNotIn("activates bff", text)
 
@@ -79,11 +79,16 @@ class WindowsPreviewTests(unittest.TestCase):
     def setUp(self):
         self.ps1 = (ROOT / "install.ps1").read_text()
 
-    def test_preview_stops_before_any_download(self):
+    def test_windows_guides_wsl_before_any_download(self):
         head = self.ps1.split("Invoke-WebRequest -Uri", 1)[0]
-        self.assertIn("PREVIEW: use WSL", head)
-        self.assertLess(head.index("PREVIEW: use WSL"), head.index("Find-Python"))
-        self.assertIn("exit 1", head.split("PREVIEW: use WSL", 1)[1].split("function Find-Python", 1)[0])
+        guide = head.split("if ($env:BFF_WINDOWS_PREVIEW -ne '1')", 1)[1].split("function Find-Python", 1)[0]
+        self.assertIn("runs inside WSL2 (Ubuntu)", guide)
+        self.assertIn("wsl --install -d Ubuntu", guide)
+        self.assertIn("sh install.sh --setup", guide)  # step 4 runs the same Linux installer, then bff osiris install
+        self.assertIn("exit 3", guide)  # waiting on a prerequisite you install yourself
+        self.assertIn("$null -ne $answer", guide)  # the one offer: EOF is never consent
+        self.assertNotIn("Invoke-WebRequest", guide)
+        self.assertNotIn("| " + "sh", guide)
 
     def test_python_version_failure_has_the_windows_guidance(self):
         self.assertIn("winget install Python.Python.3.12",

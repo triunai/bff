@@ -84,7 +84,7 @@ class CliCopy(Fake):
         with mock.patch("bff.cli.http.client.HTTPConnection") as connection:
             connection.return_value.request.side_effect = ConnectionRefusedError(61, "Connection refused")
             code, _, stderr = self.command(["osiris", "--no-update-check"])
-        self.assertEqual(code, 2)
+        self.assertEqual(code, 1)
         self.assertIn("BB is not running at " + cli.OSIRIS_URL, stderr)
         self.assertIn("Start BB", stderr)
         self.assertNotIn("Errno", stderr)

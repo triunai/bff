@@ -20,7 +20,7 @@ UNPUBLISHED = ("Osiris is not publicly released yet; nothing to install. "
                "Developers: bff osiris update --from <dir>.")
 UNPUBLISHED_EXIT = 4  # distinct from 3, which means a prerequisite is missing
 NEEDED_FOR = {"bd": "needed for the Work tab", "herdr": "needed to join terminal panes"}
-NO_BB = "BB not found: run bff osiris setup to see what to install"
+NO_BB = "BB not found: run bff osiris install to see what to install"
 
 
 def load_compat(root=None):
@@ -31,6 +31,7 @@ def load_compat(root=None):
         raise ValueError("compat.json unreadable: " + str(error))
     osiris = data.get("osiris") if isinstance(data, dict) else None
     ok = (isinstance(osiris, dict) and data.get("schema_version") == 1 and _version(data.get("bb_min")) is not None
+          and (osiris.get("private") is None or isinstance(osiris["private"], dict))
           and all(isinstance(osiris.get(key), str) and osiris[key] for key in ("id", "version", "source"))
           and isinstance(osiris.get("published"), bool)
           and (osiris.get("commit") is None or isinstance(osiris["commit"], str)))
@@ -127,8 +128,8 @@ def prerequisites(system=None, which=shutil.which, run=subprocess.run, compat=No
     row("BB", bb, True, "Install BB yourself: npx bb-app@latest (needs " + minimum + " or newer)", bb_version, recent)
     row("git", which("git"), False, "Install git yourself: https://git-scm.com",
         _tool_version([which("git"), "--version"], run) if which("git") else None)
-    row("herdr", which("herdr"), False, "Install herdr yourself; bff doctor explains how")
-    row("bd", which("bd"), False, "Install bd (beads) yourself; bff doctor explains how")
+    row("herdr", which("herdr"), False, "Install herdr yourself; bff osiris doctor explains how")
+    row("bd", which("bd"), False, "Install bd (beads) yourself; bff osiris doctor explains how")
     row("bdi", which("bdi"), False, "Optional" + ("" if system == "Darwin" else " off macOS") + ": install bdi yourself if you use it")
     return rows
 

@@ -433,41 +433,42 @@ class CliTests(Fake):
             code = cli.main(args)
         return code, stdout.getvalue(), stderr.getvalue()
 
-    def test_install_flag_is_renamed_and_runs_setup(self):
+    def test_install_flag_is_renamed_and_runs_install(self):
         self.set_plugins(entry("path:" + HOME + "/dev"))
         code, stdout, stderr = self.command(["osiris", "--install"])
         self.assertEqual(code, 0)
-        self.assertIn("bff osiris --install is renamed: use bff osiris setup", stderr)
-        self.assertIn("Osiris dev channel", stdout)
+        self.assertIn("bff osiris --install is renamed: use bff osiris install", stderr)
+        self.assertIn("Osiris dev install path:" + HOME + "/dev (0.2.0) left as is", stdout)
         self.assertEqual(self.installs(), [])
 
-    def test_setup_dry_run(self):
+    def test_setup_alias_dry_run_is_the_install_plan(self):
         self.set_plugins()
         code, stdout, _ = self.command(["osiris", "setup", "--dry-run"])
-        self.assertEqual(code, 4)
-        self.assertIn("Osiris setup plan", stdout)
-        self.assertIn("not publicly released yet", stdout)
+        self.assertEqual(code, 3)  # node/npm are not on this PATH: the private build waits on them
+        self.assertIn("bff osiris install plan", stdout)
+        self.assertIn("private; built and gated here", stdout)
+        self.assertIn("Node: Install Node yourself", stdout)
         self.assertEqual(self.installs(), [])
 
     def test_run_with_plugin_missing_hints_setup(self):
         self.set_plugins()
         with mock.patch("bff.cli.http.client.HTTPConnection") as connection:
             code, _, stderr = self.command(["osiris"])
-        self.assertEqual(code, 2)
-        self.assertIn("Osiris plugin not installed: run bff osiris setup", stderr)
+        self.assertEqual(code, 1)
+        self.assertIn("Osiris plugin not installed: run bff osiris install", stderr)
         connection.assert_not_called()
 
     def test_run_with_disabled_plugin(self):
         self.set_plugins(entry("git:x@v1", enabled=False, status="disabled"))
         code, _, stderr = self.command(["osiris"])
-        self.assertEqual(code, 2)
-        self.assertIn("Osiris plugin is disabled: enable it in BB, or run bff osiris setup", stderr)
+        self.assertEqual(code, 1)
+        self.assertIn("Osiris plugin is disabled: enable it in BB, or run bff osiris install", stderr)
 
     def test_run_without_bb(self):
         os.environ["PATH"] = "/usr/bin:/bin"
         code, _, stderr = self.command(["osiris"])
-        self.assertEqual(code, 2)
-        self.assertIn("BB not found: run bff osiris setup", stderr)
+        self.assertEqual(code, 1)
+        self.assertIn("BB not found: run bff osiris install", stderr)
 
     def test_run_prints_dev_channel_line(self):
         self.set_plugins(entry("path:" + HOME + "/dev"))

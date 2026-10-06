@@ -320,12 +320,16 @@ class PluginStep(Fixture):
 
                 def run(argv, **kwargs):
                     calls.append((argv, kwargs))
-                    return subprocess.CompletedProcess(argv, code, stdout="from osiris\n", stderr="")
+                    return subprocess.CompletedProcess(argv, code)
                 outcome = update.plugin_step(self.prefix, run=run, which=lambda name: "/fake/bb", out=lines.append)
                 self.assertEqual(outcome, expected)
                 self.assertEqual(calls[0][0], [str(self.prefix / "bin" / "bff"), "osiris", "update", "--yes"])
-                self.assertEqual(calls[0][1]["timeout"], 900)
-                self.assertIn("from osiris", lines)
+                self.assertEqual(calls[0][1]["timeout"], 1800)
+                # streamed, never captured (a first private build is long and must show progress); bff itself
+                # was just switched, so the child only does the plugin
+                self.assertNotIn("stdout", calls[0][1])
+                self.assertNotIn("capture_output", calls[0][1])
+                self.assertEqual(calls[0][1]["env"]["BFF_SKIP_SELF_UPDATE"], "1")
                 self.assertEqual("bff itself is updated" in "".join(lines), expected == "failed")
 
     def test_it_never_raises(self):
@@ -336,7 +340,7 @@ class PluginStep(Fixture):
                 lines = []
                 outcome = update.plugin_step(self.prefix, run=run, which=lambda name: "/fake/bb", out=lines.append)
                 self.assertEqual(outcome, "failed")
-                self.assertIn("Retry: bff osiris update", " ".join(lines))
+                self.assertIn("Retry: bff osiris install", " ".join(lines))
 
     def test_default_which_is_resolved_at_call_time(self):
         with mock.patch.object(update.shutil, "which", return_value=None):
@@ -604,19 +608,19 @@ class Commands(Fixture):
         self.assertIn(OLD + " -> " + NEW, out)
         self.assertEqual(self.snapshot(), before)
 
-    def test_update_failure_exits_2_and_changes_nothing(self):
+    def test_update_failure_exits_1_and_changes_nothing(self):
         before = self.snapshot()
         data = bytearray(self.tarball().read_bytes())
         data[100] ^= 0xFF
         self.tarball().write_bytes(bytes(data))
         code, _, err = self.run_cli(["update", "--yes"], {"BFF_RELEASE_BASE": self.base})
-        self.assertEqual(code, 2)
+        self.assertEqual(code, 1)
         self.assertIn("checksum", err)
         self.assertUnchanged(before)
 
-    def test_bad_release_base_exits_2(self):
+    def test_bad_release_base_exits_1(self):
         code, _, err = self.run_cli(["update", "--check"], {"BFF_RELEASE_BASE": "http://example.com"})
-        self.assertEqual(code, 2)
+        self.assertEqual(code, 1)
         self.assertIn("https://", err)
 
     def test_method_gates(self):
