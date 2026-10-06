@@ -13,6 +13,7 @@
     "bff/herdr.py",
     "bff/herdr_observer.py",
     "bff/launch.py",
+    "bff/paths.py",
     "bff/project.py",
     "install.py",
     "install.sh",
