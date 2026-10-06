@@ -147,7 +147,9 @@ def _attest(tarball, version, gh, require, out):
     gh = shutil.which("gh") if gh is None else gh
     if not gh:
         if require:
-            raise UpdateError("attestation required but gh is not installed; nothing was changed")
+            raise UpdateError("attestation required but gh is not installed; nothing was changed. Install gh "
+                              "(https://cli.github.com) or run bff update without --require-attestation "
+                              "(for auto-update: bff config set update.auto false)")
         _emit(out, NO_ATTESTATION)
         return False
     command = [str(gh), "attestation", "verify", str(tarball), "-R", REPO, "--signer-workflow", WORKFLOW,
@@ -291,6 +293,7 @@ def plugin_step(prefix, *, run=subprocess.run, which=None, out=None):
         _emit(out, "Osiris plugin: skipped (BB not found)")
         return "skipped"
     argv = [str(Path(prefix) / "bin" / "bff"), "osiris", "update", "--yes"]
+    _emit(out, "Updating the Osiris plugin through BB (this can take a few minutes; bff itself is already updated)...")
     try:
         done = run(argv, capture_output=True, text=True, timeout=900)
         for stream in (done.stdout, done.stderr):
@@ -303,6 +306,8 @@ def plugin_step(prefix, *, run=subprocess.run, which=None, out=None):
         return "ok"
     if code == 3:
         return "waiting"
+    if code == 4:
+        return "unpublished"
     _emit(out, "Osiris plugin update failed (bff itself is updated). Retry: bff osiris update")
     return "failed"
 
