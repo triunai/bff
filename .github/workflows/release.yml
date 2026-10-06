@@ -1,0 +1,119 @@
+# Draft: not yet enabled. Tags are created by the owner only.
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Unit tests and release canary (standard library only)
+        run: python -m unittest discover -s tests -v
+  privacy:
+    # Blocking on purpose. A release is impossible until the owner's history rewrite (D4) lands: that is intended.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Privacy gate over every tracked file
+        env:
+          BFF_PRIVACY_DENYLIST: ${{ secrets.BFF_PRIVACY_DENYLIST }}
+        run: python scripts/privacy_gate.py .
+      - name: Privacy gate over the built archive
+        env:
+          BFF_PRIVACY_DENYLIST: ${{ secrets.BFF_PRIVACY_DENYLIST }}
+        run: |
+          python scripts/build-bff-release.py --output "$RUNNER_TEMP/privacy-archive"
+          python scripts/privacy_gate.py . --archive "$RUNNER_TEMP"/privacy-archive/bff-*.tar.gz
+  build:
+    needs: [test, privacy]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Tag must equal v plus the single version source, and every pin must agree
+        run: |
+          python - <<'PY'
+          import os, sys
+          sys.path.insert(0, "scripts")
+          import versioning
+          version = versioning.read_version(".")
+          tag = os.environ["GITHUB_REF_NAME"]
+          if tag != "v" + version:
+              raise SystemExit("tag %s does not match bff/__init__.py version %s" % (tag, version))
+          drift = versioning.check_pins(".")
+          if drift:
+              raise SystemExit("version pins disagree: " + "; ".join(drift))
+          PY
+      - name: Build release assets
+        run: python scripts/build-bff-release.py --output dist
+      - name: Release notes from CHANGELOG
+        run: |
+          python - <<'PY'
+          import os, sys
+          sys.path.insert(0, "scripts")
+          import release
+          notes = release.changelog_section(".", os.environ["GITHUB_REF_NAME"][1:])
+          open("dist-notes.md", "w", encoding="utf-8").write(notes + "\n")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-assets
+          path: |
+            dist/*
+            dist-notes.md
+          if-no-files-found: error
+  attest:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-assets
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: |
+            dist/bff-*.tar.gz
+            dist/SHA256SUMS
+            dist/install.sh
+            dist/install.ps1
+            dist/compat.json
+  draft:
+    needs: attest
+    runs-on: ubuntu-latest
+    # The owner's click on the `release` environment is required before this job runs.
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-assets
+      - name: Create the draft release (never published from CI)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "$TAG" \
+            --notes-file dist-notes.md \
+            dist/bff-*.tar.gz dist/SHA256SUMS dist/install.sh dist/install.ps1 dist/compat.json

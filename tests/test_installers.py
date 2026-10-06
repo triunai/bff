@@ -122,6 +122,68 @@ class WindowsInstallerTests(unittest.TestCase):
             self.assertIsNone(pattern.search(path.read_text()), str(path))
 
 
+class ReleaseBuilderTests(unittest.TestCase):
+    def test_sums_cover_tarball_and_loose_assets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            built = build_release(out)
+            rows = [line.split("  ") for line in (out / "SHA256SUMS").read_text().splitlines()]
+            self.assertEqual([r[1] for r in rows], ["bff-" + installer.__version__ + ".tar.gz", "install.sh", "install.ps1", "compat.json"])
+            self.assertEqual([r for r in rows if r[1].startswith("bff-") and r[1].endswith(".tar.gz")], rows[:1])
+            self.assertEqual(rows[0][0], built["sha256"])
+            for digest, name in rows:
+                self.assertEqual(hashlib.sha256((out / name).read_bytes()).hexdigest(), digest, name)
+            for name in ("install.sh", "install.ps1", "compat.json"):
+                self.assertEqual((out / name).read_bytes(), (ROOT / name).read_bytes())
+
+
+class WorkflowCheckTests(unittest.TestCase):
+    def run_check(self, *paths):
+        return subprocess.run([sys.executable, str(ROOT / "scripts" / "check_workflows.py"), *map(str, paths)],
+                              capture_output=True, text=True)
+
+    def setUp(self):
+        try:
+            import yaml  # noqa: F401
+        except ImportError:
+            self.skipTest("PyYAML is not installed")
+
+    def test_real_workflows_pass(self):
+        run = self.run_check(ROOT / ".github/workflows/tests.yml", ROOT / ".github/workflows/release.yml")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+
+    def broken(self, old, new):
+        text = (ROOT / ".github/workflows/release.yml").read_text()
+        self.assertIn(old, text)
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name) / "release.yml"
+        path.write_text(text.replace(old, new, 1))
+        return self.run_check(path)
+
+    def test_unpinned_uses_fails(self):
+        run = self.broken("actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4", "actions/checkout@v4")
+        self.assertEqual(run.returncode, 1)
+        self.assertIn("not pinned", run.stdout)
+
+    def test_id_token_outside_attest_fails(self):
+        run = self.broken("  build:\n    needs: [test, privacy]\n    runs-on: ubuntu-latest\n",
+                          "  build:\n    needs: [test, privacy]\n    runs-on: ubuntu-latest\n    permissions:\n      id-token: write\n")
+        self.assertEqual(run.returncode, 1)
+        self.assertIn("id-token", run.stdout)
+
+    def test_draft_without_environment_fails(self):
+        run = self.broken("    environment: release\n", "")
+        self.assertEqual(run.returncode, 1)
+        self.assertIn("environment: release", run.stdout)
+
+    def test_pipe_to_shell_fails(self):
+        bad = "ec" + "ho hi " + "| " + "sh"
+        run = self.broken("run: python -m unittest discover -s tests -v", "run: " + bad)
+        self.assertEqual(run.returncode, 1)
+        self.assertIn("pipe-to-shell", run.stdout)
+
+
 def build_release(output):
     run = subprocess.run([sys.executable, str(ROOT / "scripts" / "build-bff-release.py"), "--output", str(output)],
                          capture_output=True, text=True)
