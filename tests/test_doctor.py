@@ -7,10 +7,11 @@ from bff import doctor
 
 PATHS = {"herdr": "/opt/homebrew/Cellar/herdr/0.9.3/bin/herdr", "bd": "/opt/homebrew/Cellar/beads/1.3.1/bin/bd",
          "omc": "/x/node_modules/oh-my-claude-sisyphus/bin/omc", "omx": "/x/node_modules/oh-my-codex/bin/omx",
-         "bb": "/h/bb", "aeh": "/h/aeh", "brew": "/b/brew", "npm": "/b/npm"}
-LATEST = {"herdr": "0.9.3", "beads": "1.3.1", "oh-my-claude-sisyphus": "5.6.0", "oh-my-codex": "0.21.7"}
+         "bb": "/h/bb", "aeh": "/h/aeh", "brew": "/b/brew", "npm": "/b/npm",
+         "gh": "/opt/homebrew/Cellar/gh/2.80.0/bin/gh"}
+LATEST = {"herdr": "0.9.3", "beads": "1.3.1", "oh-my-claude-sisyphus": "5.6.0", "oh-my-codex": "0.21.7", "gh": "2.80.0"}
 VERSIONS = {"herdr": "herdr 0.9.3", "bd": "bd version 1.3.1", "omc": "5.6.0", "omx": "oh-my-codex v0.21.7",
-            "bb": "0.45.0", "aeh": "aeh 0.1.0"}
+            "bb": "0.45.0", "aeh": "aeh 0.1.0", "gh": "gh version 2.80.0 (2026-09-30)"}
 
 
 class Tty(io.StringIO):

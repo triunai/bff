@@ -25,7 +25,11 @@ DEFAULT_BASE = "https://github.com/triunai/bff/releases"
 REPO = "triunai/bff"
 WORKFLOW = "triunai/bff/.github/workflows/release.yml"
 SEMVER = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
-NO_ATTESTATION = "authenticity not checked: only the checksum was verified (install gh to verify provenance)"
+# O1 safe default: with gh, attestation is REQUIRED (a refusal is fatal); without gh the swap is checksum-only, and
+# that is said loudly with the way out, never silently.
+NO_ATTESTATION = ("WARNING: authenticity NOT checked (gh is not installed): the SHA256 checksum proves the file is "
+                  "intact, not who built it. To verify provenance from now on, install gh: bff osiris doctor "
+                  "offers it (or https://cli.github.com).")
 MAX_MEMBERS = 5000
 MAX_BYTES = 100 * 1024 * 1024
 MAX_SUMS = 1024 * 1024

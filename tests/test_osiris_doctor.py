@@ -200,5 +200,29 @@ class DoctorTests(unittest.TestCase):
         self.assertFalse(companion.call_args.kwargs["registry"])
 
 
+class AttestationDefaultTests(unittest.TestCase):
+    """O1 safe default: with gh present attestation is required; without it the swap is checksum-only, said LOUDLY,
+    and the next step (doctor offers gh) is named."""
+
+    def test_no_gh_warning_is_loud_and_names_the_way_out(self):
+        from bff import update
+        lines = []
+        self.assertFalse(update._attest(Path("/x/bff-9.9.9.tar.gz"), "9.9.9", False, False, lines.append))
+        text = " ".join(lines)
+        self.assertTrue(text.startswith("WARNING: authenticity NOT checked"), text)
+        self.assertIn("bff osiris doctor", text)
+
+    def test_gh_present_and_refusing_is_fatal(self):
+        from bff import update
+        failing = subprocess.CompletedProcess([], 1, stdout="", stderr="no attestation")
+        with mock.patch.object(update.subprocess, "run", return_value=failing), self.assertRaises(update.UpdateError):
+            update._attest(Path("/x/bff-9.9.9.tar.gz"), "9.9.9", "/fake/gh", False, lambda line: None)
+
+    def test_doctor_offers_gh_through_the_consented_companion_plan(self):
+        from bff import doctor as tools
+        gh = next(r for r in tools.RECIPES if r["component"] == "gh")
+        self.assertEqual(gh["routes"], (("brew", "gh"),))
+
+
 if __name__ == "__main__":
     unittest.main()

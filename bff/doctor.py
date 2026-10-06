@@ -41,6 +41,9 @@ RECIPES = (
     {"component": "OMX", "executables": ("omx",), "routes": (("npm", "oh-my-codex"),),
      "source": "https://github.com/Yeachan-Heo/oh-my-codex",
      "note": "OMX also needs a working authenticated `codex` on PATH; BFF does not install Codex."},
+    {"component": "gh", "executables": ("gh",), "routes": (("brew", "gh"),),
+     "source": "https://cli.github.com",
+     "note": "gh lets bff verify a release's build attestation; then sign in once with: gh auth login"},
     {"component": "aeh", "executables": ("aeh",), "routes": (),
      "manual": "aeh is a local prototype with no public package source; install it from your own release."},
 )
