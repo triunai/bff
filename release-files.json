@@ -15,6 +15,7 @@
     "bff/launch.py",
     "bff/paths.py",
     "bff/project.py",
+    "bff/state.py",
     "install.py",
     "install.sh",
     "plugins/osiris/LICENSE",
