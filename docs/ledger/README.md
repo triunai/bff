@@ -35,3 +35,4 @@ Date: YYYY-MM-DD · Version: x.y.z (or "pre-release")
 | 0002 | [v0.1.0 publication](0002-v0.1.0-publication.md) | Sanitised public release, archive canary, one-line install |
 | 0003 | [v0.1.1 doctor install/update](0003-doctor-install-update.md) | `bff doctor` installs and upgrades companion tools, with consent |
 | 0004 | [SDK hygiene and the v0.1.1 release](0004-sdk-hygiene-and-release.md) | One version source, a release script, a changelog, self-version check, CI |
+| 0005 | [Triage before dispatch, a work ledger, and a tool bake-off](0005-work-ledger-and-parallel-lanes.md) | Parallel lanes with leases, Beads as ledger, four-tool bake-off |
