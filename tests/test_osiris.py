@@ -252,6 +252,22 @@ class SetupTests(Fake):
         self.assertNotIn("plugin", state.load(self.state_file))
         self.assertEqual(osiris.plugin_status(self.bb)["source"], old)
 
+    def test_a_failed_install_of_a_same_version_build_is_not_a_success(self):
+        # Every 0.2.16 rc reports "0.2.16-dev": when bb refuses the new dir, the OLD build still runs at the wanted
+        # version, which used to read as "Installed Osiris 0.2.16-dev" and recorded the wrong source.
+        old = self.plugin("install-0.2.16-rc3-2b12d6e", "0.2.16-dev")
+        new = self.plugin("install-0.2.16-rc3.1-66347de", "0.2.16-dev")
+        self.set_plugins(entry("path:" + str(old), "0.2.16-dev"))
+        os.environ["FAKE_BB_INSTALL_EXIT"] = "1"
+        self.assertEqual(self.call(osiris.update, from_dir=str(new), compat=self.compat()), 1)
+        self.assertIn("did not verify", self.output())
+        self.assertNotIn("Installed Osiris", self.output())
+        self.assertNotIn("plugin", state.load(self.state_file))
+        os.environ.pop("FAKE_BB_INSTALL_EXIT")
+        self.install_result(default={"source": "path:" + str(old), "version": "0.2.16-dev"})  # exit 0, wrong dir
+        self.assertEqual(self.call(osiris.update, from_dir=str(new), compat=self.compat()), 1)
+        self.assertNotIn("Installed Osiris", self.output())
+
     def test_already_on_target(self):
         compat = self.compat(published=True)
         self.set_plugins(entry(compat["osiris"]["source"], "0.3.0"))

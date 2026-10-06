@@ -168,6 +168,12 @@ def _install(bb, run, source):
         return False
 
 
+def _serves(status, source):
+    if _kind(source) != "path" or _kind(status.get("source") or "") != "path":
+        return True  # managed sources are reported in BB's own spelling; the version check covers them
+    return Path(_bare(status["source"])).resolve() == Path(_bare(source)).resolve()
+
+
 def _healthy(status, version=None):
     ok = status["present"] and status["status"] == "running" and status["enabled"]
     return ok and (version is None or status["version"] == version)
@@ -185,12 +191,15 @@ def _record(state_file, status, previous):
 def _install_checked(bb, run, out, state_file, source, version, before):
     """Install `source`, require a healthy plugin at `version`; on failure restore the previous source. 0 or 1."""
     previous = before["source"] if before["present"] else None
-    _install(bb, run, source)
+    installed = _install(bb, run, source)
     try:
         after = plugin_status(bb, run)
     except ValueError:
         after = {"present": False}
-    if after.get("present") and _healthy(after, version):
+    # Every Osiris rc build reports the same version (0.2.16-dev), so "running at the version" alone would call a
+    # FAILED install of a new build a success while the old build keeps running: require bb's exit 0, and for a
+    # path install, that BB now serves THAT directory.
+    if installed and after.get("present") and _healthy(after, version) and _serves(after, source):
         _record(state_file, after, previous)
         _say(out, "Installed Osiris " + str(after["version"]) + " from " + after["display"] + ".")
         return 0, after
