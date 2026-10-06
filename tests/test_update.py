@@ -189,6 +189,44 @@ class UpdateFlow(Fixture):
                 self.update()
         self.assertEqual(self.version(), "bff " + NEW)
 
+    def test_installer_and_smoke_never_inherit_the_terminal(self):
+        # Found by a real-pty run: the new installer's D7 PATH offer prompted on the inherited TTY
+        # while its stderr was captured, so `bff update` hung on a question nobody could see.
+        real, calls = subprocess.run, []
+        def recording_run(*args, **kwargs):
+            calls.append((args[0], kwargs.get("stdin")))
+            return real(*args, **kwargs)
+        with mock.patch.object(update.subprocess, "run", side_effect=recording_run):
+            self.update()
+        children = [stdin for argv, stdin in calls if "--stage-only" in argv or "--activate" in argv
+                    or "--version" in argv]
+        self.assertEqual(len(children), 3, calls)
+        self.assertTrue(all(stdin is subprocess.DEVNULL for stdin in children), calls)
+
+    def _activate_then_fail(self, restore_fails):
+        real = update._run_installer
+        def installer_run(python, script, prefix, flag, value=None):
+            if flag == "--activate" and value is not None and value.startswith(NEW + "-"):
+                real(python, script, prefix, flag, value)
+                raise update.UpdateError("simulated failure after the link was swapped")
+            if flag == "--activate" and restore_fails:
+                raise OSError("simulated restore failure")
+            return real(python, script, prefix, flag, value)
+        with mock.patch.object(update, "_run_installer", side_effect=installer_run):
+            with self.assertRaises(update.UpdateError):
+                self.update()
+
+    def test_activate_that_swaps_then_fails_is_rolled_back(self):
+        # The live failure: the installer swapped the link, then exited non-zero; the updater thought
+        # nothing had flipped, deleted the new release and left bin/bff dangling.
+        before = self.snapshot()
+        self._activate_then_fail(restore_fails=False)
+        self.assertUnchanged(before)
+
+    def test_activate_that_swaps_then_fails_without_restore_keeps_a_working_bff(self):
+        self._activate_then_fail(restore_fails=True)
+        self.assertEqual(self.version(), "bff " + NEW)
+
     def test_existing_state_bytes_are_untouched_on_failure(self):
         state.update(self.state_file, lambda d: d.update({"bff": {"active": "x", "previous": None}}))
         before = self.snapshot()

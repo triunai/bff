@@ -166,8 +166,10 @@ def _attest(tarball, version, gh, require, out):
 def _run_installer(python, installer, prefix, flag, value=None):
     command = [str(python), str(installer), "--prefix", str(prefix), flag] + ([value] if value else [])
     try:
-        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True,
-                                timeout=300)
+        # stdin=DEVNULL: the installer must never wait on a question nobody can see (its D7 PATH
+        # offer prompts when stdin is a TTY, and its stderr is captured here).
+        result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                universal_newlines=True, timeout=300)
     except (OSError, subprocess.TimeoutExpired) as error:
         raise UpdateError("installer could not run: " + str(error))
     if result.returncode:
@@ -176,8 +178,8 @@ def _run_installer(python, installer, prefix, flag, value=None):
 
 
 def _smoke_version(launcher):
-    result = subprocess.run([str(launcher), "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            universal_newlines=True, timeout=30)
+    result = subprocess.run([str(launcher), "--version"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, universal_newlines=True, timeout=30)
     return result.stdout.strip() if result.returncode == 0 else None
 
 
@@ -256,8 +258,11 @@ def apply_update(version, *, prefix, base, require_attestation=False, gh=None, o
         _emit(out, "ok: manifest verified and release staged")
         _smoke(staged, version)
         _emit(out, "ok: smoke test passed")
-        _run_installer(python, installer, prefix, "--activate", new)
-        flipped = True
+        try:
+            _run_installer(python, installer, prefix, "--activate", new)
+        finally:
+            # The installer may have swapped the link and then failed: trust the link, not the call.
+            flipped = _active_id(prefix) == new
         _record(state_file, old, new, version)
         _emit(out, "ok: switched to " + new)
         return {"from": old, "to": new, "version": version, "attested": attested,
