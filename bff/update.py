@@ -19,6 +19,7 @@ import tempfile
 import urllib.request
 
 from . import paths, state
+from .prompt import answer_is_yes
 
 DEFAULT_BASE = "https://github.com/triunai/bff/releases"
 REPO = "triunai/bff"
@@ -361,7 +362,7 @@ def rollback(*, prefix, state_file, yes=False, stdin=None, out=None):
             _emit(out, "no changes made; re-run with --yes to apply")
             return {"from": current, "to": target, "changed": False}
         _emit(out, "Roll back bff " + str(current) + " -> " + target + "? [Y/n] ")
-        if stdin.readline().strip().lower() not in ("", "y", "yes"):
+        if not answer_is_yes(stdin.readline()):
             _emit(out, "cancelled")
             return {"from": current, "to": target, "changed": False}
     try:

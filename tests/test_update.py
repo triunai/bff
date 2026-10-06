@@ -386,6 +386,17 @@ class Rollback(Fixture):
         self.assertFalse(result["changed"])
         self.assertEqual(self.snapshot(), before)
 
+    def test_eof_is_not_consent(self):
+        self.update()
+        before = self.snapshot()
+
+        class Tty(io.StringIO):
+            def isatty(self):
+                return True
+        result = update.rollback(prefix=self.prefix, state_file=self.state_file, stdin=Tty(""), out=lambda line: None)
+        self.assertFalse(result["changed"])
+        self.assertEqual(self.snapshot(), before)
+
     def test_missing_running_installer_gives_the_manual_fallback(self):
         self.update()
         with mock.patch.object(update, "_load_installer", return_value=None):
@@ -504,6 +515,19 @@ class Commands(Fixture):
         check = state.load(self.state_file)["update_check"]
         self.assertEqual((check["current"], check["latest"], check["available"]), (OLD, NEW, True))
         self.assertRegex(check["checked_at"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d")
+
+    def test_update_prompt_eof_is_not_consent(self):
+        class Tty(io.StringIO):
+            def isatty(self):
+                return True
+        before = os.readlink(str(self.prefix / "bin" / "bff"))
+        with mock.patch.object(sys, "stdin", Tty("")), \
+                mock.patch.object(update, "apply_with_plugin", side_effect=AssertionError("applied on EOF")) as applied:
+            code, out, _ = self.run_cli(["update"], {"BFF_RELEASE_BASE": self.base})
+        applied.assert_not_called()
+        self.assertEqual(code, 0)
+        self.assertIn("cancelled", out)
+        self.assertEqual(os.readlink(str(self.prefix / "bin" / "bff")), before)
 
     def test_check_up_to_date_and_unknown(self):
         (self.srv / "latest" / "download" / "SHA256SUMS").write_text("a" * 64 + "  bff-" + OLD + ".tar.gz\n")

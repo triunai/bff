@@ -273,6 +273,12 @@ class SetupTests(Fake):
         self.assertEqual(self.call(osiris.setup, stdin=TtyIn("n\n"), compat=compat), 0)
         self.assertEqual(self.installs(), [])
 
+    def test_tty_eof_is_not_consent(self):
+        compat = self.compat(published=True)
+        self.set_plugins()
+        self.assertEqual(self.call(osiris.setup, stdin=TtyIn(""), compat=compat), 0)
+        self.assertEqual(self.installs(), [])
+
     def test_missing_bb_returns_3_with_rows_in_order(self):
         code = self.call(osiris.setup, bb=None, which=lambda name: None, system="Darwin", compat=self.compat())
         self.assertEqual(code, 3)

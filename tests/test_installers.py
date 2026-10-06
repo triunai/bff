@@ -55,6 +55,12 @@ class PathStepTests(unittest.TestCase):
         self.assertEqual(installer.path_line("/usr/bin/fish", "/opt/my dir/bin"), "fish_add_path '/opt/my dir/bin'")
         self.assertEqual(installer.path_line("/bin/sh", '/opt/a$b"c/bin'), 'export PATH="/opt/a\\$b\\"c/bin:$PATH"')
 
+    def test_tty_eof_is_not_consent(self):
+        result, out = self.offer(answer="")
+        self.assertFalse(result["path_modified"])
+        self.assertFalse((self.home / ".zprofile").exists())
+        self.assertIn(installer.path_line("/bin/zsh", self.bin), out)
+
     def test_tty_enter_edits_once_and_is_idempotent(self):
         result, out = self.offer()
         rc = self.home / ".zprofile"

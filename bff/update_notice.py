@@ -14,6 +14,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 from . import paths, state
+from .prompt import answer_is_yes
 
 INTERVAL = timedelta(hours=24)
 RELAUNCHED = "BFF_RELAUNCHED"
@@ -68,10 +69,6 @@ def _report_success(result, out):
     if result.get("changes"):
         out.write(str(result["changes"]).rstrip() + "\n")
     out.write("undo: bff rollback\n")
-
-
-def _answer_is_yes(line):
-    return line.strip().lower() in ("", "y", "yes")
 
 
 def daily_notice(*, current, state_file, stdin, out, now=None, env=None, latest=None, apply=None,
@@ -134,7 +131,7 @@ def _notice(current, state_file, stdin, out, now, env, latest, apply, relaunch, 
         out.write("bff %s is available. Update now? [Y/n] " % found)
         out.flush()
         _mark_prompted(state_file, now)
-        if _answer_is_yes(stdin.readline()):
+        if answer_is_yes(stdin.readline()):
             try:
                 result = apply(found, prefix=prefix, base=base)
             except ValueError as error:

@@ -113,6 +113,12 @@ class DoctorTests(unittest.TestCase):
         code, _ = run(env, stdin=Tty("\n"))
         self.assertEqual(len(env.mutations), 1)
 
+    def test_prompt_eof_is_not_consent(self):
+        env = Env(missing=("herdr",))
+        code, text = run(env, stdin=Tty(""))
+        self.assertEqual((code, env.mutations), (0, []))
+        self.assertIn("No changes made.", text)
+
     def test_one_failure_continues_and_exits_nonzero(self):
         env = Env(missing=("herdr", "omc"), fail=("herdr",))
         code, text = run(env, assume_yes=True, stdin=Tty(tty=False))

@@ -13,6 +13,7 @@ import sys
 import tempfile
 
 from . import paths, state
+from .prompt import answer_is_yes
 
 PLUGIN_ID = "tool-observer"
 UNPUBLISHED = ("No public Osiris release is pinned for this bff yet (owner decision D1). "
@@ -143,7 +144,7 @@ def _confirm(prompt, stdin, out):
     if not stdin.isatty():
         return None
     _say(out, prompt + " [Y/n]")
-    return stdin.readline().strip().lower() in ("", "y", "yes")
+    return answer_is_yes(stdin.readline())
 
 
 def with_ref(source, ref):

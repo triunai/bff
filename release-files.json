@@ -16,6 +16,7 @@
     "bff/osiris.py",
     "bff/paths.py",
     "bff/project.py",
+    "bff/prompt.py",
     "bff/state.py",
     "bff/update.py",
     "bff/update_notice.py",

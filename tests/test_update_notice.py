@@ -194,6 +194,13 @@ class PromptTests(NoticeCase):
         self.assertEqual(self.calls.relaunches, 0)
         self.assertIn("Skipped. Run bff update any time; turn this off with: bff config set update.check false\n", text)
 
+    def test_eof_is_not_consent(self):
+        outcome, text = self.notice(stdin=Stdin("", True))
+        self.assertEqual(outcome, "declined")
+        self.assertEqual(self.calls.apply_calls, [])
+        self.assertEqual(self.calls.relaunches, 0)
+        self.assertIn("Skipped.", text)
+
     def test_apply_failure_is_noticed_and_does_not_relaunch(self):
         calls = Calls(apply_error=ValueError("checksum mismatch"))
         outcome, text = self.notice(stdin=Stdin("\n", True), calls=calls)
