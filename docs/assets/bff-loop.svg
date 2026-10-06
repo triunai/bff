@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="1200" height="420" role="img" aria-labelledby="t d">
+  <title id="t">The BFF loop</title>
+  <desc id="d">Intent, hydrate, contract, owned lane, evidence, independent review, fitness and wrap, with wrap feeding the next session's hydrate step.</desc>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0L10 5L0 10z" fill="#8a8aa0"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="420" rx="14" fill="#05050b"/>
+  <g font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="middle">
+    <!-- row 1 -->
+    <rect x="40" y="70" width="240" height="90" rx="10" fill="#0d0d1f" stroke="#ff4fd8" stroke-width="2"/>
+    <text x="160" y="106" font-size="20" font-weight="700" fill="#ff4fd8">1 intent</text>
+    <text x="160" y="132" font-size="13" fill="#c8c8d8">what you actually want</text>
+
+    <rect x="340" y="70" width="240" height="90" rx="10" fill="#0d0d1f" stroke="#00e5ff" stroke-width="2"/>
+    <text x="460" y="106" font-size="20" font-weight="700" fill="#00e5ff">2 hydrate</text>
+    <text x="460" y="132" font-size="13" fill="#c8c8d8">bff hydrate: one thread</text>
+
+    <rect x="640" y="70" width="240" height="90" rx="10" fill="#0d0d1f" stroke="#f4ff3a" stroke-width="2"/>
+    <text x="760" y="106" font-size="20" font-weight="700" fill="#f4ff3a">3 contract</text>
+    <text x="760" y="132" font-size="13" fill="#c8c8d8">scope, non-goals, checks</text>
+
+    <rect x="940" y="70" width="220" height="90" rx="10" fill="#0d0d1f" stroke="#ff4fd8" stroke-width="2"/>
+    <text x="1050" y="106" font-size="20" font-weight="700" fill="#ff4fd8">4 owned lane</text>
+    <text x="1050" y="132" font-size="13" fill="#c8c8d8">own worktree</text>
+
+    <!-- row 2 -->
+    <rect x="940" y="260" width="220" height="90" rx="10" fill="#0d0d1f" stroke="#00e5ff" stroke-width="2"/>
+    <text x="1050" y="296" font-size="20" font-weight="700" fill="#00e5ff">5 evidence</text>
+    <text x="1050" y="322" font-size="13" fill="#c8c8d8">committed, not narrated</text>
+
+    <rect x="640" y="260" width="240" height="90" rx="10" fill="#0d0d1f" stroke="#f4ff3a" stroke-width="2"/>
+    <text x="760" y="296" font-size="20" font-weight="700" fill="#f4ff3a">6 review</text>
+    <text x="760" y="322" font-size="13" fill="#c8c8d8">not by the author</text>
+
+    <rect x="340" y="260" width="240" height="90" rx="10" fill="#0d0d1f" stroke="#ff4fd8" stroke-width="2"/>
+    <text x="460" y="296" font-size="20" font-weight="700" fill="#ff4fd8">7 fitness</text>
+    <text x="460" y="322" font-size="13" fill="#c8c8d8">bff check --run</text>
+
+    <rect x="40" y="260" width="240" height="90" rx="10" fill="#0d0d1f" stroke="#00e5ff" stroke-width="2"/>
+    <text x="160" y="296" font-size="20" font-weight="700" fill="#00e5ff">8 wrap</text>
+    <text x="160" y="322" font-size="13" fill="#c8c8d8">durable state in the repo</text>
+  </g>
+  <g stroke="#8a8aa0" stroke-width="2" fill="none" marker-end="url(#ar)">
+    <path d="M282 115H336"/>
+    <path d="M582 115H636"/>
+    <path d="M882 115H936"/>
+    <path d="M1050 162V256"/>
+    <path d="M938 305H884"/>
+    <path d="M638 305H584"/>
+    <path d="M338 305H284"/>
+  </g>
+  <!-- loop back -->
+  <path d="M160 258V190Q160 175 175 175H445Q460 175 460 162" stroke="#f4ff3a" stroke-width="2" stroke-dasharray="6 6" fill="none" marker-end="url(#ar)"/>
+  <text x="300" y="206" font-family="Menlo, Consolas, monospace" font-size="13" fill="#f4ff3a" text-anchor="middle">next session starts here</text>
+  <text x="600" y="34" font-family="Menlo, Consolas, monospace" font-size="14" fill="#8a8aa0" text-anchor="middle">The chat is disposable. The spine, the contracts, the commits and the check output are not.</text>
+  <text x="600" y="396" font-family="Menlo, Consolas, monospace" font-size="12" fill="#8a8aa0" text-anchor="middle">Every step leaves an artifact in the repository.</text>
+</svg>
