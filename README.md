@@ -1,68 +1,35 @@
+<p align="center">
+  <img src="docs/assets/bff-hero.svg" alt="BFF, Built Fucking Fast. Illustration of a Factory floor: Intake, Claim, Build, Gate, Land." width="100%">
+</p>
+
+<p align="center"><sub>Illustration, not a screenshot.</sub></p>
+
 # BFF — Built Fucking Fast
 
 **The repository is the memory. The chat is just a process.**
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-3776AB)](#install)
+BFF is a portable CLI and a set of repo conventions for running coding agents without losing the plot, plus Osiris, a workbench that shows what the agents actually did.
+
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-3776AB)](#30-second-install)
 [![TypeScript](https://img.shields.io/badge/osiris-TypeScript-3178C6)](plugins/osiris)
 [![Node 24 (dev only)](https://img.shields.io/badge/node-24%20(dev%20only)-5FA04E)](#development)
 [![MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/triunai/bff)](https://github.com/triunai/bff/releases)
 
-BFF is a portable CLI and a set of repo conventions for running coding agents without losing the plot. Osiris, its workbench, shows what the agents actually did. It runs inside **BB**, a separate desktop workbench app that hosts Osiris as a plugin; BFF does not install BB, so install it first if you want Osiris (the CLI works without it). [Install the CLI](#install-in-30-seconds) below.
-
 > The CLI is public and usable today (v0.1.1). The one-command installer is not out yet; to hear when it ships, see [Get v0.2.0](#get-v020).
-
 > This README tracks `main`. The README for the release you install is at the `v0.1.1` tag, so a file linked here (for example `docs/roadmap.md`) may not exist in your install.
 
-<!-- GIF SLOT (10-20 s): docs/assets/osiris-factory.gif
-     Shot: Osiris with synthetic data: open Toolcalls, type status:error, select a failed call, open Trace.
-     Do NOT add the image link until the file exists; a missing file renders as a broken image on GitHub. -->
+## What you get
 
-<!-- HERO SCREENSHOT SLOT: docs/assets/osiris-workbench.png
-     Shot: Osiris in BB. Work list on the left, native chat in the centre, current-workspace Changes on the right. Synthetic data only. -->
+| `>_` CLI | `[O]` Osiris workbench | `[v]` Evidence |
+| --- | --- | --- |
+| `bff init / check / hydrate` bind a repo's Doc-Spine and print context for one workstream. | A plugin for BB that observes Claude Code and Codex tool calls: trace, search, failures, retained history. | `bff check --run` executes the commands you declare. A green command is evidence. It is not theology. |
+| `bff doctor` plans installs and upgrades for companion tools after one prompt. | Evidence-first: an exit code is an observation, not necessarily a failure. | Task contracts, independent review and durable wraps leave artifacts in the repository, not in a chat. |
+| Python 3.9+, standard library only. | Needs BB, a separate desktop app. The CLI works without it. | No fake percentages: unknown outcomes are reported as unknown. |
 
-## What is BFF?
+## 30-second install
 
-Most agent work starts as a prompt and ends as archaeology.
-
-```text
-prompt -> giant context dump -> edits -> tests, probably -> "done" -> next session starts archaeology
-```
-
-BFF expects something closer to this, and each step leaves an artifact in the repository:
-
-```text
-intent -> hydrate -> contract -> owned lane -> evidence -> independent review -> fitness -> wrap
-```
-
-```mermaid
-flowchart LR
-    A[intent] --> B[hydrate context]
-    B --> C[task contract]
-    C --> D[owned lane<br/>own worktree]
-    D --> E[committed evidence]
-    E --> F[independent review]
-    F --> G[fitness checks]
-    G --> H[wrap durable state]
-    H -. next session starts here .-> B
-```
-
-The chat is disposable. The spine, the contracts, the commits and the check output are not.
-
-## Key capabilities
-
-- **Doc-Spine.** Thread-aware durable project state that lives in the repository, not in a context window.
-- **`hygiene.md` router.** One file owns the order of operations. Skills execute it; they do not reinvent it.
-- **Task contracts.** Objective, allowed files, non-goals, validation commands and stop conditions, written before the agent starts.
-- **Fitness before confidence.** `bff check --run` executes the commands you declare. A green command is evidence. It is not theology.
-- **Independent review.** The author does not approve their own work. A separate review pass does.
-- **Durable wraps.** Coordinated end-of-session updates instead of ceremonial summaries.
-- **A checked context graph.** `bff check` validates the bound spine; `bff hydrate` prints context for one workstream without changing files.
-- **Osiris.** A plugin for BB (the desktop workbench app above) that observes Claude Code and Codex tool calls, so you can inspect what happened instead of accepting the agent's recollection of it.
-
-## Install in 30 seconds
-
-This installs the BFF command-line tool. Osiris also needs BB, which you install separately first (see the top of this page); then run `bff osiris --install`.
+This installs the BFF command-line tool. Osiris also needs BB, which you install separately first; then run `bff osiris --install`.
 
 Needs Python 3.9+, Git and `curl`. BB and Herdr (the separate terminal-session app BFF uses to capture agent runs) are upstream applications; BFF does not quietly install agent runtimes, rewrite your shell profile or seize your hooks.
 
@@ -78,17 +45,46 @@ The bootstrap downloads the tagged release archive, verifies its checksum and fi
 
 Rehearse without touching the normal prefix: `sh install.sh --prefix /tmp/bff-test`.
 
+**Coming in v0.2.0 (not released; none of this works today).** The planned shape is three commands. Do not copy them yet; they fail on v0.1.1:
+
+```text
+curl -fsSLO https://github.com/triunai/bff/releases/latest/download/install.sh && sh install.sh --setup   # get + first-time setup
+bff osiris                                                                                              # run
+bff update                                                                                              # update bff and the Osiris plugin
+```
+
+Details: [docs/roadmap.md](docs/roadmap.md) and the [CHANGELOG](CHANGELOG.md).
+
+## How it works
+
+Most agent work starts as a prompt and ends as archaeology. BFF expects each step to leave an artifact in the repository:
+
+<p align="center">
+  <img src="docs/assets/bff-loop.svg" alt="The BFF loop: intent, hydrate, contract, owned lane, evidence, review, fitness, wrap, then the next session starts at hydrate." width="100%">
+</p>
+
+- **Doc-Spine.** Thread-aware durable project state that lives in the repository, not in a context window.
+- **`hygiene.md` router.** One file owns the order of operations. Skills execute it; they do not reinvent it.
+- **Task contracts.** Objective, allowed files, non-goals, validation commands and stop conditions, written before the agent starts.
+- **Independent review.** The author does not approve their own work. A separate review pass does.
+- **A checked context graph.** `bff check` validates the bound spine; `bff hydrate` prints context for one workstream without changing files.
+
 ## Osiris
 
 Agents are software. Software gets instrumented.
 
-Osiris is BFF's tool-call workbench for BB. It observes Claude Code and Codex execution and lets you inspect retained traces, search tool calls, isolate failures and look at what happened around them.
+Osiris is BFF's workbench. It runs inside **BB**, a separate desktop workbench app that hosts it as a plugin; BFF does not install BB. It observes Claude Code and Codex execution and lets you inspect retained traces, search tool calls, isolate failures and look at what happened around them.
 
-<!-- SCREENSHOT SLOT: docs/assets/osiris-toolcalls.png
-     Shot: the Toolcalls sidebar filtered with status:error, a list of recorded calls with one failed call selected. Synthetic threads only. -->
-
-<!-- SCREENSHOT SLOT: docs/assets/osiris-trace.png
-     Shot: Trace replacing the right pane for one selected call, conversation still visible in the centre. Synthetic data only. -->
+| Surface | What it is | State |
+| --- | --- | --- |
+| Calls (Toolcalls) | Separate searchable view across all scanned threads | Public, v0.1.1 |
+| Trace and problem grouping | Trace for one selected call, grouped failures | Public, v0.1.1 |
+| History | Retained-history scanning of BB threads | Public, v0.1.1 |
+| Herdr capture | Local Claude Code and Codex capture via `bff herdr` | Public, v0.1.1 |
+| Work | Board, dependency graph, "decisions waiting on you" | Preview, not in any public release |
+| Factory | Animated view of work moving through stations | Preview, not in any public release |
+| Calendar | Time-based view of work | Not in the public build; no public release includes it |
+| Themes | Dark, Cyberpunk and a custom colour picker | Preview, not in any public release |
 
 Search syntax:
 
@@ -99,19 +95,17 @@ provider:codex
 duration:>5s
 ```
 
-What the public build (v0.1.1) includes today: native-chat inspection inside the BB workbench, a separate searchable Toolcalls surface, trace inspection, problem grouping, retained-history scanning, and local Claude Code and Codex capture through Herdr.
-
-**Preview, not in any public release yet:** a Work surface (board, dependency graph, "decisions waiting on you"), an animated Factory view and selectable themes. They exist in the maintainer's development build and are being wired up. Do not expect them from the v0.1.1 bundle.
-
-Osiris is evidence-first. A shell exit code is an observation, not necessarily a failure. A successful command is an observation, not necessarily progress.
-
 ```sh
 bff osiris --install    # with BB already running (v0.1.1 behaviour)
 ```
 
-BFF installs the included prebuilt Osiris plugin through BB and opens it. The tested baseline is BB 0.45+ against public SDK 0.6.15. Upstream compatibility remains upstream compatibility; BFF does not claim clairvoyance.
+BFF installs the included prebuilt Osiris plugin through BB and opens it. The tested baseline is BB 0.45+ against public SDK 0.6.15. Upstream compatibility remains upstream compatibility; BFF does not claim clairvoyance. Details: [plugins/osiris/README.md](plugins/osiris/README.md).
 
-## How it works
+Osiris is evidence-first. A shell exit code is an observation, not necessarily a failure. A successful command is an observation, not necessarily progress.
+
+---
+
+## Data flow
 
 ```text
    your repository                              your machine
@@ -356,19 +350,7 @@ BFF is bootstrap-stage software. That means two things: it already has a real jo
 
 Those are roadmap items, not creatively worded existing features. [CHANGELOG.md](CHANGELOG.md) records the exact shipped surface by release; [docs/roadmap.md](docs/roadmap.md) lists candidates, not commitments. Existing OMC / OMX / Claude / Codex configuration stays user-owned.
 
-v0.1.1's `bff doctor` prints its own one-line install hint when a newer release exists. Prefer the download-then-run form in [Install](#install-in-30-seconds), and read the script first.
-
-## Coming in v0.2.0 (not released; none of this works today)
-
-The planned shape is three commands. Do not copy them yet; they fail on v0.1.1:
-
-```text
-curl -fsSLO https://github.com/triunai/bff/releases/latest/download/install.sh && sh install.sh --setup   # get + first-time setup
-bff osiris                                                                                              # run
-bff update                                                                                              # update bff and the Osiris plugin
-```
-
-`bff update` is planned to show *current → target* and ask `Update available? [Y/n]`, `bff rollback` to switch back to the previous release, and `install.ps1` to bring a Windows preview. Windows is untested. Until a release says otherwise, treat all of this as design, not as a feature. Details are in [docs/roadmap.md](docs/roadmap.md) and the [CHANGELOG](CHANGELOG.md).
+v0.1.1's `bff doctor` prints its own one-line install hint when a newer release exists. Prefer the download-then-run form in [Install](#30-second-install), and read the script first.
 
 ## Get v0.2.0
 
