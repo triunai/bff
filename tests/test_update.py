@@ -175,6 +175,20 @@ class UpdateFlow(Fixture):
             self.update(require_attestation=True)
         self.assertUnchanged(before)
 
+    def test_failed_state_write_and_failed_restore_keep_the_linked_release(self):
+        # After the flip, if the state write fails AND switching back fails, the link still points
+        # at the new release: deleting it would leave bin/bff dangling.
+        real = update._run_installer
+        def installer_run(python, script, prefix, flag, value=None):
+            if flag == "--activate" and value is not None and not value.startswith(NEW + "-"):
+                raise OSError("simulated restore failure")
+            return real(python, script, prefix, flag, value)
+        with mock.patch.object(update, "_record", side_effect=OSError("simulated state failure")), \
+                mock.patch.object(update, "_run_installer", side_effect=installer_run):
+            with self.assertRaises(OSError):
+                self.update()
+        self.assertEqual(self.version(), "bff " + NEW)
+
     def test_existing_state_bytes_are_untouched_on_failure(self):
         state.update(self.state_file, lambda d: d.update({"bff": {"active": "x", "previous": None}}))
         before = self.snapshot()

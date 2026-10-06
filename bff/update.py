@@ -262,12 +262,15 @@ def apply_update(version, *, prefix, base, require_attestation=False, gh=None, o
         return {"from": old, "to": new, "version": version, "attested": attested,
                 "changes": _changes(extracted, version)}
     except BaseException as error:
+        restored = False
         if flipped and old:
             try:
                 _run_installer(python, work / "x" / ("bff-" + version) / "install.py", prefix, "--activate", old)
+                restored = True
             except Exception:
                 pass
-        if staged is not None and created:
+        # Never delete the release the command link may still point at.
+        if staged is not None and created and (not flipped or restored):
             shutil.rmtree(str(staged), ignore_errors=True)
         if isinstance(error, (json.JSONDecodeError, subprocess.SubprocessError)):
             raise UpdateError("update failed: " + str(error))
