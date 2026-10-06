@@ -240,7 +240,7 @@ def offer_path(bin_dir, *, env, stdin, out, home, system, yes=False, no_modify=F
         _say(out, hint)
         return {"path_modified": False, "path_hint": hint}
     existing = rc.read_text() if rc.is_file() else ""
-    if PATH_MARKER in existing:
+    if PATH_MARKER + "\n" + line + "\n" in existing:  # this exact dir; a line for another --prefix does not count
         return {"path_modified": False, "path_hint": "Already added to " + str(rc)}
     out.write("Add " + str(bin_dir) + " to PATH in " + str(rc) + "? [Y/n] ")
     out.flush()

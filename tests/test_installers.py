@@ -72,6 +72,15 @@ class PathStepTests(unittest.TestCase):
         self.assertNotIn("[Y/n]", prompt)
         self.assertEqual(rc.read_text().count(installer.PATH_MARKER), 1)
 
+    def test_a_line_for_another_prefix_does_not_count_as_added(self):
+        # README: rehearse with `sh install.sh --prefix /tmp/bff-test`, then install for real.
+        self.offer()
+        self.bin = "/opt/real/bin"
+        again, prompt = self.offer()
+        self.assertTrue(again["path_modified"])
+        self.assertIn("[Y/n]", prompt)
+        self.assertIn('export PATH="/opt/real/bin:$PATH"', (self.home / ".zprofile").read_text())
+
     def test_append_keeps_existing_content_and_adds_newline(self):
         rc = self.home / ".zprofile"
         rc.write_text("alias a=b")
