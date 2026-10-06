@@ -346,6 +346,44 @@ class DefaultApplyTests(unittest.TestCase):
         bare.assert_not_called()
 
 
+class RelaunchTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="bff relaunch ")
+        self.addCleanup(self.temporary.cleanup)
+        self.prefix = Path(self.temporary.name)
+        (self.prefix / "bin").mkdir()
+        (self.prefix / "bin" / "bff").write_text("#!/bin/sh\n")
+
+    def relaunch(self, prefix):
+        out = io.StringIO()
+        with mock.patch.object(update_notice.paths, "install_prefix", return_value=prefix), \
+                mock.patch("shutil.which", side_effect=AssertionError("which must not be consulted")), \
+                mock.patch.object(sys, "argv", ["-c", "osiris", "--x"]), \
+                mock.patch.dict(os.environ, {}, clear=False), \
+                mock.patch("os.execve") as execve, contextlib.redirect_stdout(out):
+            update_notice.relaunch_default()
+        return execve, out.getvalue()
+
+    def test_execs_this_installs_own_command(self):
+        execve, _ = self.relaunch(self.prefix)
+        target = str(self.prefix / "bin" / "bff")
+        execve.assert_called_once()
+        path, argv, env = execve.call_args[0]
+        self.assertEqual((path, argv), (target, [target, "osiris", "--x"]))
+        self.assertEqual(env[update_notice.RELAUNCHED], "1")
+
+    def test_without_an_install_prefix_it_prints_and_does_not_exec(self):
+        execve, text = self.relaunch(None)
+        execve.assert_not_called()
+        self.assertEqual(text, "restart bff to use the new version\n")
+
+    def test_missing_command_file_does_not_exec(self):
+        (self.prefix / "bin" / "bff").unlink()
+        execve, text = self.relaunch(self.prefix)
+        execve.assert_not_called()
+        self.assertIn("restart bff", text)
+
+
 class NoPipeToShellTests(unittest.TestCase):
     def test_no_pipe_into_a_shell_anywhere_in_bff(self):
         pattern = re.compile(r"\|\s*(sh|bash|zsh)\b|\biex\b")
