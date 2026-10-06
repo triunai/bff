@@ -56,7 +56,7 @@ class VersionSourceTests(unittest.TestCase):
             changed = versioning.apply_version(root, "7.8.9")
             self.assertEqual(versioning.read_version(root), "7.8.9")
             self.assertEqual(versioning.check_pins(root), [])
-            self.assertEqual(set(changed), {"bff/__init__.py", "install.py", "install.sh", "README.md",
+            self.assertEqual(set(changed), {"bff/__init__.py", "install.py", "install.sh", "install.ps1", "README.md",
                                             "release-files.json", "package.json", "package-lock.json"})
             lock = json.loads((root / "package-lock.json").read_text())
             lock["version"] = lock["packages"][""]["version"] = lock_before["version"]
