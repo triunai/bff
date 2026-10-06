@@ -92,6 +92,36 @@ class PathStepTests(unittest.TestCase):
             self.assertEqual(list(self.home.iterdir()), [], kwargs)
 
 
+class WindowsInstallerTests(unittest.TestCase):
+    """install.ps1 cannot run here (no PowerShell); pin what can be checked as text."""
+
+    def setUp(self):
+        self.ps1 = (ROOT / "install.ps1").read_text()
+        self.sh = (ROOT / "install.sh").read_text()
+
+    def test_version_pin_is_found_and_agrees(self):
+        import versioning
+        pins = [p for p in versioning.pins(ROOT) if p[1] == "install.ps1"]
+        self.assertEqual([p[2] for p in pins], [installer.__version__])
+
+    def test_extraction_program_is_identical_to_install_sh(self):
+        sh = self.sh.split("<<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+        ps = self.ps1.split("$extract = @'\n", 1)[1].split("\n'@", 1)[0]
+        self.assertEqual(sh.strip(), ps.strip())
+
+    def test_verifies_sums_and_refuses_store_stub(self):
+        for needle in ("Get-FileHash -Algorithm SHA256", "SHA256SUMS", "checksum mismatch", "\\WindowsApps\\",
+                       "winget install --id=astral-sh.uv -e", "winget install Python.Python.3.12", "Unblock-File",
+                       "-NoModifyPath", "SetEnvironmentVariable('Path'", "S7"):
+            self.assertIn(needle, self.ps1)
+
+    def test_no_pipe_to_shell_anywhere(self):
+        import re
+        pattern = re.compile(r"\|\s*(sh|bash|zsh|iex)\b|iex \(|Invoke-Expression")
+        for path in [ROOT / "install.sh", ROOT / "install.ps1", ROOT / "install.py"] + sorted((ROOT / "bff").glob("*.py")):
+            self.assertIsNone(pattern.search(path.read_text()), str(path))
+
+
 def build_release(output):
     run = subprocess.run([sys.executable, str(ROOT / "scripts" / "build-bff-release.py"), "--output", str(output)],
                          capture_output=True, text=True)

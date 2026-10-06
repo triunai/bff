@@ -16,6 +16,7 @@ SOURCE_PATTERN = re.compile(r'^__version__ = "(' + SEMVER.pattern + r')"$', re.M
 TEXT_PINS = (
     ("install.py", re.compile(r'^__version__ = "(' + SEMVER.pattern + r')"$', re.M), "installer version"),
     ("install.sh", re.compile(r"^BFF_VERSION=(" + SEMVER.pattern + r")$", re.M), "one-line installer pin"),
+    ("install.ps1", re.compile(r"^\$BffVersion = '(" + SEMVER.pattern + r")'$", re.M), "Windows installer pin"),
     ("README.md", re.compile(r"bff/v(" + SEMVER.pattern + r")/install\.sh"), "README install URL"),
 )
 JSON_PINS = (("release-files.json", "release manifest version"), ("package.json", "development package version"))

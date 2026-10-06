@@ -1,0 +1,135 @@
+# PREVIEW: not yet tested on a real Windows machine (no PowerShell was available when this was written).
+# Native Windows activation needs slice S7 (the bff.cmd shim): today install.py activates with a
+# symlink, which normal Windows accounts cannot create. Until S7 lands this script verifies and
+# stages the download but its final activation step is expected to fail on such accounts.
+# Run it as two steps (never piped):
+#   Invoke-WebRequest https://github.com/triunai/bff/releases/latest/download/install.ps1 -OutFile install.ps1
+#   Unblock-File .\install.ps1; .\install.ps1 -Setup
+param(
+    [switch]$Setup,
+    [string]$Prefix,
+    [switch]$Yes,
+    [switch]$NoModifyPath
+)
+$ErrorActionPreference = 'Stop'
+$BffVersion = '0.1.1'
+$BffRepo = 'triunai/bff'
+
+function Find-Python {
+    $candidates = @(@('py', '-3'), @('python'))
+    foreach ($candidate in $candidates) {
+        $found = Get-Command $candidate[0] -ErrorAction SilentlyContinue
+        if (-not $found) { continue }
+        if ($found.Source -match '\\WindowsApps\\') {
+            Write-Error ("Refusing the Microsoft Store Python stub at " + $found.Source + ". Install a real Python, then re-run:`n" +
+                "  winget install --id=astral-sh.uv -e`n  winget install Python.Python.3.12")
+        }
+        return @($found.Source) + @($candidate | Select-Object -Skip 1)
+    }
+    Write-Error ("BFF requires Python 3.9+. Install it, then re-run:`n" +
+        "  winget install --id=astral-sh.uv -e`n  winget install Python.Python.3.12")
+}
+
+$python = @(Find-Python)
+$pythonExe = $python[0]
+$pythonArgs = @($python | Select-Object -Skip 1)
+& $pythonExe @pythonArgs -c "import sys; sys.exit(0 if sys.version_info >= (3, 9) else 'BFF requires Python 3.9+.')"
+if ($LASTEXITCODE -ne 0) { throw 'BFF requires Python 3.9+.' }
+
+$releases = if ($env:BFF_RELEASE_BASE) { $env:BFF_RELEASE_BASE } else { "https://github.com/$BffRepo/releases" }
+if ($releases -notmatch '^https://') { throw 'BFF_RELEASE_BASE must start with https://.' }
+if ($env:BFF_RELEASE_BASE) { Write-Host "release source: $releases" }
+$base = "$releases/download/v$BffVersion"
+
+$stage = Join-Path ([IO.Path]::GetTempPath()) ('bff-download-' + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $stage | Out-Null
+try {
+    $tarball = Join-Path $stage 'release.tar.gz'
+    $sums = Join-Path $stage 'SHA256SUMS'
+    Invoke-WebRequest -Uri "$base/bff-$BffVersion.tar.gz" -OutFile $tarball -UseBasicParsing
+    Invoke-WebRequest -Uri "$base/SHA256SUMS" -OutFile $sums -UseBasicParsing
+
+    $wanted = 'bff-' + $BffVersion + '.tar.gz'
+    $rows = @(Get-Content $sums | Where-Object { $_.Trim() } | ForEach-Object { , ($_.Trim() -split '\s+') } |
+        Where-Object { $_.Count -eq 2 -and $_[1] -eq $wanted })
+    if ($rows.Count -ne 1) { throw 'BFF archive checksum mismatch; installation stopped.' }
+    $actual = (Get-FileHash -Algorithm SHA256 -Path $tarball).Hash.ToLower()
+    if ($actual -ne $rows[0][0].ToLower()) { throw 'BFF archive checksum mismatch; installation stopped.' }
+
+    # Same entry checks and extraction program as install.sh (tests keep the two texts identical).
+    $extract = @'
+import hashlib, pathlib, sys, tarfile
+stage, version = pathlib.Path(sys.argv[1]), sys.argv[2]
+archive = stage / 'release.tar.gz'
+rows = [r.split() for r in (stage / 'SHA256SUMS').read_text().splitlines() if r.strip()]
+expected = [r[0] for r in rows if len(r) == 2 and r[1] == 'bff-' + version + '.tar.gz']
+if len(expected) != 1 or hashlib.sha256(archive.read_bytes()).hexdigest() != expected[0]:
+    raise SystemExit('BFF archive checksum mismatch; installation stopped.')
+root = 'bff-' + version
+with tarfile.open(archive, 'r:gz') as tf:
+    members = tf.getmembers()
+    if len(members) > 5000 or sum(m.size for m in members) > 100 * 1024 * 1024:
+        raise SystemExit('BFF archive exceeds bounded release limits.')
+    seen = set()
+    for m in members:
+        path = pathlib.PurePosixPath(m.name)
+        if (path.is_absolute() or '..' in path.parts or not path.parts or
+                path.parts[0] != root or not (m.isfile() or m.isdir()) or
+                m.name != path.as_posix() or path.as_posix() in seen):
+            raise SystemExit('BFF archive contains an unsafe entry.')
+        seen.add(path.as_posix())
+    for m in members:
+        target = stage / m.name
+        if m.isdir():
+            target.mkdir(parents=True, exist_ok=True)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(tf.extractfile(m).read())
+            target.chmod(0o755 if m.name.endswith('/install.sh') else 0o644)
+
+'@
+    $extractFile = Join-Path $stage 'extract.py'
+    Set-Content -Path $extractFile -Value $extract -Encoding ASCII
+    & $pythonExe @pythonArgs $extractFile $stage $BffVersion
+    if ($LASTEXITCODE -ne 0) { throw 'BFF archive verification failed; installation stopped.' }
+
+    $installer = Join-Path $stage "bff-$BffVersion\install.py"
+    $installArgs = @()
+    if ($Prefix) { $installArgs += @('--prefix', $Prefix) }
+    $installArgs += '--no-modify-path'
+    $output = & $pythonExe @pythonArgs $installer @installArgs
+    if ($LASTEXITCODE -ne 0) { throw 'BFF install failed.' }
+    $output | ForEach-Object { Write-Host $_ }
+    $result = ($output -join "`n") | ConvertFrom-Json
+    $command = $result.command
+    $binDir = Split-Path -Parent $command
+
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $onPath = @($userPath -split ';' | Where-Object { $_ -and ($_.TrimEnd('\') -ieq $binDir.TrimEnd('\')) }).Count -gt 0
+    if (-not $onPath) {
+        $interactive = -not $Yes -and -not $NoModifyPath -and [Environment]::UserInteractive -and -not [Console]::IsInputRedirected
+        if ($interactive) {
+            $answer = Read-Host "Add $binDir to your user PATH? [Y/n]"
+            if ($answer -eq '' -or $answer -match '^(y|yes)$') {
+                $new = if ($userPath) { $userPath.TrimEnd(';') + ';' + $binDir } else { $binDir }
+                [Environment]::SetEnvironmentVariable('Path', $new, 'User')
+                Write-Host 'Added to your user PATH. Open a new terminal to pick it up.'
+            } else {
+                Write-Host "Add $binDir to your user PATH to run bff by name."
+            }
+        } else {
+            Write-Host "Add $binDir to your user PATH to run bff by name (not edited: -Yes, -NoModifyPath or no console)."
+        }
+    }
+
+    if ($Setup) {
+        $setupArgs = @('osiris', 'setup')
+        if ($Yes) { $setupArgs += '--yes' }
+        & $command @setupArgs
+        $code = $LASTEXITCODE
+        if ($code -eq 3) { Write-Host 'bff is installed; Osiris setup is waiting on the prerequisites listed above.' }
+        exit $code
+    }
+} finally {
+    Remove-Item -Recurse -Force -Path $stage -ErrorAction SilentlyContinue
+}
