@@ -345,3 +345,30 @@ python3 scripts/build-bff-release.py --output /tmp/bff-release
 
 Node 24 is used for Osiris development tests. Osiris source and prebuilt assets live under `plugins/osiris`. The Python CLI and the TypeScript UI/server are separate components shipped in one SDK. See component notices for upstream licensing.
 
+## Status and roadmap
+
+BFF is bootstrap-stage software. That means two things: it already has a real job, and it is not going to lie about jobs it cannot do yet.
+
+| Piece | State |
+| --- | --- |
+| `bff init / check / hydrate`, `bff check --run` | Shipped, v0.1.1 |
+| `bff doctor` (install and upgrade companion tools after one prompt) | Shipped, v0.1.1 |
+| `bff herdr`, `bff start`, Osiris tool-call observer and Toolcalls search | Shipped, v0.1.1 bundle |
+| Osiris Work surface (board, graph, decisions), Factory view, themes | Preview. Built in the maintainer's development build, **not in any public release** |
+| One-command installer (`install.sh --setup`), `bff update`, `bff rollback`, `install.ps1` | Coming in v0.2.0. Designed and being built; **not available today** |
+| Windows | Designed, untested |
+| Full agent lineage, landing visualisation, manual terminal (PTY) recording | Not implemented |
+| Enforced hooks and automatic CI adoption | Not implemented. Installation never overwrites hooks or configures branch protection |
+| Live Beads / Gas / DSH adapters and their evals | Not implemented |
+
+Those are roadmap items, not creatively worded existing features. [CHANGELOG.md](CHANGELOG.md) records the exact shipped surface by release; [docs/roadmap.md](docs/roadmap.md) lists candidates, not commitments. Existing OMC / OMX / Claude / Codex configuration stays user-owned.
+
+v0.1.1's `bff doctor` prints its own one-line install hint when a newer release exists. Prefer the download-then-run form in [Install](#install-in-30-seconds), and read the script first.
+
+## Get v0.2.0
+
+⭐ **Star + Watch → Releases** on this repository to hear when v0.2.0 ships, or add yourself to the early-access thread: [Waitlist / early access](TODO-OWNER-FILL-IN-GITHUB-DISCUSSION-URL). No email is collected by this project; GitHub holds the subscription and you control it.
+
+## License
+
+MIT for BFF-authored code ([LICENSE](LICENSE)). Osiris carries its own notices for upstream components: [plugins/osiris/THIRD_PARTY_NOTICES.txt](plugins/osiris/THIRD_PARTY_NOTICES.txt). BB and Herdr are separate upstream products with their own licenses; see [PROVENANCE.md](PROVENANCE.md).
