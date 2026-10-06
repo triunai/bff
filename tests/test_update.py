@@ -376,5 +376,94 @@ class StageOnly(Fixture):
         installer.verify_release(release)
 
 
+class Commands(Fixture):
+    def run_cli(self, args, env=None, prefix=True, method="script"):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        patches = [mock.patch.dict(os.environ, env or {}),
+                   mock.patch.object(paths, "install_prefix", return_value=self.prefix if prefix else None),
+                   mock.patch.object(paths, "install_method", return_value=method),
+                   mock.patch.object(update.shutil, "which", return_value=None)]
+        with contextlib.ExitStack() as stack:
+            for item in patches:
+                stack.enter_context(item)
+            stack.enter_context(contextlib.redirect_stdout(stdout))
+            stack.enter_context(contextlib.redirect_stderr(stderr))
+            code = cli.main(args)
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_check_reports_and_records(self):
+        code, out, _ = self.run_cli(["update", "--check"], {"BFF_RELEASE_BASE": self.base})
+        self.assertEqual(code, 0)
+        self.assertIn("bff " + OLD + " -> " + NEW, out)
+        self.assertIn("release source: " + self.base, out)
+        check = state.load(self.state_file)["update_check"]
+        self.assertEqual((check["current"], check["latest"], check["available"]), (OLD, NEW, True))
+        self.assertRegex(check["checked_at"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d")
+
+    def test_check_up_to_date_and_unknown(self):
+        (self.srv / "latest" / "download" / "SHA256SUMS").write_text("a" * 64 + "  bff-" + OLD + ".tar.gz\n")
+        code, out, _ = self.run_cli(["update", "--check"], {"BFF_RELEASE_BASE": self.base})
+        self.assertIn("bff " + OLD + " is up to date", out)
+        shutil.rmtree(str(self.srv / "latest"))
+        code, out, _ = self.run_cli(["update", "--check"], {"BFF_RELEASE_BASE": self.base})
+        self.assertEqual(code, 0)
+        self.assertIn("latest release unknown (offline?)", out)
+
+    def test_update_yes_switches_and_prints_undo(self):
+        code, out, err = self.run_cli(["update", "--yes"], {"BFF_RELEASE_BASE": self.base})
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn(OLD + " -> " + NEW, out)
+        self.assertIn("undo: bff rollback", out)
+        self.assertIn("Synthetic change line.", out)
+        self.assertEqual(self.version(), "bff " + NEW)
+
+    def test_update_without_tty_or_yes_only_prints_the_plan(self):
+        before = self.snapshot()
+        code, out, _ = self.run_cli(["update"], {"BFF_RELEASE_BASE": self.base})
+        self.assertEqual(code, 0)
+        self.assertIn(OLD + " -> " + NEW, out)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_update_failure_exits_2_and_changes_nothing(self):
+        before = self.snapshot()
+        data = bytearray(self.tarball().read_bytes())
+        data[100] ^= 0xFF
+        self.tarball().write_bytes(bytes(data))
+        code, _, err = self.run_cli(["update", "--yes"], {"BFF_RELEASE_BASE": self.base})
+        self.assertEqual(code, 2)
+        self.assertIn("checksum", err)
+        self.assertUnchanged(before)
+
+    def test_bad_release_base_exits_2(self):
+        code, _, err = self.run_cli(["update", "--check"], {"BFF_RELEASE_BASE": "http://example.com"})
+        self.assertEqual(code, 2)
+        self.assertIn("https://", err)
+
+    def test_method_gates(self):
+        expected = {"dev": "this is a source checkout; update it with git pull", "uv": "uv tool upgrade bff",
+                    "brew": "brew upgrade bff",
+                    "unknown": "curl -fsSLO https://github.com/triunai/bff/releases/latest/download/install.sh && sh install.sh"}
+        for method, line in expected.items():
+            with self.subTest(method):
+                code, out, _ = self.run_cli(["update"], prefix=False, method=method)
+                self.assertEqual(code, 1)
+                self.assertIn(line, out)
+                self.assertNotIn("| sh", out)
+        code, out, _ = self.run_cli(["rollback", "--yes"], prefix=False, method="dev")
+        self.assertEqual(code, 1)
+
+    def test_dev_checkout_without_patches_is_gated(self):
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            code = cli.main(["update"])
+        self.assertEqual(code, 1)
+
+    def test_rollback_command(self):
+        self.run_cli(["update", "--yes"], {"BFF_RELEASE_BASE": self.base})
+        code, out, err = self.run_cli(["rollback", "--yes"])
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(self.version(), "bff " + OLD)
+
+
 if __name__ == "__main__":
     unittest.main()

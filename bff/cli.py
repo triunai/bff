@@ -1,6 +1,7 @@
 """Small, explicit BFF entry points; no hooks or global configuration mutation."""
 
 import argparse
+import datetime
 import http.client
 import json
 from pathlib import Path
@@ -61,6 +62,70 @@ def launch_osiris(url, print_only, install=False):
     return 0
 
 
+GATES = {"dev": "this is a source checkout; update it with git pull", "uv": "uv tool upgrade bff",
+         "brew": "brew upgrade bff"}
+REINSTALL = "curl -fsSLO https://github.com/triunai/bff/releases/latest/download/install.sh && sh install.sh"
+
+
+def self_update(args):
+    from . import paths, state, update
+    prefix = paths.install_prefix()
+    if prefix is None:
+        method = paths.install_method()
+        if args.command == "rollback":
+            print("bff rollback only applies to installs made by install.sh (this one is: " + method + ")")
+        else:
+            print(GATES.get(method, "re-run the installer: " + REINSTALL))
+        return 1
+    state_file = paths.state_path(prefix=prefix)
+    if args.command == "rollback":
+        update.rollback(prefix=prefix, state_file=state_file, yes=args.yes)
+        return 0
+    base = update.release_base()
+    if base != update.DEFAULT_BASE:
+        print("release source: " + base)
+    latest = update.latest_version(base)
+    if args.check:
+        if latest is None:
+            print("latest release unknown (offline?)")
+            return 0
+        available = tuple(map(int, latest.split("."))) > tuple(map(int, __version__.split(".")))
+        print("bff " + __version__ + (" -> " + latest if available else " is up to date"))
+        stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        def record(data):
+            check = data.get("update_check") if isinstance(data.get("update_check"), dict) else {}
+            check.update({"checked_at": stamp, "current": __version__, "latest": latest, "available": available})
+            data["update_check"] = check
+        state.update(state_file, record)
+        return 0
+    target = args.target or latest
+    if target is None:
+        print("latest release unknown (offline?)")
+        return 1
+    if target == __version__:
+        print("bff " + __version__ + " is up to date")
+        return 0
+    print(__version__ + " -> " + target)
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print("no changes made; re-run with --yes to apply")
+            return 0
+        try:
+            answer = input("Update bff " + __version__ + " -> " + target + "? [Y/n] ")
+        except EOFError:
+            answer = "n"
+        if answer.strip().lower() not in ("", "y", "yes"):
+            print("cancelled")
+            return 0
+    result = update.apply_update(target, prefix=prefix, base=base, require_attestation=args.require_attestation)
+    if result["changes"]:
+        print(result["changes"])
+    print("updated bff " + __version__ + " -> " + result["version"])
+    print("undo: bff rollback")
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="bff", description="BFF — Built Fucking Fast. Explicit, portable repo tooling.")
     parser.add_argument("--version", action="version", version="bff " + __version__)
@@ -91,6 +156,13 @@ def main(argv=None):
     observer.add_argument("--url", default=OSIRIS_URL)
     observer.add_argument("--print-url", action="store_true", help="Print only; no connection or browser launch")
     observer.add_argument("--install", action="store_true", help="Explicitly install the bundled prebuilt observer through BB, then open it")
+    upgrade = commands.add_parser("update", help="Update bff itself to the latest verified release")
+    upgrade.add_argument("--check", action="store_true", help="Only report the latest release; change nothing")
+    upgrade.add_argument("--version", dest="target", metavar="X.Y.Z", help="Install this release instead of the latest")
+    upgrade.add_argument("--require-attestation", action="store_true", help="Refuse to update unless gh verifies provenance")
+    upgrade.add_argument("--yes", action="store_true", help="Update without prompting")
+    back = commands.add_parser("rollback", help="Switch bff back to the previous release")
+    back.add_argument("--yes", action="store_true", help="Roll back without prompting")
     args = parser.parse_args(argv)
     canary_printed = False
     try:
@@ -109,6 +181,8 @@ def main(argv=None):
                 return 0
             from .doctor import run_doctor
             return run_doctor(assume_yes=args.yes, upgrade=not args.no_upgrade, offline=args.offline)
+        if args.command in ("update", "rollback"):
+            return self_update(args)
         if args.command == "osiris":
             return launch_osiris(args.url, args.print_url, args.install)
         repo = repo_root(args.repo)
