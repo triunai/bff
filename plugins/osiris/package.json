@@ -1,16 +1,14 @@
 {
   "name": "bb-plugin-tool-observer",
-  "version": "0.2.0",
+  "version": "0.2.16-dev",
   "type": "module",
-  "license": "MIT",
-  "description": "Osiris: native BB workbench and searchable retained tool-call observer",
   "engines": {
-    "bb": ">=0.45.0",
-    "bbPluginSdk": "0.6.15"
+    "bb": ">=0.45",
+    "bbPluginSdk": ">=0.6.15"
   },
   "bb": {
     "name": "Osiris",
-    "description": "Native conversation, actual Changes, scoped traces and a separate Toolcalls explorer",
+    "description": "Thread-scoped agent operations console: fleet, problems, traces and tools",
     "branding": {
       "icon": "ChartNoAxesCombined"
     },
@@ -18,17 +16,48 @@
     "app": "./app.tsx"
   },
   "dependencies": {
-    "zod": "4.6.5"
+    "@radix-ui/react-checkbox": "^1.3.7",
+    "@radix-ui/react-slot": "^1.3.0",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "@xyflow/react": "^12.12.0",
+    "dagre": "^0.8.5",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "0.6.15",
-    "@types/node": "22.20.5",
-    "@types/react": "19.3.0",
-    "react": "19.3.0",
-    "typescript": "5.9.3"
+    "@pierre/diffs": "^1.2.9",
+    "@radix-ui/react-alert-dialog": "^1.1.19",
+    "@radix-ui/react-context-menu": "^2.3.3",
+    "@radix-ui/react-dialog": "^1.1.19",
+    "@radix-ui/react-dropdown-menu": "^2.1.20",
+    "@radix-ui/react-hover-card": "^1.1.19",
+    "@radix-ui/react-menubar": "^1.1.20",
+    "@radix-ui/react-navigation-menu": "^1.2.18",
+    "@radix-ui/react-popover": "^1.1.19",
+    "@radix-ui/react-select": "^2.3.3",
+    "@radix-ui/react-tooltip": "^1.2.12",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/dagre": "^0.7.54",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "better-sqlite3": "^12.0.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cron-parser": "^5.5.0",
+    "hono": "^4.11.9",
+    "sonner": "^1.7.4",
+    "tailwind-merge": "^3.4.0",
+    "typescript": "^5.7.0",
+    "vaul": "^1.1.2"
   },
   "scripts": {
-    "build": "bb plugin build .",
-    "typecheck": "tsc --noEmit --skipLibCheck --strict --target ES2022 --module ESNext --moduleResolution bundler --jsx react-jsx --allowImportingTsExtensions --types node app.tsx analytics.ts live-observer.ts herdr-feed.ts server.ts"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test *.test.ts *.test.mjs work/__tests__/*.test.ts shell/__tests__/*.test.ts theme/__tests__/*.test.ts tui/__tests__/*.test.ts demo/__tests__/*.test.ts",
+    "fixture": "node fixture.ts",
+    "readme:art": "node --import ./scripts/lib/tsx-hook.mjs scripts/readme-art.mjs",
+    "osiris-factory": "node bin/osiris-tui.mjs factory",
+    "osiris-worktrees": "node bin/osiris-tui.mjs worktrees"
   }
 }

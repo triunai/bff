@@ -1,0 +1,205 @@
+{
+  "schema": 1,
+  "beads": {
+    "total": 177,
+    "byStatus": {
+      "open": 57,
+      "in_progress": 32,
+      "closed": 87,
+      "blocked": 0,
+      "deferred": 1
+    },
+    "byPriority": {
+      "p0": 6,
+      "p1": 7,
+      "p2": 154,
+      "p3": 10,
+      "p4": 0
+    },
+    "byType": {
+      "epic": 3,
+      "task": 168,
+      "bug": 4,
+      "decision": 1,
+      "feature": 0,
+      "chore": 1
+    }
+  },
+  "epics": {
+    "count": 17,
+    "sizeBuckets": {
+      "s1to3": 7,
+      "s4to7": 3,
+      "s8to15": 4,
+      "s16plus": 3
+    }
+  },
+  "deps": {
+    "maxDepth": 3,
+    "byDepth": {
+      "d0": 163,
+      "d1": 10,
+      "d2": 3,
+      "d3plus": 1
+    },
+    "blockEdgesPerBead": 0.1
+  },
+  "commits": {
+    "perDay": [
+      19,
+      10,
+      8,
+      19,
+      19,
+      9,
+      0,
+      0,
+      0,
+      0,
+      0,
+      2,
+      96,
+      61,
+      556,
+      0,
+      55,
+      256,
+      71,
+      3,
+      34,
+      4,
+      32,
+      3,
+      3,
+      11,
+      79,
+      431,
+      802,
+      236
+    ],
+    "branchShare": {
+      "top1": 0.05,
+      "top2": 0,
+      "top3": 0,
+      "rest": 0.95
+    },
+    "typeMix": {
+      "feat": 0.25,
+      "fix": 0.15,
+      "docs": 0.3,
+      "chore": 0,
+      "test": 0.05,
+      "refactor": 0.05,
+      "perf": 0,
+      "style": 0,
+      "merge": 0.2,
+      "other": 0
+    },
+    "repos": 2
+  },
+  "decisions": {
+    "perWeek": [
+      10,
+      3,
+      5,
+      8,
+      4,
+      13,
+      3,
+      14
+    ]
+  },
+  "threads": {
+    "perDay": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      150,
+      0,
+      0,
+      125,
+      44,
+      1,
+      3,
+      3,
+      10,
+      7,
+      0,
+      1,
+      16,
+      64,
+      20,
+      1
+    ],
+    "byStatus": {
+      "active": 78,
+      "parked": 82,
+      "other": 29,
+      "debt": 8,
+      "done": 16
+    }
+  },
+  "agents": {
+    "byRole": {
+      "main": 55,
+      "lead": 19,
+      "worker": 960,
+      "reviewer": 67
+    },
+    "byModel": {
+      "opus": 169,
+      "sonnet": 525,
+      "fable": 0,
+      "haiku": 343,
+      "other": 64
+    },
+    "byRuntime": {
+      "claude": 1039,
+      "codex": 62,
+      "gemini": 0
+    }
+  },
+  "cost": {
+    "perDayUsd": {
+      "min": 0,
+      "median": 70,
+      "max": 900
+    },
+    "byModelShare": {
+      "opus": 0.7,
+      "sonnet": 0.25,
+      "fable": 0,
+      "haiku": 0,
+      "other": 0
+    },
+    "cacheHit": {
+      "lo": 0.65,
+      "hi": 1
+    }
+  },
+  "durations": {
+    "beadCycleHours": {
+      "p50": 0.1,
+      "p90": 2.6
+    },
+    "sessionMinutes": {
+      "p50": 3,
+      "p90": 20
+    },
+    "callSeconds": {
+      "p50": 7.5,
+      "p90": 34.8
+    }
+  }
+}

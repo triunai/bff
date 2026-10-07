@@ -1,5 +1,8 @@
+import type { UsageMatch } from "./work/call-usage-join.ts";
 export const statuses = ["success", "error", "denied", "cancelled", "unknown", "running"] as const;
 export type Status = typeof statuses[number];
+/** Token counts of the model request a call belongs to. Numbers only (never prompt text). Absent when the source did not record them. */
+export interface CallUsage { input: number; output: number; cacheRead: number; cacheWrite5m: number; cacheWrite1h: number }
 export interface Call {
     source: string;
     provider: string;
@@ -16,12 +19,24 @@ export interface Call {
     durationMs: number | null;
     durationKind: "provider" | "observed" | "unknown";
     errorCode: string | null;
+    usage?: CallUsage | null;
+    /** Set client-side by the transcript join (work/call-usage-join.ts): which tier, how many siblings, the whole request. Never read from a source. */
+    usageMatch?: UsageMatch;
 }
 type Obj = Record<string, unknown>;
 const object = (v: unknown): Obj => v !== null && typeof v === "object" ? v as Obj : {};
 const string = (v: unknown) => typeof v === "string" && v.length ? v : null;
 const number = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
 export const callKey = (c: Call) => JSON.stringify([c.source, c.provider, c.sessionId, c.callId]);
+/** Whitelist the five token counts; one invalid or non-finite count drops the whole usage (null), so a bad number never becomes a fake price. */
+function sanitizeUsage(v: unknown): CallUsage | null {
+    const u = object(v);
+    if (!Object.keys(u).length)
+        return null;
+    const n = (k: string) => u[k] === undefined ? 0 : number(u[k]);
+    const input = n("input"), output = n("output"), cacheRead = n("cacheRead"), cacheWrite5m = n("cacheWrite5m"), cacheWrite1h = n("cacheWrite1h");
+    return input === null || output === null || cacheRead === null || cacheWrite5m === null || cacheWrite1h === null ? null : { input, output, cacheRead, cacheWrite5m, cacheWrite1h };
+}
 /** Whitelist metadata; never retain commands, arguments, output or reasoning. */
 export function sanitizeCall(value: unknown): Call {
     const c = object(value);
@@ -30,8 +45,11 @@ export function sanitizeCall(value: unknown): Call {
             throw new Error(`Missing call metadata: ${k}`);
     if (!statuses.includes(c.status as Status))
         throw new Error("Invalid call status");
-    const durationMs = number(c.durationMs);
-    return { source: string(c.source)!, provider: string(c.provider)!, sessionId: string(c.sessionId)!, callId: string(c.callId)!, tool: string(c.tool)!, status: c.status as Status, server: string(c.server), turnId: string(c.turnId), parentCallId: string(c.parentCallId), model: string(c.model), startedAt: number(c.startedAt), endedAt: number(c.endedAt), durationMs, durationKind: durationMs !== null && (c.durationKind === "provider" || c.durationKind === "observed") ? c.durationKind : "unknown", errorCode: typeof c.errorCode === "string" && /^[A-Za-z0-9_.:-]{1,64}$/.test(c.errorCode) ? c.errorCode : null };
+    const startedAt = number(c.startedAt), endedAt = number(c.endedAt);
+    let durationMs = number(c.durationMs), observed = false;
+    // Capture-feed rows carry both timestamps but no duration; the wall-clock span IS an observed duration (never invent one without both).
+    if (durationMs === null && startedAt !== null && endedAt !== null && endedAt >= startedAt) { durationMs = endedAt - startedAt; observed = true; }
+    return { source: string(c.source)!, provider: string(c.provider)!, sessionId: string(c.sessionId)!, callId: string(c.callId)!, tool: string(c.tool)!, status: c.status as Status, server: string(c.server), turnId: string(c.turnId), parentCallId: string(c.parentCallId), model: string(c.model), startedAt, endedAt, durationMs, durationKind: observed ? "observed" : durationMs !== null && (c.durationKind === "provider" || c.durationKind === "observed") ? c.durationKind : "unknown", errorCode: typeof c.errorCode === "string" && /^[A-Za-z0-9_.:-]{1,64}$/.test(c.errorCode) ? c.errorCode : null, usage: sanitizeUsage(c.usage) };
 }
 export function dedupe(calls: Call[]): Call[] {
     const map = new Map<string, Call>();

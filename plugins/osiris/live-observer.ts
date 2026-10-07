@@ -18,10 +18,25 @@ export function callContext(call: Call, calls: Call[]) {
   return index < 0 ? [] : scoped.slice(Math.max(0,index-3),index+4);
 }
 export function isSlow(call: Call) {const threshold=call.server || /mcp/i.test(call.tool) ? 60000 : /exec|command|shell/i.test(call.tool) ? 5000 : 10000; return call.status === "success" && call.durationMs !== null && call.durationMs >= threshold;}
+export const PROBLEM_CLASSES = [
+  {id:"error",label:"Errors"}, {id:"denied",label:"Denied"},
+  {id:"cancelled",label:"Cancelled"}, {id:"unknown",label:"Unknown"},
+  {id:"slow",label:"Slow successes"},
+] as const;
+export type ProblemClass = typeof PROBLEM_CLASSES[number]["id"];
+export function problemClass(call: Call): ProblemClass | null {
+  if (call.status === "error" || call.status === "denied" || call.status === "cancelled" || call.status === "unknown") return call.status;
+  return isSlow(call) ? "slow" : null;
+}
+export function problemCounts(calls: Call[]) {
+  const counts:Record<ProblemClass,number>={error:0,denied:0,cancelled:0,unknown:0,slow:0};
+  for(const call of calls){const kind=problemClass(call);if(kind)counts[kind]++;}
+  return counts;
+}
 export function problemKey(c: Call) {return JSON.stringify([c.provider,c.tool,c.server,c.status,c.errorCode]);}
 export function groupProblems(calls: Call[]) {
   const groups=new Map<string,Call[]>();
-  for(const c of calls.filter(c=>["error","denied","cancelled"].includes(c.status))){const key=problemKey(c);groups.set(key,[...(groups.get(key)??[]),c]);}
+  for(const c of calls.filter(c=>problemClass(c)!==null)){const key=problemKey(c);groups.set(key,[...(groups.get(key)??[]),c]);}
   return [...groups].map(([key,calls])=>({key,calls})).sort((a,b)=>b.calls.length-a.calls.length);
 }
 /** Canonical whitelist, even if the server or import gains extra fields later. */
@@ -42,4 +57,12 @@ export function searchCalls(calls: Call[], query: string): { calls: Call[]; erro
     }else{predicates.push(c=>[c.tool,c.server,c.status,c.errorCode,c.callId,c.parentCallId,c.sessionId,c.provider,c.turnId].some(x=>x?.toLowerCase().includes(value)));}
   }
   return {calls:calls.filter(c=>predicates.every(p=>p(c))),error:null};
+}
+
+/** Reserve the default 55% chat share; side panes may borrow from each other. */
+export function resizePanes(panes:{left:number;right:number},side:"left"|"right",requested:number,width:number) {
+  const budget=.45-5.5/Math.max(1,width),minimum={left:Math.min(.1,100/Math.max(1,width)),right:Math.min(.25,200/Math.max(1,width))};
+  const other=side==="left"?"right":"left",otherMinimum=panes[other]===0?0:minimum[other];
+  const next=requested<=2/Math.max(1,width)?0:Math.max(minimum[side],Math.min(budget-otherMinimum,requested));
+  return {...panes,[side]:next,[other]:Math.max(otherMinimum,Math.min(panes[other],budget-next))};
 }
