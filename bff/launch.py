@@ -13,11 +13,19 @@ from . import trusted_bin
 OWNED_MARKER = "#!/bin/sh\n# BFF-owned Herdr launcher v1\n"
 
 
-def launch_plan(url):
+def herdr_argv(executable, session=None):
+    """The user's DEFAULT herdr session (plain `herdr`), or an explicitly named one; never a hardcoded private session."""
+    if not executable:
+        return None
+    return [executable, "session", "attach", session] if session else [executable]
+
+
+def launch_plan(url, session=None):
     executable = trusted_bin.which("herdr")
     terminal = "/usr/bin/open" if sys.platform == "darwin" else trusted_bin.which("x-terminal-emulator")
     return {"bb": {"url": url, "action": "open-existing-running-observer"},
-            "herdr": {"argv": [executable, "--session", "osiris"] if executable else None,
+            "herdr": {"argv": herdr_argv(executable, session),
+                      "session": session or "default",
                       "availability": "available" if executable else "missing",
                       "terminal": terminal,
                       "launcher": str(Path.home() / ".local/share/bff/launchers/osiris-herdr.command")
@@ -26,7 +34,7 @@ def launch_plan(url):
                         "note": "Provider capture is an explicit separate command; pane membership remains unknown."}}
 
 
-def write_launcher(path, executable):
+def write_launcher(path, argv):
     path = Path(path)
     for current in (path,) + tuple(path.parents):
         if current.is_symlink():
@@ -40,7 +48,7 @@ def write_launcher(path, executable):
     try:
         os.fchmod(descriptor, 0o700)
         with os.fdopen(descriptor, "w") as stream:
-            stream.write(OWNED_MARKER + "exec " + shlex.quote(executable) + " --session osiris\n")
+            stream.write(OWNED_MARKER + "exec " + shlex.join(argv) + "\n")
             stream.flush()
             os.fsync(stream.fileno())
         if path.is_symlink():
@@ -70,14 +78,14 @@ def start(args, url, open_observer):
         return 1
     try:
         if sys.platform == "darwin":
-            launcher = write_launcher(component["launcher"], component["argv"][0])
+            launcher = write_launcher(component["launcher"], component["argv"])
             result = trusted_bin.run([component["terminal"], "-a", "Terminal", str(launcher)], timeout=10, inherit=trusted_bin.TOOL_INHERIT)
             if result.returncode:
                 raise ValueError("Terminal launch request failed with exit " + str(result.returncode))
-            print("Requested Herdr session osiris in a Terminal window; startup is unverified.")
+            print("Requested Herdr session " + component["session"] + " in a Terminal window; startup is unverified.")
         elif component["terminal"]:
             trusted_bin.popen([component["terminal"], "-e"] + component["argv"], start_new_session=True, inherit=trusted_bin.TOOL_INHERIT)
-            print("Requested Herdr session osiris in a terminal window; startup is unverified.")
+            print("Requested Herdr session " + component["session"] + " in a terminal window; startup is unverified.")
         else:
             print("Automatic terminal launch unsupported here. Run: " + shlex.join(component["argv"]))
             failed = True
