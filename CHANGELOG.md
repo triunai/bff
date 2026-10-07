@@ -6,7 +6,14 @@ Versioning policy: [Semantic Versioning](https://semver.org/). While BFF is 0.x,
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-07
+
+Highlights: a one-line installer through `gh`, native Windows install (untested on real Windows), trusted binaries, the Osiris terminal commands, `bff osiris prune --apply`, and a launcher that attaches your default herdr session.
+
 ### Added
+- One-line install for the private repository: `install.sh` and `install.ps1` download the release through `gh`, verify `SHA256SUMS`, and offer to add the bin directory to `PATH` (copy-paste lines at the top of the README).
+- `bff osiris prune --apply` removes the worktrees the Osiris plugin classifies SAFE. The plugin only plans; each entry is re-checked right before removal (clean, every commit on a remote or main, not locked, not the main worktree, not the installed plugin or the newest three installs), removed with plain `git worktree remove` (never forced), then `git worktree prune`. Branches are never deleted. Dry run by default; `--apply` asks y/N unless `--yes`.
+- Trusted binaries: `bff/trusted_bin.py` is the one place that finds and starts a program (fixed directories, ownership and permission checks, minimal environment, no PATH walk). A fitness test fails on any other `subprocess` or `shutil.which` use.
 - `bff init` ends with `Next: edit hygiene.md, run bff check, then bd init` (printed on stderr; stdout stays JSON).
 - `bff config set update.auto true` prints a one-line warning and how to undo it; `bff config --help` explains `update.check` and `update.auto`.
 - `bff osiris setup` and `bff osiris update` exit 4 (not 3) when Osiris is not publicly released yet. Exit 3 still means a prerequisite is missing. The setup plan says what a missing `bd` or `herdr` is needed for.
@@ -18,7 +25,8 @@ Versioning policy: [Semantic Versioning](https://semver.org/). While BFF is 0.x,
 - The daily update prompt reads `bff X is available (you have Y). Press Enter to update, n to skip [Y/n]`; the plugin step of `bff update` prints a progress line first; a missing `gh` names `https://cli.github.com` and the way around it.
 - `bff osiris` with BB stopped says `BB is not running at <url>. Start BB, then run bff osiris again` instead of `[Errno 61]`.
 - `bff herdr` options and `--repo`/`--url` have plain-words help.
-- `bff osiris factory` and `bff osiris worktrees` run the Osiris terminal apps (the text Factory and an Arkham-style worktree list) from the installed plugin. Read-only; BFF only locates the plugin and runs `node <plugin>/bin/osiris-tui.mjs` with a fixed argv.
+- `bff osiris factory`, `bff osiris worktrees` and `bff osiris prune` run the Osiris terminal apps (the text Factory, an Arkham-style worktree list, and the worktree pruner's plan) from the installed plugin. BFF only locates the plugin (`OSIRIS_PLUGIN_DIR`, else the one `bb plugin list` reports) and runs `node <plugin>/bin/osiris-tui.mjs` through `trusted_bin` with a fixed argv.
+- `bff start` attaches your default herdr session (plain `herdr`) instead of a hardcoded session named `osiris`.
 
 ### Fixed
 - `bff rollback --plugin` no longer re-installs the previous plugin when there is no terminal to ask on; it prints `no changes made; re-run with --yes to apply`.
