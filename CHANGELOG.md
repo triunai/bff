@@ -18,6 +18,7 @@ Versioning policy: [Semantic Versioning](https://semver.org/). While BFF is 0.x,
 - The daily update prompt reads `bff X is available (you have Y). Press Enter to update, n to skip [Y/n]`; the plugin step of `bff update` prints a progress line first; a missing `gh` names `https://cli.github.com` and the way around it.
 - `bff osiris` with BB stopped says `BB is not running at <url>. Start BB, then run bff osiris again` instead of `[Errno 61]`.
 - `bff herdr` options and `--repo`/`--url` have plain-words help.
+- `bff osiris factory` and `bff osiris worktrees` run the Osiris terminal apps (the text Factory and an Arkham-style worktree list) from the installed plugin. Read-only; BFF only locates the plugin and runs `node <plugin>/bin/osiris-tui.mjs` with a fixed argv.
 
 ### Fixed
 - `bff rollback --plugin` no longer re-installs the previous plugin when there is no terminal to ask on; it prints `no changes made; re-run with --yes to apply`.

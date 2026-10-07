@@ -14,6 +14,8 @@
     "bff/herdr_observer.py",
     "bff/launch.py",
     "bff/osiris.py",
+    "bff/osiris_prune.py",
+    "bff/osiris_tui.py",
     "bff/paths.py",
     "bff/project.py",
     "bff/prompt.py",

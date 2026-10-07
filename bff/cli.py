@@ -213,11 +213,25 @@ def main(argv=None):
             command.add_argument("--run", action="store_true", help="Explicitly execute the profile's named argv checks")
         elif name == "hydrate":
             command.add_argument("--ws", help="Select one canonical workstream block")
-    observer = commands.add_parser("osiris", help="Open the BB observer, or set up and update the Osiris plugin")
+    observer = commands.add_parser("osiris", help="Open the BB observer, set up and update the Osiris plugin, or run a terminal app: factory | worktrees | prune")
     observer.add_argument("--url", default=OSIRIS_URL, help="Where BB serves Osiris (default: " + OSIRIS_URL + ")")
     observer.add_argument("--print-url", action="store_true", help="Print only; no connection or browser launch")
     observer.add_argument("--install", action="store_true", help="Deprecated: renamed to bff osiris setup")
     osiris_commands = observer.add_subparsers(dest="osiris_command")
+    tui_options = argparse.ArgumentParser(add_help=False)
+    tui_options.add_argument("--repo", type=Path, help="Repository for the terminal app (default: the current directory)")
+    tui_options.add_argument("--no-color", action="store_true", help="Plain text, every glyph kept")
+    tui_options.add_argument("--once", action="store_true", help="Print one frame and exit")
+    tui_options.add_argument("--cols", type=int, help="Frame width for --once")
+    tui_options.add_argument("--interval", type=float, help="Refresh seconds, minimum 2")
+    osiris_commands.add_parser("factory", parents=[tui_options], help="The text Factory in this terminal (read-only)")
+    tui_worktrees = osiris_commands.add_parser("worktrees", parents=[tui_options], help="The worktree list in this terminal (read-only)")
+    tui_worktrees.add_argument("--all", action="store_true", help="Every repo Osiris discovers, not just --repo")
+    tui_prune = osiris_commands.add_parser("prune", parents=[tui_options], help="Plan which worktrees are safe to remove; a dry run unless --apply")
+    tui_prune.add_argument("--apply", action="store_true", help="Remove the SAFE worktrees (asks y/N unless --yes; never forces, never deletes a branch)")
+    tui_prune.add_argument("--yes", action="store_true", help="With --apply: do not ask")
+    tui_prune.add_argument("--min-idle-days", type=float, help="Days a worktree must be idle to be SAFE (default 3)")
+    tui_prune.add_argument("--json", action="store_true", help="Print the plan as JSON")
     setup = osiris_commands.add_parser("setup", help="Check prerequisites and install the pinned Osiris plugin through BB")
     setup.add_argument("--yes", action="store_true", help="Install without asking (never replaces a path: dev install)")
     setup.add_argument("--dry-run", action="store_true", help="Print the plan; change nothing")
@@ -274,6 +288,9 @@ def main(argv=None):
             return self_update(args)
         if args.command == "config":
             return run_config(args)
+        if args.command == "osiris" and args.osiris_command in ("factory", "worktrees", "prune"):
+            from .osiris_tui import run_tui
+            return run_tui(args.osiris_command, args)
         if args.command == "osiris":
             if args.osiris_command == "setup":
                 return osiris.setup(args.yes, args.dry_run, args.switch_to_release)
