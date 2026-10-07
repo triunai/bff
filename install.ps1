@@ -1,7 +1,6 @@
-# PREVIEW: not yet tested on a real Windows machine (no PowerShell was available when this was written).
-# Native Windows activation needs slice S7 (the bff.cmd shim): today install.py activates with a
-# symlink, which normal Windows accounts cannot create. Until S7 lands this script verifies and
-# stages the download but its final activation step is expected to fail on such accounts.
+# Native Windows (PowerShell 5.1 and 7, no admin): install.py stages the release under %LOCALAPPDATA%\bff and
+# activates it by writing a bff.cmd shim into %LOCALAPPDATA%\bff\bin (no symlink, which normal accounts cannot make).
+# The shim logic is covered by pure-function tests that simulate Windows; this script has not yet run on real Windows.
 # One-liner (private repo; needs the GitHub CLI and `gh auth login`; no pipe into iex, the script runs as a scriptblock):
 #   & ([scriptblock]::Create((gh release download --repo triunai/bff --pattern install.ps1 -O - | Out-String))) -Setup
 param(
@@ -14,14 +13,7 @@ $ErrorActionPreference = 'Stop'
 $BffVersion = '0.1.1'
 $BffRepo = 'triunai/bff'
 
-# Native Windows cannot finish this install yet (see S7 above), so stop before any download.
-# BFF_WINDOWS_PREVIEW=1 lets a developer run the rest of the script anyway.
-if ($env:BFF_WINDOWS_PREVIEW -ne '1') {
-    Write-Host 'PREVIEW: use WSL. The native Windows install is not ready yet.'
-    Write-Host 'Next: install WSL (wsl --install), then run the install.sh command from the README inside it.'
-    Write-Host 'Nothing was downloaded or changed.'
-    exit 1
-}
+Write-Host 'Native Windows install: this path is new and has not been run on a real Windows machine yet. If it fails, the message says why; WSL with install.sh is the fallback.'
 
 function Find-Python {
     $candidates = @(@('py', '-3'), @('python'))

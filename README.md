@@ -18,7 +18,7 @@ macOS (Intel and Apple Silicon) and Linux:
 sh -c "$(gh release download --repo triunai/bff --pattern install.sh -O -)" bff-install --setup
 ```
 
-Windows: native Windows is a preview and stops before changing anything; use WSL2 (`wsl --install`), then run the macOS line above inside it. Once native Windows ships, this is its line (PowerShell 5.1 or 7):
+Windows (PowerShell 5.1 or 7, no admin; installs to `%LOCALAPPDATA%\bff` and writes a `bff.cmd` shim). New and not yet run on a real Windows machine; WSL2 with the macOS line is the fallback:
 
 ```powershell
 & ([scriptblock]::Create((gh release download --repo triunai/bff --pattern install.ps1 -O - | Out-String))) -Setup

@@ -79,12 +79,6 @@ class WindowsPreviewTests(unittest.TestCase):
     def setUp(self):
         self.ps1 = (ROOT / "install.ps1").read_text()
 
-    def test_preview_stops_before_any_download(self):
-        head = self.ps1.split("Invoke-WebRequest -Uri", 1)[0]
-        self.assertIn("PREVIEW: use WSL", head)
-        self.assertLess(head.index("PREVIEW: use WSL"), head.index("Find-Python"))
-        self.assertIn("exit 1", head.split("PREVIEW: use WSL", 1)[1].split("function Find-Python", 1)[0])
-
     def test_python_version_failure_has_the_windows_guidance(self):
         self.assertIn("winget install Python.Python.3.12",
                       self.ps1.split("sys.exit(0 if sys.version_info", 1)[1].split("$releases", 1)[0])

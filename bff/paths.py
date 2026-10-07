@@ -109,14 +109,31 @@ def install_method(module_file=None, *, env=None, system=None, home=None, prefix
     return "unknown"
 
 
-def install_prefix(module_file=None):
-    """The prefix P when the running package is `P/share/bff/releases/<RELEASE_NAME>/bff/`, else None."""
+SHIM_OWNED = re.compile(r"REM bff-owned release=(" + RELEASE_NAME.pattern + ")")
+
+
+def shim_release(text):
+    """The release id a Windows `bff.cmd` shim points at (its `REM bff-owned release=<id>` line), else None."""
+    for line in text.splitlines()[:3]:
+        found = SHIM_OWNED.fullmatch(line.strip())
+        if found:
+            return found.group(1)
+    return None
+
+
+def install_prefix(module_file=None, *, system=None):
+    """The prefix P when the running package is `P/share/bff/releases/<RELEASE_NAME>/bff/` (Windows:
+    `P/releases/<RELEASE_NAME>/bff/`, P being the data directory), else None."""
+    system = platform.system() if system is None else system
     if module_file is None:
         from bff import __file__ as module_file
     package = Path(module_file).resolve().parent
     release = package.parent
     releases = release.parent
     data = releases.parent
+    if (system == "Windows" and package.name == "bff" and RELEASE_NAME.fullmatch(release.name)
+            and releases.name == "releases"):
+        return data
     if (package.name == "bff" and RELEASE_NAME.fullmatch(release.name) and releases.name == "releases"
             and data.name == "bff" and data.parent.name == "share"):
         return data.parent.parent

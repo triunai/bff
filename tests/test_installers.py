@@ -118,7 +118,7 @@ class WindowsInstallerTests(unittest.TestCase):
     def test_verifies_sums_and_refuses_store_stub(self):
         for needle in ("Get-FileHash -Algorithm SHA256", "SHA256SUMS", "checksum mismatch", "\\WindowsApps\\",
                        "winget install --id=astral-sh.uv -e", "winget install Python.Python.3.12",
-                       "-NoModifyPath", "SetEnvironmentVariable('Path'", "S7"):
+                       "-NoModifyPath", "SetEnvironmentVariable('Path'"):
             self.assertIn(needle, self.ps1)
 
     def test_gh_source_and_fix_messages_are_present(self):
@@ -128,9 +128,11 @@ class WindowsInstallerTests(unittest.TestCase):
         self.assertLess(self.ps1.index("gh auth status"), self.ps1.index("New-Item -ItemType Directory"))
         self.assertTrue(self.ps1.isascii() and self.sh.isascii())  # PowerShell 5.1 reads BOM-less files as ANSI
 
-    def test_gate_stays_before_any_download(self):
-        self.assertLess(self.ps1.index("BFF_WINDOWS_PREVIEW"), self.ps1.index("& gh release download"))
-        self.assertIn("PREVIEW: use WSL", self.ps1)
+    def test_blanket_wsl_gate_is_gone_and_untested_notice_is_honest(self):
+        self.assertNotIn("PREVIEW: use WSL", self.ps1)
+        self.assertNotIn("BFF_WINDOWS_PREVIEW", self.ps1)
+        head = self.ps1.split("function Find-Python", 1)[0]
+        self.assertIn("has not been run on a real Windows machine yet", head)
 
     @unittest.skipUnless(shutil.which("pwsh"), "pwsh not installed")
     def test_powershell_parses(self):
