@@ -4,7 +4,7 @@
 #   sh -c "$(gh release download --repo triunai/bff --pattern install.sh -O -)" bff-install --setup
 # Usage: sh install.sh [--setup] [--yes] [--no-modify-path] [--prefix DIR] [--activate R | --disable | --stage-only]
 set -eu
-BFF_VERSION=0.1.1
+BFF_VERSION=0.2.0
 BFF_REPO=triunai/bff
 BFF_SETUP=0
 BFF_YES=0

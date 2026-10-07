@@ -10,7 +10,7 @@ param(
     [switch]$NoModifyPath
 )
 $ErrorActionPreference = 'Stop'
-$BffVersion = '0.1.1'
+$BffVersion = '0.2.0'
 $BffRepo = 'triunai/bff'
 
 Write-Host 'Native Windows install: this path is new and has not been run on a real Windows machine yet. If it fails, the message says why; WSL with install.sh is the fallback.'

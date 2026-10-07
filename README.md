@@ -85,7 +85,7 @@ This installs the BFF command-line tool. Osiris also needs BB, which you install
 Needs Python 3.9+, Git and `curl`. BB and Herdr (the separate terminal-session app BFF uses to capture agent runs) are upstream applications; BFF does not quietly install agent runtimes, rewrite your shell profile or seize your hooks.
 
 ```sh
-curl -fsSLO https://raw.githubusercontent.com/triunai/bff/v0.1.1/install.sh
+curl -fsSLO https://raw.githubusercontent.com/triunai/bff/v0.2.0/install.sh
 sh install.sh
 bff doctor     # what is present, what is missing, what it would do
 ```
