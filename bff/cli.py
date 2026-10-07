@@ -87,7 +87,14 @@ def main(argv=None):
             command.add_argument("--run", action="store_true", help="Explicitly execute the profile's named argv checks")
         elif name == "hydrate":
             command.add_argument("--ws", help="Select one canonical workstream block")
-    observer = commands.add_parser("osiris", help="Open the existing BB observer after checking the local URL")
+    observer = commands.add_parser("osiris", help="Open the existing BB observer after checking the local URL, or run a terminal app: factory | worktrees")
+    observer.add_argument("tui", nargs="?", choices=("factory", "worktrees"), help="Run the Osiris Factory or the worktree list in this terminal (read-only)")
+    observer.add_argument("--repo", type=Path, help="Repository for the terminal app (default: the current directory)")
+    observer.add_argument("--all", action="store_true", help="worktrees: every repo Osiris discovers, not just --repo")
+    observer.add_argument("--no-color", action="store_true", help="Terminal app: plain text, every glyph kept")
+    observer.add_argument("--once", action="store_true", help="Terminal app: print one frame and exit")
+    observer.add_argument("--cols", type=int, help="Terminal app: frame width for --once")
+    observer.add_argument("--interval", type=float, help="Terminal app: refresh seconds, minimum 2")
     observer.add_argument("--url", default=OSIRIS_URL)
     observer.add_argument("--print-url", action="store_true", help="Print only; no connection or browser launch")
     observer.add_argument("--install", action="store_true", help="Explicitly install the bundled prebuilt observer through BB, then open it")
@@ -109,6 +116,9 @@ def main(argv=None):
                 return 0
             from .doctor import run_doctor
             return run_doctor(assume_yes=args.yes, upgrade=not args.no_upgrade, offline=args.offline)
+        if args.command == "osiris" and args.tui:
+            from .osiris_tui import run_tui
+            return run_tui(args.tui, args)
         if args.command == "osiris":
             return launch_osiris(args.url, args.print_url, args.install)
         repo = repo_root(args.repo)

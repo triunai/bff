@@ -13,6 +13,7 @@
     "bff/herdr.py",
     "bff/herdr_observer.py",
     "bff/launch.py",
+    "bff/osiris_tui.py",
     "bff/project.py",
     "install.py",
     "install.sh",
