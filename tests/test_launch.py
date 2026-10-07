@@ -105,6 +105,6 @@ class DefaultSessionTests(unittest.TestCase):
         self.assertEqual(launch.herdr_argv("/h"), ["/h"])
         self.assertEqual(launch.herdr_argv("/h", "work"), ["/h", "session", "attach", "work"])
         self.assertIsNone(launch.herdr_argv(None))
-        with mock.patch("bff.launch.shutil.which", return_value="/h"):
+        with mock.patch("bff.launch.trusted_bin.which", return_value="/h"):
             self.assertEqual(launch.launch_plan("u")["herdr"]["argv"], ["/h"])
             self.assertEqual(launch.launch_plan("u", "work")["herdr"]["argv"], ["/h", "session", "attach", "work"])
