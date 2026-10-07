@@ -1,5 +1,7 @@
 #!/bin/sh
 # Pinned BFF bootstrap. Downloads only when not invoked from a local source tree.
+# One-liner (private repo, needs gh + gh auth login):
+#   sh -c "$(gh release download --repo triunai/bff --pattern install.sh -O -)" bff-install --setup
 # Usage: sh install.sh [--setup] [--yes] [--no-modify-path] [--prefix DIR] [--activate R | --disable | --stage-only]
 set -eu
 BFF_VERSION=0.1.1
@@ -24,19 +26,30 @@ fi
 if [ -n "$BFF_SOURCE_DIR" ]; then
   BFF_INSTALLER=$BFF_SOURCE_DIR/install.py
 else
-  command -v curl >/dev/null 2>&1 || { echo 'BFF download needs curl. Install curl with your package manager, then run this installer again.' >&2; exit 1; }
-  BFF_RELEASES=${BFF_RELEASE_BASE:-https://github.com/$BFF_REPO/releases}
-  case $BFF_RELEASES in
-    https://*|file://*) ;;
-    *) echo 'BFF_RELEASE_BASE must start with https:// or file://.' >&2; exit 1 ;;
-  esac
-  if [ -n "${BFF_RELEASE_BASE:-}" ]; then echo "release source: $BFF_RELEASES" >&2; fi
-  BFF_STAGE=$(mktemp -d "${TMPDIR:-/tmp}/bff-download.XXXXXXXX")
-  trap 'rm -rf "$BFF_STAGE"' EXIT HUP INT TERM
-  BFF_BASE="$BFF_RELEASES/download/v$BFF_VERSION"
+  BFF_STAGE=
+  trap 'if [ -n "$BFF_STAGE" ]; then rm -rf "$BFF_STAGE"; fi' EXIT HUP INT TERM
   BFF_DOWNLOAD_HELP='BFF download failed. Check your network and that github.com is reachable, then run this installer again.'
-  curl --fail --silent --show-error --location "$BFF_BASE/bff-$BFF_VERSION.tar.gz" -o "$BFF_STAGE/release.tar.gz" || { echo "$BFF_DOWNLOAD_HELP" >&2; exit 1; }
-  curl --fail --silent --show-error --location "$BFF_BASE/SHA256SUMS" -o "$BFF_STAGE/SHA256SUMS" || { echo "$BFF_DOWNLOAD_HELP" >&2; exit 1; }
+  if [ -n "${BFF_RELEASE_BASE:-}" ]; then
+    # Explicit release source (mirror or local rehearsal): plain curl, no GitHub login needed.
+    command -v curl >/dev/null 2>&1 || { echo 'BFF download needs curl. Install curl with your package manager, then run this installer again.' >&2; exit 1; }
+    BFF_RELEASES=$BFF_RELEASE_BASE
+    case $BFF_RELEASES in
+      https://*|file://*) ;;
+      *) echo 'BFF_RELEASE_BASE must start with https:// or file://.' >&2; exit 1 ;;
+    esac
+    echo "release source: $BFF_RELEASES" >&2
+    BFF_STAGE=$(mktemp -d "${TMPDIR:-/tmp}/bff-download.XXXXXXXX")
+    BFF_BASE="$BFF_RELEASES/download/v$BFF_VERSION"
+    curl --fail --silent --show-error --location "$BFF_BASE/bff-$BFF_VERSION.tar.gz" -o "$BFF_STAGE/release.tar.gz" || { echo "$BFF_DOWNLOAD_HELP" >&2; exit 1; }
+    curl --fail --silent --show-error --location "$BFF_BASE/SHA256SUMS" -o "$BFF_STAGE/SHA256SUMS" || { echo "$BFF_DOWNLOAD_HELP" >&2; exit 1; }
+  else
+    # Default source: the private GitHub repo, through the GitHub CLI (it owns the login).
+    command -v gh >/dev/null 2>&1 || { echo "BFF is a private repository, so the installer needs the GitHub CLI (gh). Install it from https://cli.github.com (macOS: brew install gh), then run: gh auth login" >&2; exit 1; }
+    gh auth status >/dev/null 2>&1 || { echo "The GitHub CLI is not signed in. Run: gh auth login   (the account needs read access to $BFF_REPO), then run this installer again." >&2; exit 1; }
+    BFF_STAGE=$(mktemp -d "${TMPDIR:-/tmp}/bff-download.XXXXXXXX")
+    gh release download "v$BFF_VERSION" --repo "$BFF_REPO" --pattern "bff-$BFF_VERSION.tar.gz" --pattern SHA256SUMS --dir "$BFF_STAGE" --clobber >&2 || { echo "BFF download failed. Check that this gh account can read $BFF_REPO and that release v$BFF_VERSION is published (gh release view v$BFF_VERSION --repo $BFF_REPO), then run this installer again." >&2; exit 1; }
+    mv "$BFF_STAGE/bff-$BFF_VERSION.tar.gz" "$BFF_STAGE/release.tar.gz" || { echo "$BFF_DOWNLOAD_HELP" >&2; exit 1; }
+  fi
   python3 - "$BFF_STAGE" "$BFF_VERSION" <<'PY'
 import hashlib, pathlib, sys, tarfile
 stage, version = pathlib.Path(sys.argv[1]), sys.argv[2]

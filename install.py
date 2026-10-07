@@ -114,7 +114,66 @@ def release_id(manifest):
     return manifest["version"] + "-" + digest(json.dumps(identity, sort_keys=True).encode())[:12]
 
 
-def owned_command(link, releases):
+def _system(system=None):
+    return platform.system() if system is None else system
+
+
+def layout(prefix, system=None):
+    """(bin dir, releases dir, command path). POSIX: <prefix>/{bin,share/bff/releases}. Windows: the prefix IS
+    the data directory (matches bff/paths.py): <prefix>/{bin,releases} and the command is bin/bff.cmd."""
+    prefix = Path(prefix)
+    if _system(system) == "Windows":
+        return prefix / "bin", prefix / "releases", prefix / "bin" / "bff.cmd"
+    return prefix / "bin", prefix / "share" / "bff" / "releases", prefix / "bin" / "bff"
+
+
+def default_prefix(system=None, env=None, home=None):
+    env = os.environ if env is None else env
+    if _system(system) == "Windows":
+        base = env.get("LOCALAPPDATA")
+        return Path(base) / "bff" if base else Path(home or Path.home()) / "AppData" / "Local" / "bff"
+    return Path(home or Path.home()) / ".local"
+
+
+WINDOWS_CODE = "import sys; sys.path.insert(0,sys.argv.pop(1)); from bff.cli import main; raise SystemExit(main())"
+SHIM_OWNED = re.compile(r"REM bff-owned release=([0-9]+\.[0-9]+\.[0-9]+-[a-f0-9]{12})")
+
+
+def _cmd_quote(value):
+    """One cmd.exe double-quoted argument. Quotes and line breaks cannot be expressed safely: refuse them."""
+    value = str(value)
+    if '"' in value or "\n" in value or "\r" in value:
+        raise ValueError("Path contains a character the Windows command shim cannot hold: " + repr(value))
+    return '"' + value.replace("%", "%%") + '"'
+
+
+def windows_launcher(interpreter, release_dir=None, release_name=None):
+    """Bytes of a bff.cmd. Inside a release (release_dir None) it locates itself with %~dp0 so the release stays
+    relocatable and its digest cannot depend on its own id; the command shim in <prefix>/bin names the release
+    explicitly and carries the ownership marker that activation, disable and bff update read."""
+    marker = "REM bff-owned release=" + release_name + "\r\n" if release_name else ""
+    root = '"%~dp0.."' if release_dir is None else _cmd_quote(release_dir)
+    line = _cmd_quote(interpreter) + " -c " + '"' + WINDOWS_CODE + '" ' + root + " %* & exit /b\r\n"
+    return ("@echo off\r\n" + marker + line).encode("utf-8")
+
+
+def shim_release(text):
+    """The release id a bff.cmd shim points at, or None when the file is not a bff-owned shim."""
+    for line in text.splitlines()[:3]:
+        found = SHIM_OWNED.fullmatch(line.strip())
+        if found:
+            return found.group(1)
+    return None
+
+
+def owned_command(link, releases, system=None):
+    if _system(system) == "Windows":
+        if link.is_symlink() or not link.is_file():
+            return False
+        try:
+            return shim_release(link.read_text(encoding="utf-8", errors="replace")) is not None
+        except OSError:
+            return False
     if not link.is_symlink():
         return False
     target = Path(os.path.abspath(str(link.parent / os.readlink(str(link))))).resolve()
@@ -127,19 +186,19 @@ def owned_command(link, releases):
             and relative.parts[1:] == ("bin", "bff"))
 
 
-def preflight(prefix):
-    releases = prefix / "share" / "bff" / "releases"
-    for relative in ("bin", "share", "share/bff", "share/bff/releases"):
-        path = prefix / relative
+def preflight(prefix, system=None):
+    bin_dir, releases, command = layout(prefix, system)
+    prefix = Path(prefix)
+    for path in ([bin_dir, releases.parent, releases] if _system(system) == "Windows"
+                 else [prefix / "bin", prefix / "share", prefix / "share" / "bff", releases]):
         if path.is_symlink() or (path.exists() and not path.is_dir()):
             raise ValueError("Installation directory collision: " + str(path))
-    command = prefix / "bin" / "bff"
-    if os.path.lexists(str(command)) and not owned_command(command, releases):
+    if os.path.lexists(str(command)) and not owned_command(command, releases, system):
         raise ValueError("Refusing unrelated bff command: " + str(command))
     return releases, command
 
 
-def verify_release(release):
+def verify_release(release, system=None):
     if release.is_symlink() or not release.is_dir():
         raise ValueError("Missing regular release directory")
     manifest_path = release / "manifest.json"
@@ -152,7 +211,7 @@ def verify_release(release):
     if not isinstance(expected, dict) or not {"bff/cli.py", "bin/bff"} <= set(expected):
         raise ValueError("Incomplete release manifest")
     for name, checksum in expected.items():
-        valid = (name in ("bin/bff", "README.md", "LICENSE", "PROVENANCE.md", "ARCHITECTURE.md", "install.sh", "install.ps1", "install.py", "compat.json") or
+        valid = (name in ("bin/bff", "bin/bff.cmd", "README.md", "LICENSE", "PROVENANCE.md", "ARCHITECTURE.md", "install.sh", "install.ps1", "install.py", "compat.json") or
                  (name.startswith("bff/") and "/" not in name[4:] and name.endswith(".py")) or
                  (name.startswith("docs/") and "/" not in name[5:] and name.endswith(".md")) or
                  # Kept so a rollback to an old 0.1.x release, which bundled the plugin, still verifies.
@@ -166,27 +225,39 @@ def verify_release(release):
     actual.pop("manifest.json", None)
     if actual != expected:
         raise ValueError("Release integrity mismatch; refusing activation")
-    if not os.access(str(release / "bin" / "bff"), os.X_OK):
+    if _system(system) == "Windows":
+        if "bin/bff.cmd" not in expected:
+            raise ValueError("Release has no Windows launcher (bin/bff.cmd)")
+    elif not os.access(str(release / "bin" / "bff"), os.X_OK):
         raise ValueError("Release launcher is not executable")
     return manifest
 
 
-def activate(release, prefix):
+def activate(release, prefix, system=None):
     prefix = prefix.expanduser().resolve()
     release = release.parent.resolve() / release.name
-    releases, command = preflight(prefix)
+    releases, command = preflight(prefix, system)
     if release.parent != releases or not RELEASE_NAME.fullmatch(release.name):
         raise ValueError("Release must belong to this BFF namespace")
-    verify_release(release)
+    manifest = verify_release(release, system)
     command.parent.mkdir(parents=True, exist_ok=True)
-    previous = os.readlink(str(command)) if command.is_symlink() else None
     temporary = command.with_name(".bff-link-" + uuid.uuid4().hex)
-    try:
-        temporary.symlink_to(release / "bin" / "bff")
-        os.replace(str(temporary), str(command))
-    finally:
-        if temporary.is_symlink():
-            temporary.unlink()
+    if _system(system) == "Windows":
+        previous = shim_release(command.read_text(encoding="utf-8", errors="replace")) if command.is_file() else None
+        try:
+            temporary.write_bytes(windows_launcher(manifest["python"], release, release.name))
+            os.replace(str(temporary), str(command))
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+    else:
+        previous = os.readlink(str(command)) if command.is_symlink() else None
+        try:
+            temporary.symlink_to(release / "bin" / "bff")
+            os.replace(str(temporary), str(command))
+        finally:
+            if temporary.is_symlink():
+                temporary.unlink()
     available = command.parent in {Path(item).expanduser().resolve()
                                    for item in os.environ.get("PATH", "").split(os.pathsep) if item}
     return {"command": str(command), "release": release.name, "previous_target": previous,
@@ -255,13 +326,13 @@ def offer_path(bin_dir, *, env, stdin, out, home, system, yes=False, no_modify=F
     return {"path_modified": True, "path_hint": "Added to " + str(rc)}
 
 
-def stage(prefix, source=SOURCE, interpreter=None):
+def stage(prefix, source=SOURCE, interpreter=None, system=None):
     """Verify and stage a release without activating it. Returns (release dir, created)."""
     if sys.version_info < (3, 9):
         raise ValueError("Python 3.9+ required: install Python 3.9 or newer, then run the installer again")
     prefix = prefix.expanduser().resolve()
     verify_source_manifest(source)
-    releases, command = preflight(prefix)
+    releases, command = preflight(prefix, system)
     interpreter = str(Path(interpreter or sys.executable).absolute())
     files = source_files(source)
     code = ("import sys; from pathlib import Path; "
@@ -270,11 +341,15 @@ def stage(prefix, source=SOURCE, interpreter=None):
     launcher = ("#!/bin/sh\nexec " + shlex.quote(interpreter) + " -c " + shlex.quote(code)
                 + ' "$0" "$@"\n').encode()
     files["bin/bff"] = digest(launcher)
+    windows = _system(system) == "Windows"
+    cmd_launcher = windows_launcher(interpreter) if windows else None
+    if windows:
+        files["bin/bff.cmd"] = digest(cmd_launcher)
     manifest = {"schema_version": 1, "version": __version__, "python": interpreter, "files": files}
     release = releases / release_id(manifest)
     created = not os.path.lexists(str(release))
     if not created:
-        if verify_release(release) != manifest:
+        if verify_release(release, system) != manifest:
             raise ValueError("Existing release differs from source")
     else:
         releases.mkdir(parents=True, exist_ok=True)
@@ -283,7 +358,8 @@ def stage(prefix, source=SOURCE, interpreter=None):
             for name, expected in files.items():
                 destination = staging / name
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                data = launcher if name == "bin/bff" else (source / name).read_bytes()
+                data = (launcher if name == "bin/bff" else cmd_launcher if name == "bin/bff.cmd"
+                        else (source / name).read_bytes())
                 if digest(data) != expected:
                     raise ValueError("Release input changed during installation")
                 destination.write_bytes(data)
@@ -296,14 +372,14 @@ def stage(prefix, source=SOURCE, interpreter=None):
     return release, created
 
 
-def install(prefix, source=SOURCE, interpreter=None):
-    release, _ = stage(prefix, source, interpreter)
-    return activate(release, prefix.expanduser().resolve())
+def install(prefix, source=SOURCE, interpreter=None, system=None):
+    release, _ = stage(prefix, source, interpreter, system)
+    return activate(release, prefix.expanduser().resolve(), system)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--prefix", type=Path, default=Path.home() / ".local")
+    parser.add_argument("--prefix", type=Path, default=default_prefix())
     action = parser.add_mutually_exclusive_group()
     action.add_argument("--activate", metavar="RELEASE", help="Activate a preserved, verified release")
     action.add_argument("--disable", action="store_true", help="Remove the owned command; preserve releases")
@@ -316,12 +392,13 @@ def main(argv=None):
         if args.activate:
             if not RELEASE_NAME.fullmatch(args.activate):
                 raise ValueError("Invalid release name")
-            result = activate(prefix / "share" / "bff" / "releases" / args.activate, prefix)
+            result = activate(layout(prefix)[1] / args.activate, prefix)
         elif args.disable:
             releases, command = preflight(prefix)
             if not owned_command(command, releases):
                 raise ValueError("No owned BFF command to disable")
-            previous = os.readlink(str(command))
+            previous = (shim_release(command.read_text(encoding="utf-8", errors="replace"))
+                        if _system() == "Windows" else os.readlink(str(command)))
             command.unlink()
             result = {"disabled": str(command), "preserved_target": previous}
         elif args.stage_only:

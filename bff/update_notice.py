@@ -8,8 +8,11 @@ is silent and nothing here may ever stop `bff osiris` from opening.
 `bff.update` and `paths.install_prefix` are imported lazily; tests inject `latest`, `apply`, `relaunch`.
 """
 import os
+import platform
 import re
+import subprocess
 import sys
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 from . import paths, state
@@ -56,12 +59,14 @@ def _mark_prompted(state_file, now):
 def relaunch_default():
     """Exec THIS install's own bin/bff; never PATH or argv[0] (under the launcher argv[0] is "-c")."""
     prefix = paths.install_prefix()
-    target = paths.command_path(prefix=prefix) if prefix is not None else None
+    target = Path(str(paths.command_path(prefix=prefix))) if prefix is not None else None
     if target is None or not target.exists():
         sys.stdout.write("restart bff to use the new version\n")
         return
     env = dict(os.environ)
     env[RELAUNCHED] = "1"
+    if platform.system() == "Windows":  # no exec(): a .cmd shim needs a child process
+        raise SystemExit(subprocess.call([str(target)] + sys.argv[1:], env=env))
     os.execve(str(target), [str(target)] + sys.argv[1:], env)
 
 

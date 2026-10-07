@@ -9,6 +9,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import platform
 from pathlib import Path, PurePosixPath
 import re
 import shutil
@@ -127,8 +128,13 @@ def safe_extract(archive, dest, root):
     return extracted
 
 
-def _active_id(prefix):
-    link = Path(prefix) / "bin" / "bff"
+def _active_id(prefix, system=None):
+    link = Path(str(paths.command_path(prefix=prefix, system=system)))
+    if (platform.system() if system is None else system) == "Windows":
+        try:
+            return paths.shim_release(link.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            return None
     if not link.is_symlink():
         return None
     target = Path(os.path.abspath(str(link.parent / os.readlink(str(link)))))
@@ -185,9 +191,10 @@ def _smoke_version(launcher):
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-def _smoke(staged, version):
+def _smoke(staged, version, system=None):
+    launcher = "bff.cmd" if (platform.system() if system is None else system) == "Windows" else "bff"
     try:
-        found = _smoke_version(staged / "bin" / "bff")
+        found = _smoke_version(staged / "bin" / launcher)
     except (OSError, subprocess.TimeoutExpired) as error:
         raise UpdateError("smoke test failed: " + str(error))
     if found != "bff " + version:
@@ -292,7 +299,7 @@ def plugin_step(prefix, *, run=subprocess.run, which=None, out=None):
     if (which or shutil.which)("bb") is None:
         _emit(out, "Osiris plugin: skipped (BB not found)")
         return "skipped"
-    argv = [str(Path(prefix) / "bin" / "bff"), "osiris", "update", "--yes"]
+    argv = [str(paths.command_path(prefix=prefix)), "osiris", "update", "--yes"]
     _emit(out, "Updating the Osiris plugin through BB (this can take a few minutes; bff itself is already updated)...")
     try:
         done = run(argv, capture_output=True, text=True, timeout=900)

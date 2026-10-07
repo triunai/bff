@@ -10,7 +10,7 @@ Versioning policy: [Semantic Versioning](https://semver.org/). While BFF is 0.x,
 - `bff init` ends with `Next: edit hygiene.md, run bff check, then bd init` (printed on stderr; stdout stays JSON).
 - `bff config set update.auto true` prints a one-line warning and how to undo it; `bff config --help` explains `update.check` and `update.auto`.
 - `bff osiris setup` and `bff osiris update` exit 4 (not 3) when Osiris is not publicly released yet. Exit 3 still means a prerequisite is missing. The setup plan says what a missing `bd` or `herdr` is needed for.
-- `install.ps1` prints `PREVIEW: use WSL` and stops before any download; `BFF_WINDOWS_PREVIEW=1` runs the rest for developers.
+- Native Windows install: `install.py` stages under `%LOCALAPPDATA%\bff` and activates with an atomically replaced `bin\bff.cmd` shim (ownership marker `REM bff-owned release=<id>`; no symlink), `bff update`/`rollback` read it, and `install.ps1` no longer stops at `PREVIEW: use WSL`. Covered by simulated-OS tests; NOT yet verified on real Windows: cmd.exe running the shim and keeping the exit code (`& exit /b`), `os.replace` over a shim that is currently running, the PATH edit, PowerShell 5.1 parsing of `install.ps1`.
 
 ### Changed
 - The unpublished-Osiris message reads `Osiris is not publicly released yet; nothing to install.` (no internal decision id).

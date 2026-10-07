@@ -8,6 +8,24 @@
 [![MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/triunai/bff)](https://github.com/triunai/bff/releases)
 
+## Install
+
+**Prerequisites:** the [GitHub CLI](https://cli.github.com) signed in with an account that can read `triunai/bff` (`gh auth login`; the repository is private), Python 3.9+, and, for Osiris, [BB](#install-in-30-seconds). No `sudo`; everything lands in your user directory.
+
+macOS (Intel and Apple Silicon) and Linux:
+
+```sh
+sh -c "$(gh release download --repo triunai/bff --pattern install.sh -O -)" bff-install --setup
+```
+
+Windows (PowerShell 5.1 or 7, no admin; installs to `%LOCALAPPDATA%\bff` and writes a `bff.cmd` shim). New and not yet run on a real Windows machine; WSL2 with the macOS line is the fallback:
+
+```powershell
+& ([scriptblock]::Create((gh release download --repo triunai/bff --pattern install.ps1 -O - | Out-String))) -Setup
+```
+
+Re-running either line updates in place. Both check `gh` first and print the exact fix if it is missing or signed out, download through `gh`, verify `SHA256SUMS` before installing, offer to add `~/.local/bin` to your `PATH` once (it asks, and prints the line instead if you decline), then run `bff osiris setup`. The script is passed to `sh` as an argument rather than piped in, so the PATH question can reach your terminal. Read it first with `gh release download --repo triunai/bff --pattern install.sh -O -`.
+
 BFF is a portable CLI and a set of repo conventions for running coding agents without losing the plot. Osiris, its workbench, shows what the agents actually did. It runs inside **BB**, a separate desktop workbench app that hosts Osiris as a plugin; BFF does not install BB, so install it first if you want Osiris (the CLI works without it). [Install the CLI](#install-in-30-seconds) below.
 
 > The CLI is public and usable today (v0.1.1). The one-command installer is not out yet; to hear when it ships, see [Get v0.2.0](#get-v020).
