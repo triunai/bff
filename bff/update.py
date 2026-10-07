@@ -13,13 +13,12 @@ import platform
 from pathlib import Path, PurePosixPath
 import re
 import shutil
-import subprocess
 import sys
 import tarfile
 import tempfile
 import urllib.request
 
-from . import paths, state
+from . import paths, state, trusted_bin
 from .prompt import answer_is_yes
 
 DEFAULT_BASE = "https://github.com/triunai/bff/releases"
@@ -149,8 +148,12 @@ def _verify_checksum(tarball, sums_path, name):
         raise UpdateError("checksum mismatch for " + name + "; nothing was changed")
 
 
+# gh needs its login to verify an attestation: the token variables and config location, on top of the shared tool set.
+GH_INHERIT = trusted_bin.TOOL_INHERIT + ("GH_TOKEN", "GITHUB_TOKEN", "GH_HOST", "GH_CONFIG_DIR")
+
+
 def _attest(tarball, version, gh, require, out):
-    gh = shutil.which("gh") if gh is None else gh
+    gh = trusted_bin.which("gh") if gh is None else gh
     if not gh:
         if require:
             raise UpdateError("attestation required but gh is not installed; nothing was changed. Install gh "
@@ -161,9 +164,9 @@ def _attest(tarball, version, gh, require, out):
     command = [str(gh), "attestation", "verify", str(tarball), "-R", REPO, "--signer-workflow", WORKFLOW,
                "--source-ref", "refs/tags/v" + version]
     try:
-        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True,
-                                timeout=120)
-    except (OSError, subprocess.TimeoutExpired) as error:
+        result = trusted_bin.run(command, policy=trusted_bin.own_policy(gh), inherit=GH_INHERIT, stdout=trusted_bin.PIPE, stderr=trusted_bin.PIPE,
+                                 universal_newlines=True, timeout=120)
+    except (OSError, trusted_bin.TimeoutExpired) as error:
         raise UpdateError("attestation failed: " + str(error) + "; nothing was changed")
     if result.returncode:
         raise UpdateError("attestation failed (exit " + str(result.returncode) + "): "
@@ -176,9 +179,9 @@ def _run_installer(python, installer, prefix, flag, value=None):
     try:
         # stdin=DEVNULL: the installer must never wait on a question nobody can see (its D7 PATH
         # offer prompts when stdin is a TTY, and its stderr is captured here).
-        result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                universal_newlines=True, timeout=300)
-    except (OSError, subprocess.TimeoutExpired) as error:
+        result = trusted_bin.run(command, policy=trusted_bin.own_policy(python), inherit=trusted_bin.TOOL_INHERIT, stdin=trusted_bin.DEVNULL,
+                                 stdout=trusted_bin.PIPE, stderr=trusted_bin.PIPE, universal_newlines=True, timeout=300)
+    except (OSError, trusted_bin.TimeoutExpired) as error:
         raise UpdateError("installer could not run: " + str(error))
     if result.returncode:
         raise UpdateError("installer refused the release: " + (result.stderr or result.stdout).strip()[-300:])
@@ -186,8 +189,8 @@ def _run_installer(python, installer, prefix, flag, value=None):
 
 
 def _smoke_version(launcher):
-    result = subprocess.run([str(launcher), "--version"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, universal_newlines=True, timeout=30)
+    result = trusted_bin.run([str(launcher), "--version"], policy=trusted_bin.own_policy(launcher), inherit=trusted_bin.TOOL_INHERIT, stdin=trusted_bin.DEVNULL,
+                             stdout=trusted_bin.PIPE, stderr=trusted_bin.PIPE, universal_newlines=True, timeout=30)
     return result.stdout.strip() if result.returncode == 0 else None
 
 
@@ -195,7 +198,7 @@ def _smoke(staged, version, system=None):
     launcher = "bff.cmd" if (platform.system() if system is None else system) == "Windows" else "bff"
     try:
         found = _smoke_version(staged / "bin" / launcher)
-    except (OSError, subprocess.TimeoutExpired) as error:
+    except (OSError, trusted_bin.TimeoutExpired) as error:
         raise UpdateError("smoke test failed: " + str(error))
     if found != "bff " + version:
         raise UpdateError("smoke test failed: expected 'bff " + version + "', got " + repr(found))
@@ -287,20 +290,22 @@ def apply_update(version, *, prefix, base, require_attestation=False, gh=None, o
         # Never delete the release the command link may still point at.
         if staged is not None and created and (not flipped or restored):
             shutil.rmtree(str(staged), ignore_errors=True)
-        if isinstance(error, (json.JSONDecodeError, subprocess.SubprocessError)):
+        if isinstance(error, (json.JSONDecodeError, trusted_bin.SubprocessError)):
             raise UpdateError("update failed: " + str(error))
         raise
     finally:
         shutil.rmtree(str(work), ignore_errors=True)
 
 
-def plugin_step(prefix, *, run=subprocess.run, which=None, out=None):
+def plugin_step(prefix, *, run=None, which=None, out=None):
     """Update the Osiris plugin with the NEW bff. Never raises: bff itself is already updated."""
-    if (which or shutil.which)("bb") is None:
+    if (which or trusted_bin.which)("bb") is None:
         _emit(out, "Osiris plugin: skipped (BB not found)")
         return "skipped"
     argv = [str(paths.command_path(prefix=prefix)), "osiris", "update", "--yes"]
     _emit(out, "Updating the Osiris plugin through BB (this can take a few minutes; bff itself is already updated)...")
+    # The new bff's own launcher: its directory is the install prefix the caller chose, so only the location rule is the caller's (every other check applies).
+    run = run or (lambda command, **kwargs: trusted_bin.run(command, policy=trusted_bin.own_policy(command[0]), inherit=trusted_bin.TOOL_INHERIT, **kwargs))
     try:
         done = run(argv, capture_output=True, text=True, timeout=900)
         for stream in (done.stdout, done.stderr):

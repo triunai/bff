@@ -1,18 +1,16 @@
 """`bff doctor`: detect companion tools, plan installs/upgrades, run them only on consent.
 
 Safety contract: argv lists only (no shell invocation), package-manager binaries resolved with
-shutil.which, no privilege escalation, no downloaded-script piping, a timeout per step, every command printed
+trusted_bin.which (a fixed directory list, never PATH), no privilege escalation, no downloaded-script piping, a timeout per step, every command printed
 before it runs, stable releases only, and nothing runs without a prompt or --yes.
 """
 
 import json
 import re
-import shutil
-import subprocess
 import sys
 import urllib.request
 
-from . import __version__
+from . import __version__, trusted_bin
 from .prompt import answer_is_yes
 
 SELF_RELEASE_API = "https://api.github.com/repos/triunai/bff/releases/latest"
@@ -58,8 +56,12 @@ MANAGERS = {
 OWNER_MARKERS = {"npm": ("node_modules",), "brew": ("/Cellar/", "/Caskroom/")}
 
 
+# What an install step may see besides the minimal base: the shared tool set (terminal, proxies, CA bundles) and Homebrew's own switches.
+INSTALL_INHERIT = trusted_bin.TOOL_INHERIT + ("HOMEBREW_NO_AUTO_UPDATE", "HOMEBREW_NO_ANALYTICS", "HOMEBREW_NO_INSTALL_CLEANUP")
+
+
 def _run(argv, timeout):
-    return subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    return trusted_bin.run(argv, capture_output=True, text=True, timeout=timeout, inherit=INSTALL_INHERIT)
 
 
 def parse_version(text):
@@ -79,13 +81,13 @@ def is_stable(version):
 def detect(recipe):
     """Return (executable path or None, installed version or None). Best effort, never raises."""
     for name in recipe["executables"]:
-        path = shutil.which(name)
+        path = trusted_bin.which(name)
         if not path:
             continue
         try:
             result = _run([path, "--version"], VERSION_TIMEOUT)
             return path, parse_version((result.stdout or "") + " " + (result.stderr or ""))
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, trusted_bin.SubprocessError):
             return path, None
     return None, None
 
@@ -102,7 +104,7 @@ def owner_of(path):
 
 
 def latest_stable(manager, package):
-    binary = shutil.which(manager)
+    binary = trusted_bin.which(manager)
     if not binary:
         return None
     try:
@@ -113,7 +115,7 @@ def latest_stable(manager, package):
             version = json.loads(result.stdout)["formulae"][0]["versions"]["stable"]
         else:
             version = result.stdout.strip()
-    except (OSError, subprocess.SubprocessError, ValueError, KeyError, IndexError):
+    except (OSError, trusted_bin.SubprocessError, ValueError, KeyError, IndexError):
         return None
     version = parse_version(version)
     return version if is_stable(version) else None
@@ -121,7 +123,7 @@ def latest_stable(manager, package):
 
 def available_route(recipe):
     for manager, package in recipe["routes"]:
-        binary = shutil.which(manager)
+        binary = trusted_bin.which(manager)
         if binary:
             return manager, package, binary
     return None
@@ -191,10 +193,10 @@ def survey(upgrade=True):
                 row.update(action="manual", reason=recipe["manual"])
             else:
                 owner = owner_of(path)
-                match = next((r for r in recipe["routes"] if r[0] == owner and shutil.which(r[0])), None)
+                match = next((r for r in recipe["routes"] if r[0] == owner and trusted_bin.which(r[0])), None)
                 if match:
                     row.update(action="upgrade", manager=match[0],
-                               argv=[shutil.which(match[0])] + MANAGERS[match[0]][1](match[1]))
+                               argv=[trusted_bin.which(match[0])] + MANAGERS[match[0]][1](match[1]))
                 else:
                     row.update(action="skip", reason="installed outside a known package manager; upgrade it where you installed it")
         rows.append(row)
@@ -236,9 +238,9 @@ def execute(rows, out):
             out.write("\n$ %s\n" % " ".join(row["argv"]))
             out.flush()
             try:
-                result = subprocess.run(row["argv"], timeout=STEP_TIMEOUT)
+                result = trusted_bin.run(row["argv"], timeout=STEP_TIMEOUT, inherit=INSTALL_INHERIT)
                 failure = "exit %s" % result.returncode if result.returncode else None
-            except (OSError, subprocess.SubprocessError) as error:
+            except (OSError, trusted_bin.SubprocessError) as error:
                 failure = type(error).__name__
             if not failure:
                 path, version = detect(row["recipe"])

@@ -10,12 +10,11 @@ is silent and nothing here may ever stop `bff osiris` from opening.
 import os
 import platform
 import re
-import subprocess
 import sys
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
-from . import paths, state
+from . import paths, state, trusted_bin
 from .prompt import answer_is_yes
 
 INTERVAL = timedelta(hours=24)
@@ -66,8 +65,9 @@ def relaunch_default():
     env = dict(os.environ)
     env[RELAUNCHED] = "1"
     if platform.system() == "Windows":  # no exec(): a .cmd shim needs a child process
-        raise SystemExit(subprocess.call([str(target)] + sys.argv[1:], env=env))
-    os.execve(str(target), [str(target)] + sys.argv[1:], env)
+        done = trusted_bin.run([str(target)] + sys.argv[1:], policy=trusted_bin.own_policy(target), env={RELAUNCHED: "1"}, inherit=trusted_bin.TOOL_INHERIT)
+        raise SystemExit(done.returncode)
+    trusted_bin.exec_replace(target, [str(target)] + sys.argv[1:], env)
 
 
 def _method_hint():

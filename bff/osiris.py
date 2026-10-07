@@ -1,6 +1,6 @@
 """Osiris plugin management over BB's machine-readable plugin list. Detects, prints, installs through `bb plugin install`.
 
-Every function takes an injectable `bb` executable and `run` (subprocess runner) so tests use a fake. The pinned plugin
+Every function takes an injectable `bb` executable and `run` (a vetted subprocess runner) so tests use a fake. The pinned plugin
 version comes from `compat.json`; a `path:` install is the developer channel and is never replaced without an explicit flag.
 """
 import json
@@ -8,14 +8,25 @@ import os
 from pathlib import Path
 import re
 import shutil
-import subprocess
 import sys
 import tempfile
 
-from . import paths, state
+from . import paths, state, trusted_bin
 from .prompt import answer_is_yes
 
 PLUGIN_ID = "tool-observer"
+
+
+def _which(name):
+    """Late-bound so a caller (or a test) that replaces trusted_bin.which is honoured by every default."""
+    return trusted_bin.which(name)
+
+
+def _run(argv, **kwargs):
+    """The default runner: trusted_bin.run (argv[0] must be an absolute trusted program, minimal env) plus the shared tool variables bb and git need."""
+    return trusted_bin.run(argv, inherit=trusted_bin.TOOL_INHERIT, **kwargs)
+
+
 UNPUBLISHED = ("Osiris is not publicly released yet; nothing to install. "
                "Developers: bff osiris update --from <dir>.")
 UNPUBLISHED_EXIT = 4  # distinct from 3, which means a prerequisite is missing
@@ -69,11 +80,11 @@ def _stale_bundled(source):
     return False
 
 
-def plugin_status(bb, run=subprocess.run, plugin_id=PLUGIN_ID):
+def plugin_status(bb, run=_run, plugin_id=PLUGIN_ID):
     try:
-        result = run([bb, "plugin", "list", "--json"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        result = run([bb, "plugin", "list", "--json"], stdout=trusted_bin.PIPE, stderr=trusted_bin.PIPE,
                      universal_newlines=True, timeout=30)
-    except (OSError, subprocess.TimeoutExpired) as error:
+    except (OSError, trusted_bin.TimeoutExpired) as error:
         raise ValueError("Could not run bb plugin list: " + str(error) + "; check that BB runs, then retry")
     if result.returncode:
         raise ValueError("bb plugin list failed with exit " + str(result.returncode) + "; update BB or run bb plugin list --json yourself")
@@ -96,14 +107,14 @@ def plugin_status(bb, run=subprocess.run, plugin_id=PLUGIN_ID):
 
 def _tool_version(argv, run):
     try:
-        result = run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, timeout=10)
-    except (OSError, subprocess.TimeoutExpired):
+        result = run(argv, stdout=trusted_bin.PIPE, stderr=trusted_bin.STDOUT, universal_newlines=True, timeout=10)
+    except (OSError, trusted_bin.TimeoutExpired):
         return None
     match = re.search(r"\d+(?:\.\d+)+", result.stdout or "") if not result.returncode else None
     return match.group(0) if match else None
 
 
-def prerequisites(system=None, which=shutil.which, run=subprocess.run, compat=None, bb=None):
+def prerequisites(system=None, which=_which, run=_run, compat=None, bb=None):
     import platform
     system = platform.system() if system is None else system
     compat = compat or load_compat()
@@ -163,7 +174,7 @@ def _target(compat):
 def _install(bb, run, source):
     try:
         return run([bb, "plugin", "install", _bare(source), "--yes"], timeout=600).returncode == 0
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, trusted_bin.TimeoutExpired):
         return False
 
 
@@ -233,15 +244,15 @@ def _plugin_step(compat, bb, run, out, stdin, state_file, yes, dry_run, switch, 
     return _install_checked(bb, run, out, state_file, target, version, status)[0]
 
 
-def _resolve_bb(bb, which=shutil.which):
+def _resolve_bb(bb, which=_which):
     bb = bb or which("bb")
     if bb is None:
         raise ValueError(NO_BB)
     return bb
 
 
-def setup(yes=False, dry_run=False, switch_to_release=False, stdin=None, out=None, bb=None, run=subprocess.run,
-          state_file=None, which=shutil.which, system=None, compat=None):
+def setup(yes=False, dry_run=False, switch_to_release=False, stdin=None, out=None, bb=None, run=_run,
+          state_file=None, which=_which, system=None, compat=None):
     compat = compat or load_compat()
     rows = prerequisites(system, which, run, compat, bb)
     _print_plan(rows, out)
@@ -293,7 +304,7 @@ def _from_dir(compat, directory, bb, run, out, state_file):
     try:
         shutil.copytree(str(directory), str(copy), symlinks=True)
         built = run([bb, "plugin", "build", "."], cwd=str(copy), timeout=600).returncode == 0
-    except (OSError, shutil.Error, subprocess.TimeoutExpired):
+    except (OSError, shutil.Error, trusted_bin.TimeoutExpired):
         built = False
     if not built:
         _say(out, "Gate FAILED: BB could not build " + str(directory) + "; not installing (copy left at " + str(workdir) + ")")
@@ -311,7 +322,7 @@ def _from_dir(compat, directory, bb, run, out, state_file):
 
 
 def update(version=None, from_dir=None, from_latest_staged=False, switch_to_release=False, yes=False, stdin=None,
-           out=None, bb=None, run=subprocess.run, state_file=None, staging_root=None, which=shutil.which, compat=None):
+           out=None, bb=None, run=_run, state_file=None, staging_root=None, which=_which, compat=None):
     if sum(bool(flag) for flag in (version, from_dir, from_latest_staged)) > 1:
         raise ValueError("Choose one of --version, --from or --from-latest-staged")
     compat = compat or load_compat()
@@ -341,7 +352,7 @@ def update(version=None, from_dir=None, from_latest_staged=False, switch_to_rele
     return _plugin_step(compat, bb, run, out, stdin, state_file, yes, False, switch_to_release)
 
 
-def rollback_plugin(bb, run=subprocess.run, out=None, state_file=None, yes=False, stdin=None):
+def rollback_plugin(bb, run=_run, out=None, state_file=None, yes=False, stdin=None):
     path = state_file if state_file is not None else paths.active_state_path()
     recorded = state.load(path).get("plugin")
     previous = recorded.get("previous_source") if isinstance(recorded, dict) else None

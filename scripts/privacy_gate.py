@@ -9,10 +9,12 @@ import argparse
 import fnmatch
 import os
 import re
-import subprocess
 import sys
 import tarfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from bff import trusted_bin  # noqa: E402
 
 PATTERNS = (
     ("home-path-posix", re.compile(rb"/(?:Users|home)/[^/\s]+/")),
@@ -66,7 +68,10 @@ def scan_bytes(label, data, allow, terms):
 
 
 def tracked_files(repo):
-    out = subprocess.run(["git", "-C", str(repo), "ls-files", "-z"], capture_output=True, check=True).stdout
+    git = trusted_bin.which("git")
+    if git is None:
+        raise OSError("git was not found in a trusted location")
+    out = trusted_bin.run([git, "-C", str(repo), "ls-files", "-z"], capture_output=True, check=True).stdout
     return [p.decode("utf-8", "surrogateescape") for p in out.split(b"\0") if p]
 
 
@@ -109,7 +114,7 @@ def main(argv=None):
         if args.archive:
             more, seen = scan_archive(args.archive, allow, terms)
             hits, scanned = hits + more, scanned | seen
-    except (OSError, ValueError, subprocess.CalledProcessError, tarfile.TarError) as exc:
+    except (OSError, ValueError, trusted_bin.CalledProcessError, tarfile.TarError) as exc:
         print("privacy gate: error: " + type(exc).__name__, file=sys.stderr)
         return 2
     for label, number, name in hits:

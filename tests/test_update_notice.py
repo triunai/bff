@@ -354,11 +354,12 @@ class RelaunchTests(unittest.TestCase):
         self.prefix = Path(self.temporary.name)
         (self.prefix / "bin").mkdir()
         (self.prefix / "bin" / "bff").write_text("#!/bin/sh\n")
+        (self.prefix / "bin" / "bff").chmod(0o755)  # the real launcher is executable, and the primitive refuses to exec a file that is not
 
     def relaunch(self, prefix):
         out = io.StringIO()
         with mock.patch.object(update_notice.paths, "install_prefix", return_value=prefix), \
-                mock.patch("shutil.which", side_effect=AssertionError("which must not be consulted")), \
+                mock.patch("bff.trusted_bin.which", side_effect=AssertionError("which must not be consulted")), \
                 mock.patch.object(sys, "argv", ["-c", "osiris", "--x"]), \
                 mock.patch.dict(os.environ, {}, clear=False), \
                 mock.patch("os.execve") as execve, contextlib.redirect_stdout(out):
@@ -370,7 +371,7 @@ class RelaunchTests(unittest.TestCase):
         target = str(self.prefix / "bin" / "bff")
         execve.assert_called_once()
         path, argv, env = execve.call_args[0]
-        self.assertEqual((path, argv), (target, [target, "osiris", "--x"]))
+        self.assertEqual((path, argv), (os.path.realpath(target), [target, "osiris", "--x"]))  # exec'd by REAL path after vetting; argv[0] stays what the user typed
         self.assertEqual(env[update_notice.RELAUNCHED], "1")
 
     def test_without_an_install_prefix_it_prints_and_does_not_exec(self):

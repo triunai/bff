@@ -18,6 +18,7 @@
     "bff/project.py",
     "bff/prompt.py",
     "bff/state.py",
+    "bff/trusted_bin.py",
     "bff/update.py",
     "bff/update_notice.py",
     "compat.json",

@@ -11,13 +11,15 @@ with an authenticated `gh` and an unused tag. The push to main is a plain push, 
 refuses anything that is not a fast-forward; this script never overrides that. Standard library only.
 """
 import argparse
+import os
 from pathlib import Path
 import re
-import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import versioning  # noqa: E402
+from bff import trusted_bin  # noqa: E402
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 GITHUB_REPO = "triunai/bff"
@@ -55,17 +57,34 @@ def release_commands(version, archive_dir, notes_file, title=None):
     ]
 
 
+# gh needs its login: the token variables and config location, on top of the shared tool set (terminal, proxies, CA bundles, ssh agent).
+RELEASE_INHERIT = trusted_bin.TOOL_INHERIT + ("GH_TOKEN", "GITHUB_TOKEN", "GH_HOST", "GH_CONFIG_DIR")
+
+
+def run_command(command, **kwargs):
+    """Run a LOGICAL command (bare `git`/`gh`, or an absolute interpreter) through trusted_bin: a bare name is found in the fixed trusted directories, never on PATH."""
+    program = command[0]
+    if os.path.isabs(program):
+        policy = trusted_bin.own_policy(program)  # the running interpreter: its location is whatever started this script; every other check applies
+    else:
+        found = trusted_bin.which(program)
+        if found is None:
+            raise SystemExit(program + " was not found in a trusted location; install it, then retry")
+        program, policy = found, None
+    return trusted_bin.run([program] + list(command[1:]), policy=policy, inherit=RELEASE_INHERIT, **kwargs)
+
+
 def run_checks(root, python=sys.executable):
     """Full unit suite, then the credential canary on its own so its result is visible."""
     for command in ([python, "-m", "unittest", "discover", "-s", "tests"],
                     [python, "-m", "unittest", "discover", "-s", "tests", "-p", "test_release.py", "-v"]):
-        if subprocess.run(command, cwd=str(root)).returncode:
+        if run_command(command, cwd=str(root)).returncode:
             raise SystemExit("Checks failed: " + " ".join(command))
 
 
 def build_archive(root, output, python=sys.executable):
-    result = subprocess.run([python, str(Path(root) / "scripts" / "build-bff-release.py"), "--output", str(output)],
-                            capture_output=True, text=True)
+    result = run_command([python, str(Path(root) / "scripts" / "build-bff-release.py"), "--output", str(output)],
+                         capture_output=True, text=True)
     if result.returncode:
         raise SystemExit("Archive build failed (the canary may have flagged content):\n" + result.stderr)
     return result.stdout.strip()
@@ -74,7 +93,7 @@ def build_archive(root, output, python=sys.executable):
 def publish_guards(root, version):
     """Refuse to publish unless the tree is clean, gh is logged in and the tag is unused."""
     def out(*argv):
-        return subprocess.run(list(argv), cwd=str(root), capture_output=True, text=True)
+        return run_command(list(argv), cwd=str(root), capture_output=True, text=True)
     problems = []
     if out("git", "status", "--porcelain").stdout.strip():
         problems.append("working tree is not clean; commit the version bump first")
@@ -131,7 +150,7 @@ def main(argv=None, root=REPOSITORY):
         raise SystemExit("Not publishing: " + "; ".join(problems))
     for command in commands:
         print("$ " + " ".join(command))
-        if subprocess.run(command, cwd=str(root)).returncode:
+        if run_command(command, cwd=str(root)).returncode:
             raise SystemExit("Command failed; stopping before later steps: " + " ".join(command))
     return 0
 

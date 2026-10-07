@@ -353,7 +353,7 @@ class ProjectTests(Scratch):
             self.assertEqual(repo_root(), self.repo.resolve())
 
     def test_doctor_does_not_execute_or_read_configs(self):
-        with mock.patch("bff.cli.shutil.which", return_value="/mock/available"), mock.patch("subprocess.run") as run:
+        with mock.patch("bff.cli.trusted_bin.which", return_value="/mock/available"), mock.patch("subprocess.run") as run:
             code, stdout, _ = self.command(["doctor", "--json"])
             self.assertEqual(code, 0)
             self.assertIn('"integration": "unverified"', stdout)
@@ -363,7 +363,7 @@ class ProjectTests(Scratch):
         running = {"present": True, "enabled": True, "status": "running", "kind": "git", "stale_bundled": False,
                    "version": "0.3.0", "display": "git:example"}
         with mock.patch("bff.cli.http.client.HTTPConnection") as connection, mock.patch("bff.cli.webbrowser.open") as browser, \
-                mock.patch("bff.cli.shutil.which", return_value="/fake/bb"), \
+                mock.patch("bff.cli.trusted_bin.which", return_value="/fake/bb"), \
                 mock.patch("bff.osiris.plugin_status", return_value=running):
             code, stdout, _ = self.command(["osiris", "--print-url"])
             self.assertEqual(code, 0)

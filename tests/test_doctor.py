@@ -55,9 +55,8 @@ class Env:
         return self._result()
 
     def patch(self):
-        return mock.patch.multiple("bff.doctor", shutil=mock.Mock(which=self.which),
-                                   subprocess=mock.Mock(run=self.run, SubprocessError=subprocess.SubprocessError,
-                                                        CompletedProcess=subprocess.CompletedProcess))
+        return mock.patch.multiple("bff.doctor", trusted_bin=mock.Mock(which=self.which, run=self.run, SubprocessError=subprocess.SubprocessError,
+                                                                      CompletedProcess=subprocess.CompletedProcess))
 
 
 def run(env, **kwargs):
@@ -161,7 +160,7 @@ class DoctorCliTests(unittest.TestCase):
     def test_json_is_backward_compatible_and_runs_nothing(self):
         from bff import cli
         out = io.StringIO()
-        with mock.patch("bff.cli.shutil.which", return_value="/m/x"), mock.patch("subprocess.run") as r, \
+        with mock.patch("bff.cli.trusted_bin.which", return_value="/m/x"), mock.patch("subprocess.run") as r, \
                 mock.patch("sys.stdout", out):
             self.assertEqual(cli.main(["doctor", "--json"]), 0)
         r.assert_not_called()

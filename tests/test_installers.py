@@ -264,7 +264,9 @@ class InstallShTests(unittest.TestCase):
         self.prefix = self.tmp / "p"
 
     def add_fake_bb(self):
-        bb = self.fakebin / "bb"
+        # The installed bff never reads PATH, so the fake bb sits where production looks for a user-installed bb: the fixed ~/.local/bin of the test HOME.
+        (self.home / ".local" / "bin").mkdir(parents=True)
+        bb = self.home / ".local" / "bin" / "bb"
         bb.write_text(FAKE_BB % sys.executable)
         bb.chmod(0o755)
 

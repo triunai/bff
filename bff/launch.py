@@ -5,17 +5,17 @@ import json
 import os
 from pathlib import Path
 import shlex
-import shutil
-import subprocess
 import sys
 import tempfile
+
+from . import trusted_bin
 
 OWNED_MARKER = "#!/bin/sh\n# BFF-owned Herdr launcher v1\n"
 
 
 def launch_plan(url):
-    executable = shutil.which("herdr")
-    terminal = "/usr/bin/open" if sys.platform == "darwin" else shutil.which("x-terminal-emulator")
+    executable = trusted_bin.which("herdr")
+    terminal = "/usr/bin/open" if sys.platform == "darwin" else trusted_bin.which("x-terminal-emulator")
     return {"bb": {"url": url, "action": "open-existing-running-observer"},
             "herdr": {"argv": [executable, "--session", "osiris"] if executable else None,
                       "availability": "available" if executable else "missing",
@@ -71,17 +71,17 @@ def start(args, url, open_observer):
     try:
         if sys.platform == "darwin":
             launcher = write_launcher(component["launcher"], component["argv"][0])
-            result = subprocess.run([component["terminal"], "-a", "Terminal", str(launcher)], timeout=10)
+            result = trusted_bin.run([component["terminal"], "-a", "Terminal", str(launcher)], timeout=10, inherit=trusted_bin.TOOL_INHERIT)
             if result.returncode:
                 raise ValueError("Terminal launch request failed with exit " + str(result.returncode))
             print("Requested Herdr session osiris in a Terminal window; startup is unverified.")
         elif component["terminal"]:
-            subprocess.Popen([component["terminal"], "-e"] + component["argv"], start_new_session=True)
+            trusted_bin.popen([component["terminal"], "-e"] + component["argv"], start_new_session=True, inherit=trusted_bin.TOOL_INHERIT)
             print("Requested Herdr session osiris in a terminal window; startup is unverified.")
         else:
             print("Automatic terminal launch unsupported here. Run: " + shlex.join(component["argv"]))
             failed = True
-    except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
+    except (ValueError, OSError, trusted_bin.TimeoutExpired) as exc:
         print("Herdr launch unavailable: " + str(exc), file=sys.stderr)
         failed = True
     print("Provider capture is separate: bff herdr (recent capture is not a heartbeat).")
