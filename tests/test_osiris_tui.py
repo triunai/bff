@@ -41,6 +41,15 @@ class OsirisTuiTests(unittest.TestCase):
         self.assertEqual(run.call_args[0][0], ["/fake/node", str(self.plugin / "bin" / "osiris-tui.mjs"), "worktrees", "--repo", str(repo), "--all", "--once", "--cols", "80", "--interval", "7.0"])
         self.assertNotIn("shell", run.call_args[1])
 
+    def test_prune_is_a_dry_run_unless_apply_is_given_and_passes_only_its_flags(self):
+        repo = Path(self.temporary.name).resolve()
+        script = str(self.plugin / "bin" / "osiris-tui.mjs")
+        _, run, _, _ = self.run_cli(["osiris", "prune", "--repo", str(repo)])
+        self.assertEqual(run.call_args[0][0], ["/fake/node", script, "prune", "--repo", str(repo)])
+        _, run, _, _ = self.run_cli(["osiris", "prune", "--repo", str(repo), "--apply", "--min-idle-days", "5", "--json", "--all", "--once"])
+        self.assertEqual(run.call_args[0][0], ["/fake/node", script, "prune", "--repo", str(repo), "--apply", "--min-idle-days", "5.0", "--json"])
+        self.assertNotIn("shell", run.call_args[1])
+
     def test_repo_defaults_to_the_current_directory(self):
         _, run, _, _ = self.run_cli(["osiris", "factory"])
         self.assertEqual(run.call_args[0][0][4], str(Path.cwd().resolve()))

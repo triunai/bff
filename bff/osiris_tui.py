@@ -1,4 +1,4 @@
-"""`bff osiris factory` and `bff osiris worktrees`: run the Osiris terminal apps from the installed plugin.
+"""`bff osiris factory|worktrees|prune`: run the Osiris terminal apps from the installed plugin.
 
 The apps live in the Osiris plugin (`bin/osiris-tui.mjs`); BFF only locates the plugin directory and runs node on that script with a fixed
 argv. Nothing is installed or written, and no shell is involved.
@@ -10,7 +10,7 @@ import shutil
 import subprocess
 
 SCRIPT = Path("bin") / "osiris-tui.mjs"
-MODES = ("factory", "worktrees")
+MODES = ("factory", "worktrees", "prune")
 
 
 def _usable(directory):
@@ -56,6 +56,15 @@ def build_argv(mode, plugin, args):
     if node is None:
         raise ValueError("node executable unavailable; the Osiris terminal apps need Node 22.6 or newer")
     argv = [node, str(Path(plugin) / SCRIPT), mode, "--repo", str(Path(args.repo or Path.cwd()).resolve())]
+    if mode == "prune":
+        # A dry run unless --apply is given; the plugin itself re-checks every worktree and never forces or deletes a branch.
+        if args.apply:
+            argv.append("--apply")
+        if args.min_idle_days is not None:
+            argv.extend(["--min-idle-days", str(args.min_idle_days)])
+        if args.json:
+            argv.append("--json")
+        return argv
     for flag, enabled in (("--all", args.all), ("--no-color", args.no_color), ("--once", args.once)):
         if enabled:
             argv.append(flag)
