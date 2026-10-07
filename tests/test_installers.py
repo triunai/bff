@@ -117,9 +117,32 @@ class WindowsInstallerTests(unittest.TestCase):
 
     def test_verifies_sums_and_refuses_store_stub(self):
         for needle in ("Get-FileHash -Algorithm SHA256", "SHA256SUMS", "checksum mismatch", "\\WindowsApps\\",
-                       "winget install --id=astral-sh.uv -e", "winget install Python.Python.3.12", "Unblock-File",
+                       "winget install --id=astral-sh.uv -e", "winget install Python.Python.3.12",
                        "-NoModifyPath", "SetEnvironmentVariable('Path'", "S7"):
             self.assertIn(needle, self.ps1)
+
+    def test_gh_source_and_fix_messages_are_present(self):
+        for needle in ("gh release download", "gh auth status", "gh auth login", "winget install --id GitHub.cli", "BFF_RELEASE_BASE",
+                       "[scriptblock]::Create"):
+            self.assertIn(needle, self.ps1)
+        self.assertLess(self.ps1.index("gh auth status"), self.ps1.index("New-Item -ItemType Directory"))
+        self.assertTrue(self.ps1.isascii() and self.sh.isascii())  # PowerShell 5.1 reads BOM-less files as ANSI
+
+    def test_gate_stays_before_any_download(self):
+        self.assertLess(self.ps1.index("BFF_WINDOWS_PREVIEW"), self.ps1.index("& gh release download"))
+        self.assertIn("PREVIEW: use WSL", self.ps1)
+
+    @unittest.skipUnless(shutil.which("pwsh"), "pwsh not installed")
+    def test_powershell_parses(self):
+        run = subprocess.run(["pwsh", "-NoProfile", "-Command",
+                              "$e=$null; [void][System.Management.Automation.Language.Parser]::ParseFile('%s',[ref]$null,[ref]$e); if($e){$e; exit 1}" % (ROOT / "install.ps1")],
+                             capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+
+    @unittest.skipUnless(shutil.which("shellcheck"), "shellcheck not installed")
+    def test_install_sh_passes_shellcheck(self):
+        run = subprocess.run(["shellcheck", "-s", "sh", str(ROOT / "install.sh")], capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stdout)
 
     def test_no_pipe_to_shell_anywhere(self):
         import re
@@ -244,8 +267,9 @@ class InstallShTests(unittest.TestCase):
         bb.chmod(0o755)
 
     def run_sh(self, *args, base=None, env_extra=None):
-        env = {"HOME": str(self.home), "PATH": str(self.fakebin) + ":/usr/bin:/bin", "TMPDIR": str(self.tmp), "PYTHONDONTWRITEBYTECODE": "1",
-               "BFF_RELEASE_BASE": base or ("file://" + str(self.srv))}
+        env = {"HOME": str(self.home), "PATH": str(self.fakebin) + ":/usr/bin:/bin", "TMPDIR": str(self.tmp), "PYTHONDONTWRITEBYTECODE": "1"}
+        if base is not False:  # base=False exercises the default gh source
+            env["BFF_RELEASE_BASE"] = base or ("file://" + str(self.srv))
         env.update(env_extra or {})
         return subprocess.run(["sh", str(self.script_dir / "install.sh"), *args], env=env, capture_output=True,
                               text=True, stdin=subprocess.DEVNULL)
@@ -296,6 +320,114 @@ class InstallShTests(unittest.TestCase):
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertTrue(json.loads(run.stdout)["created"])
         self.assertFalse((self.prefix / "bin" / "bff").exists())
+
+
+FAKE_GH = """#!%s
+import os, shutil, sys
+args = sys.argv[1:]
+log = os.environ.get("FAKE_GH_LOG")
+if log:
+    open(log, "a").write(" ".join(args) + "\\n")
+if args[:2] == ["auth", "status"]:
+    sys.exit(0 if os.environ.get("FAKE_GH_AUTH", "1") == "1" else 1)
+if args[:2] == ["release", "download"]:
+    tag, dest = args[2], args[args.index("--dir") + 1]
+    patterns = [args[i + 1] for i, a in enumerate(args) if a == "--pattern"]
+    if "--repo" not in args or "--clobber" not in args:
+        sys.exit(2)
+    for name in patterns:
+        shutil.copy(os.path.join(os.environ["FAKE_GH_SRC"], "download", tag, name), os.path.join(dest, name))
+    sys.exit(0)
+sys.exit(3)
+"""
+
+
+class InstallShGhSourceTests(InstallShTests):
+    """The private-repo one-liner path: no BFF_RELEASE_BASE, downloads through a fake gh on PATH."""
+
+    # Re-running the inherited curl tests here would only repeat them.
+    test_download_install_runs_new_bff = test_tampered_tarball_installs_nothing = None
+    test_setup_while_osiris_is_unpublished_exits_4 = test_setup_without_bb_is_still_exit_3 = None
+    test_http_release_base_is_refused = test_old_flags_still_pass_through = None
+
+    def add_fake_gh(self):
+        gh = self.fakebin / "gh"
+        gh.write_text(FAKE_GH % sys.executable)
+        gh.chmod(0o755)
+        self.gh_log = self.tmp / "gh.log"
+
+    def run_gh(self, *args, env_extra=None, src=None):
+        extra = {"FAKE_GH_SRC": str(src or self.srv), "FAKE_GH_LOG": str(self.gh_log)}
+        extra.update(env_extra or {})
+        return self.run_sh(*args, base=False, env_extra=extra)
+
+    def test_gh_missing_prints_install_and_login_fix(self):
+        run = self.run_sh("--prefix", str(self.prefix), "--no-modify-path", base=False)
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("https://cli.github.com", run.stderr)
+        self.assertIn("gh auth login", run.stderr)
+        self.assertFalse(self.prefix.exists())
+
+    def test_gh_unauthenticated_prints_login_fix_and_downloads_nothing(self):
+        self.add_fake_gh()
+        run = self.run_gh("--prefix", str(self.prefix), "--no-modify-path", env_extra={"FAKE_GH_AUTH": "0"})
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("not signed in. Run: gh auth login", run.stderr)
+        self.assertNotIn("release download", self.gh_log.read_text())
+        self.assertFalse(self.prefix.exists())
+
+    def test_gh_install_runs_new_bff_and_leaves_home_alone(self):
+        self.add_fake_gh()
+        run = self.run_gh("--prefix", str(self.prefix), "--no-modify-path")
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertNotIn("release source", run.stderr)
+        self.assertIn("release download v" + self.version + " --repo triunai/bff", self.gh_log.read_text())
+        self.assertEqual(list(self.home.iterdir()), [])
+        version = subprocess.run([str(self.prefix / "bin" / "bff"), "--version"], capture_output=True, text=True)
+        self.assertEqual(version.stdout.strip(), "bff " + self.version)
+
+    def test_gh_checksum_mismatch_aborts_before_install(self):
+        self.add_fake_gh()
+        srv = self.tmp / "tampered"
+        shutil.copytree(str(self.srv), str(srv))
+        archive = srv / "download" / ("v" + self.version) / ("bff-" + self.version + ".tar.gz")
+        archive.write_bytes(archive.read_bytes() + b"x")
+        run = self.run_gh("--prefix", str(self.prefix), "--no-modify-path", src=srv)
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("checksum mismatch", run.stderr)
+        self.assertFalse((self.prefix / "bin" / "bff").exists())
+
+    def test_gh_download_failure_names_the_check(self):
+        self.add_fake_gh()
+        run = self.run_gh("--prefix", str(self.prefix), "--no-modify-path", src=self.tmp / "nowhere")
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("can read triunai/bff", run.stderr)
+
+    def test_gh_rerun_is_idempotent_and_leaves_no_temp_dir(self):
+        self.add_fake_gh()
+        first = self.run_gh("--prefix", str(self.prefix), "--no-modify-path")
+        second = self.run_gh("--prefix", str(self.prefix), "--no-modify-path")
+        self.assertEqual((first.returncode, second.returncode), (0, 0), second.stderr)
+        self.assertEqual(json.loads(first.stdout)["release"], json.loads(second.stdout)["release"])
+        self.assertEqual([p.name for p in self.tmp.glob("bff-download.*")], [])
+
+    def test_gh_setup_runs_osiris_setup_and_prints_next_step(self):
+        self.add_fake_gh()
+        self.add_fake_bb()
+        run = self.run_gh("--setup", "--prefix", str(self.prefix), "--no-modify-path")
+        self.assertEqual(run.returncode, 4, run.stdout + run.stderr)
+        self.assertIn("bff --help", run.stderr)
+
+    def test_oneliner_form_runs_script_text_via_sh_c(self):
+        # The documented one-liner passes the script as a -c string, so stdin stays the terminal for the PATH prompt.
+        self.add_fake_gh()
+        text = (ROOT / "install.sh").read_text()
+        env = {"HOME": str(self.home), "PATH": str(self.fakebin) + ":/usr/bin:/bin", "TMPDIR": str(self.tmp), "PYTHONDONTWRITEBYTECODE": "1",
+               "FAKE_GH_SRC": str(self.srv), "FAKE_GH_LOG": str(self.gh_log)}
+        run = subprocess.run(["sh", "-c", text, "bff-install", "--prefix", str(self.prefix), "--no-modify-path"], env=env,
+                             capture_output=True, text=True, stdin=subprocess.DEVNULL, cwd=str(self.tmp))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertTrue((self.prefix / "bin" / "bff").is_symlink())
 
 
 if __name__ == "__main__":
