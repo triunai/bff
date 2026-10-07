@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from bff import cli, osiris_prune
 
 ROOT = Path(__file__).resolve().parents[1]
-IDENTITY = ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false"]
+IDENTITY = ["-c", "user.name=t", "-c", "user.email=tester", "-c", "commit.gpgsign=false"]
 
 
 def git(cwd, *argv):
