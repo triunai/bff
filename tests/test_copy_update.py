@@ -75,7 +75,7 @@ class AttestationCopy(unittest.TestCase):
 
     def _missing_gh(self):
         from unittest import mock
-        with mock.patch.object(update.shutil, "which", return_value=None):
+        with mock.patch.object(update.trusted_bin, "which", return_value=None):
             update._attest(Path("/x.tar.gz"), "1.0.0", None, True, None)
 
 

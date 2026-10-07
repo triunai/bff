@@ -67,7 +67,7 @@ class MainTests(unittest.TestCase):
             target = release.bumped(versioning.read_version(root), "patch")
             add_section(root, target)
             output = Path(directory) / "out"
-            with mock.patch("release.subprocess.run", wraps=subprocess.run) as spy:
+            with mock.patch("release.run_command", wraps=subprocess.run) as spy:
                 code, text = self.run_main(root, "--bump", "patch", "--skip-tests", "--output", str(output))
             self.assertEqual(code, 0)
             self.assertEqual(versioning.read_version(root), target)
@@ -91,7 +91,7 @@ class MainTests(unittest.TestCase):
     def test_a_failing_check_stops_the_release_before_the_archive(self):
         with tempfile.TemporaryDirectory() as directory:
             root = scratch(directory)
-            with mock.patch("release.subprocess.run", return_value=subprocess.CompletedProcess([], 1)):
+            with mock.patch("release.run_command", return_value=subprocess.CompletedProcess([], 1)):
                 with self.assertRaises(SystemExit) as raised:
                     self.run_main(root, "--output", str(Path(directory) / "out"))
             self.assertIn("Checks failed", str(raised.exception))
@@ -114,7 +114,7 @@ class MainTests(unittest.TestCase):
             if command[:2] == ["git", "rev-parse"]:
                 return subprocess.CompletedProcess(command, 0, "abc\n", "")
             return subprocess.CompletedProcess(command, 0, "", "")
-        with mock.patch("release.subprocess.run", side_effect=fake):
+        with mock.patch("release.run_command", side_effect=fake):
             problems = release.publish_guards(SDK, "0.1.1")
         text = " | ".join(problems)
         self.assertIn("not clean", text)
@@ -131,7 +131,7 @@ class MainTests(unittest.TestCase):
                 calls.append(command[:2])
                 return subprocess.CompletedProcess(command, 1 if command[:2] == ["git", "tag"] else 0, "", "")
             with mock.patch("release.run_checks"), mock.patch("release.publish_guards", return_value=[]), \
-                    mock.patch("release.subprocess.run", side_effect=fake):
+                    mock.patch("release.run_command", side_effect=fake):
                 with self.assertRaises(SystemExit):
                     self.run_main(root, "--publish", "--output", str(Path(directory) / "out"))
             publish_calls = [c for c in calls if c[0] in ("git", "gh")]

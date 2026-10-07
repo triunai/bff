@@ -5,13 +5,11 @@ import datetime
 import http.client
 import json
 from pathlib import Path
-import shutil
-import subprocess
 import sys
 from urllib.parse import urlsplit
 import webbrowser
 
-from . import __version__, osiris, state
+from . import __version__, osiris, state, trusted_bin
 from .paths import active_state_path
 from .project import blocks, init_repo, inspect_spine, load_profile, repo_root, run_checks
 from .prompt import confirm
@@ -23,7 +21,7 @@ def doctor():
     components = []
     for name, commands in (("BB", ("bb",)), ("Herdr", ("herdr",)), ("OMC", ("omc",)),
                            ("OMX", ("omx",)), ("Beads", ("bd", "br")), ("aeh", ("aeh",))):
-        found = {command: shutil.which(command) for command in commands}
+        found = {command: trusted_bin.which(command) for command in commands}
         components.append({"component": name, "executables": found,
                            "availability": "available" if any(found.values()) else "missing",
                            "integration": "unverified"})
@@ -64,7 +62,7 @@ REINSTALL = "curl -fsSLO https://github.com/triunai/bff/releases/latest/download
 
 def _rollback_plugin(args, paths, state):
     """True when the plugin rollback succeeded (or had nothing to do)."""
-    bb = shutil.which("bb")
+    bb = trusted_bin.which("bb")
     if bb is None:
         print("BB not found" if args.plugin else "Osiris plugin: skipped (BB not found)")
         return not args.plugin
@@ -170,7 +168,7 @@ def run_config(args):
 
 
 def check_osiris_plugin():
-    executable = shutil.which("bb")
+    executable = trusted_bin.which("bb")
     if executable is None:
         raise ValueError(osiris.NO_BB)
     status = osiris.plugin_status(executable)
@@ -322,7 +320,7 @@ def main(argv=None):
                           "execution": ("blocked-by-spine-errors" if args.run and errors else
                                         "ran" if results else "no-checks-configured" if args.run else "not-requested")}, indent=2))
         return 1 if errors or any(result["status"] != "pass" for result in results) else 0
-    except (ValueError, OSError, KeyError, TypeError, UnicodeError, subprocess.TimeoutExpired, http.client.HTTPException) as exc:
+    except (ValueError, OSError, KeyError, TypeError, UnicodeError, trusted_bin.TimeoutExpired, http.client.HTTPException) as exc:
         if args.command == "check" and not canary_printed:
             print("Threads read: unavailable (validation did not complete)")
         print("bff: " + str(exc), file=sys.stderr)

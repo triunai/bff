@@ -192,11 +192,11 @@ class UpdateFlow(Fixture):
     def test_installer_and_smoke_never_inherit_the_terminal(self):
         # Found by a real-pty run: the new installer's D7 PATH offer prompted on the inherited TTY
         # while its stderr was captured, so `bff update` hung on a question nobody could see.
-        real, calls = subprocess.run, []
+        real, calls = update.trusted_bin.run, []
         def recording_run(*args, **kwargs):
             calls.append((args[0], kwargs.get("stdin")))
             return real(*args, **kwargs)
-        with mock.patch.object(update.subprocess, "run", side_effect=recording_run):
+        with mock.patch.object(update.trusted_bin, "run", side_effect=recording_run):
             self.update()
         children = [stdin for argv, stdin in calls if "--stage-only" in argv or "--activate" in argv
                     or "--version" in argv]
@@ -339,7 +339,7 @@ class PluginStep(Fixture):
                 self.assertIn("Retry: bff osiris update", " ".join(lines))
 
     def test_default_which_is_resolved_at_call_time(self):
-        with mock.patch.object(update.shutil, "which", return_value=None):
+        with mock.patch.object(update.trusted_bin, "which", return_value=None):
             self.assertEqual(update.plugin_step(self.prefix, out=lambda line: None), "skipped")
 
 
@@ -536,7 +536,7 @@ class Commands(Fixture):
         patches = [mock.patch.dict(os.environ, env or {}),
                    mock.patch.object(paths, "install_prefix", return_value=self.prefix if prefix else None),
                    mock.patch.object(paths, "install_method", return_value=method),
-                   mock.patch.object(update.shutil, "which", return_value=which)]
+                   mock.patch.object(update.trusted_bin, "which", return_value=which)]
         with contextlib.ExitStack() as stack:
             for item in patches:
                 stack.enter_context(item)

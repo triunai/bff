@@ -12,7 +12,7 @@ import re
 import sys
 from datetime import datetime, timedelta, timezone
 
-from . import paths, state
+from . import paths, state, trusted_bin
 from .prompt import answer_is_yes
 
 INTERVAL = timedelta(hours=24)
@@ -62,7 +62,7 @@ def relaunch_default():
         return
     env = dict(os.environ)
     env[RELAUNCHED] = "1"
-    os.execve(str(target), [str(target)] + sys.argv[1:], env)
+    trusted_bin.exec_replace(target, [str(target)] + sys.argv[1:], env)
 
 
 def _method_hint():

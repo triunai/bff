@@ -9,11 +9,16 @@ import os
 from pathlib import Path
 import re
 import statistics
-import shutil
-import subprocess
 import sys
 import time
 
+try:
+    from . import trusted_bin
+except ImportError:  # run as a script (python bff/herdr_observer.py): the module sits beside it
+    import trusted_bin
+
+# What the herdr child may see besides the minimal base: how to find the user's own server.
+HERDR_INHERIT = ('HERDR_SOCKET_PATH', 'XDG_CONFIG_HOME', 'XDG_RUNTIME_DIR', 'TMPDIR', 'USER', 'LOGNAME')
 FIELDS = ('source provider sessionId callId turnId parentCallId model tool server status '
           'startedAt endedAt durationMs durationKind errorCode').split()
 STATUSES = ('success', 'error', 'denied', 'cancelled', 'unknown', 'running')
@@ -483,11 +488,11 @@ def main():
     parser.add_argument('--view', choices=('tools', 'timeline', 'recovery'), default='tools')
     args = parser.parse_args()
     if args.command == 'check-herdr':
-        executable = shutil.which('herdr')
+        executable = trusted_bin.which('herdr')
         if not executable:
             print(json.dumps({'available': False, 'errorCode': 'EXECUTABLE_UNAVAILABLE', 'agents': []}))
             return
-        proc = subprocess.run([executable,'agent','list'],capture_output=True,text=True,timeout=3)
+        proc = trusted_bin.run([executable,'agent','list'],capture_output=True,text=True,timeout=3,inherit=HERDR_INHERIT)
         try:
             reply = json.loads(proc.stdout or proc.stderr)
             error = (reply.get('error') or {}).get('code')
@@ -519,6 +524,6 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+    except (OSError, ValueError, trusted_bin.TimeoutExpired) as error:
         print(json.dumps({'errorCode':type(error).__name__}),file=sys.stderr)
         sys.exit(1)

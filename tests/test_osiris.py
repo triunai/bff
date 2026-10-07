@@ -13,7 +13,7 @@ from unittest import mock
 
 SDK = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SDK))
-from bff import cli, osiris, paths, state
+from bff import cli, osiris, paths, state, trusted_bin
 
 FAKE_BB = """#!%s
 import json, os, sys
@@ -76,6 +76,23 @@ class Fake(unittest.TestCase):
         patcher = mock.patch.dict(os.environ, env)
         patcher.start()
         self.addCleanup(patcher.stop)
+        # The primitive never reads PATH and passes a minimal env, so the fake bb is reached the way production reaches bb: through trusted_bin, with the fake's directory
+        # as the only allowed location and its FAKE_BB_* variables named explicitly. Every other program still resolves (and is vetted) for real.
+        real_which, real_run, fake_dir = trusted_bin.which, trusted_bin.run, str(self.bin)
+        fake_names = ("FAKE_BB_LOG", "FAKE_BB_STATE", "FAKE_BB_VERSION", "FAKE_BB_LIST_EXIT", "FAKE_BB_INSTALL_EXIT", "FAKE_BB_INSTALL_RESULT", "FAKE_BB_BUILD_EXIT")
+
+        def fake_which(name, policy=None):
+            return self.bb if name == "bb" else real_which(name, policy)
+
+        def fake_run(argv, **kwargs):
+            if str(argv[0]) == self.bb:
+                kwargs["policy"] = trusted_bin.Policy(dirs=(fake_dir,))
+                kwargs["inherit"] = tuple(kwargs.get("inherit", ())) + fake_names
+            return real_run(argv, **kwargs)
+        for target, replacement in (("bff.trusted_bin.which", fake_which), ("bff.trusted_bin.run", fake_run)):
+            started = mock.patch(target, side_effect=replacement)
+            started.start()
+            self.addCleanup(started.stop)
         self.set_plugins()
 
     def set_plugins(self, *plugins, raw=None):
@@ -448,8 +465,8 @@ class CliTests(Fake):
         self.assertIn("Osiris plugin is disabled: enable it in BB, or run bff osiris setup", stderr)
 
     def test_run_without_bb(self):
-        os.environ["PATH"] = "/usr/bin:/bin"
-        code, _, stderr = self.command(["osiris"])
+        with mock.patch("bff.trusted_bin.which", return_value=None):  # no bb in any trusted location (PATH is never consulted, so editing it would prove nothing)
+            code, _, stderr = self.command(["osiris"])
         self.assertEqual(code, 2)
         self.assertIn("BB not found: run bff osiris setup", stderr)
 

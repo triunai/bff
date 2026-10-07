@@ -5,8 +5,9 @@ import os
 from pathlib import Path
 import re
 import shutil
-import subprocess
 import tempfile
+
+from . import trusted_bin
 
 PROFILE = {
     "schema_version": 1,
@@ -26,8 +27,11 @@ CANONICAL_WS = re.compile(r"^### WS-(\d{2,})(?:\s+—\s+.+)?\s*$")
 
 
 def repo_root(path=None):
-    result = subprocess.run(["git", "-C", str(path or Path.cwd()), "rev-parse", "--show-toplevel"],
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    git = trusted_bin.which("git")
+    if git is None:
+        raise ValueError("git was not found in a trusted location; install git, then select a Git repository with --repo")
+    result = trusted_bin.run([git, "-C", str(path or Path.cwd()), "rev-parse", "--show-toplevel"],
+                             stdout=trusted_bin.PIPE, stderr=trusted_bin.PIPE, text=True)
     if result.returncode:
         raise ValueError("Select a Git repository with --repo")
     return Path(result.stdout.strip()).resolve()
@@ -200,13 +204,19 @@ def run_checks(profile, repo):
     results = []
     for name, argv in profile["checks"].items():
         try:
-            result = subprocess.run(argv, cwd=str(repo), timeout=120, text=True,
-                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            # A bare program name is found in the fixed trusted directories (never PATH); a path must itself be absolute and trusted.
+            # An absolute path is the user's explicit choice in their own profile (location is theirs; ownership, mode and directory-chain checks still apply).
+            absolute = "/" in argv[0]
+            program = argv[0] if absolute else trusted_bin.which(argv[0])
+            if program is None:
+                raise FileNotFoundError("no trusted program named " + argv[0])
+            result = trusted_bin.run([program] + list(argv[1:]), policy=trusted_bin.own_policy(program) if absolute else None, cwd=str(repo), timeout=120, text=True,
+                                     inherit=trusted_bin.TOOL_INHERIT, stdout=trusted_bin.PIPE, stderr=trusted_bin.PIPE)
             results.append({"name": name, "argv": argv,
                             "status": "pass" if result.returncode == 0 else "nonzero",
                             "returncode": result.returncode, "stdout": result.stdout, "stderr": result.stderr})
         except FileNotFoundError as exc:
             results.append({"name": name, "argv": argv, "status": "missing-executable", "error": str(exc)})
-        except (OSError, subprocess.TimeoutExpired, UnicodeError) as exc:
+        except (OSError, trusted_bin.TimeoutExpired, UnicodeError) as exc:
             results.append({"name": name, "argv": argv, "status": "tool-error", "error": str(exc)})
     return results
