@@ -225,6 +225,36 @@ jobs:
           catch { Write-Host "INSTALL FAILED: $_"; Write-Host $_.ScriptStackTrace; exit 1 }
           python .github/ci/windows_smoke.py verify --prefix $prefix --tag "install-iex-${{ matrix.engine }}"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - if: matrix.engine == 'powershell'
+        name: Plain HTTPS download of the PUBLISHED release (no gh, no login) under powershell
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $prefix = Join-Path $env:RUNNER_TEMP "prefix-https-$([guid]::NewGuid().ToString('N').Substring(0,6))"
+          $env:BFF_YES = '1'; $env:BFF_NO_SETUP = '1'; $env:BFF_NO_MODIFY_PATH = '1'; $env:BFF_PREFIX = $prefix
+          $env:BFF_DOWNLOAD = 'https'; $env:BFF_VERSION = '0.2.0'
+          New-Item -ItemType Directory -Force -Path $env:BFF_SMOKE_LOGS | Out-Null
+          try { & .\bff-install\install.ps1 *>&1 | Tee-Object -FilePath (Join-Path $env:BFF_SMOKE_LOGS "https-download-powershell-py${{ matrix.python-version }}.log") }
+          catch { Write-Host "INSTALL FAILED: $_"; Write-Host $_.ScriptStackTrace; exit 1 }
+          # v0.2.0 predates the Windows fixes, so only the download, checksum, extract and install path is judged here.
+          $out = & (Join-Path $prefix 'bin\bff.cmd') --version
+          Write-Host $out
+          if ("$out" -notmatch 'bff 0\.2\.0') { Write-Host 'expected bff 0.2.0'; exit 1 }
+      - if: matrix.engine == 'pwsh'
+        name: Plain HTTPS download of the PUBLISHED release (no gh, no login) under pwsh
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $prefix = Join-Path $env:RUNNER_TEMP "prefix-https-$([guid]::NewGuid().ToString('N').Substring(0,6))"
+          $env:BFF_YES = '1'; $env:BFF_NO_SETUP = '1'; $env:BFF_NO_MODIFY_PATH = '1'; $env:BFF_PREFIX = $prefix
+          $env:BFF_DOWNLOAD = 'https'; $env:BFF_VERSION = '0.2.0'
+          New-Item -ItemType Directory -Force -Path $env:BFF_SMOKE_LOGS | Out-Null
+          try { & .\bff-install\install.ps1 *>&1 | Tee-Object -FilePath (Join-Path $env:BFF_SMOKE_LOGS "https-download-pwsh-py${{ matrix.python-version }}.log") }
+          catch { Write-Host "INSTALL FAILED: $_"; Write-Host $_.ScriptStackTrace; exit 1 }
+          # v0.2.0 predates the Windows fixes, so only the download, checksum, extract and install path is judged here.
+          $out = & (Join-Path $prefix 'bin\bff.cmd') --version
+          Write-Host $out
+          if ("$out" -notmatch 'bff 0\.2\.0') { Write-Host 'expected bff 0.2.0'; exit 1 }
       - name: Injected failure (workflow_dispatch inject_failure=true; the job must go red here)
         if: ${{ inputs.inject_failure }}
         shell: cmd
