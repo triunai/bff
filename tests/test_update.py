@@ -15,6 +15,8 @@ from unittest import mock
 
 SDK = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SDK))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import winskip  # noqa: E402
 sys.path.insert(0, str(SDK / "scripts"))
 from bff import __version__, cli, paths, state, update
 import versioning
@@ -114,6 +116,7 @@ class Fixture(unittest.TestCase):
         sums.write_text(sha(self.tarball()) + "  " + self.tarball().name + "\n", encoding="utf-8")
 
 
+@winskip.posix_only('builds bin/bff as a symlink and reads it with os.readlink; the Windows launcher is pinned in test_update_windows and test_windows_install')
 class UpdateFlow(Fixture):
     def test_happy_path_without_gh(self):
         lines = []
@@ -343,6 +346,7 @@ class PluginStep(Fixture):
             self.assertEqual(update.plugin_step(self.prefix, out=lambda line: None), "skipped")
 
 
+@winskip.posix_only('builds bin/bff as a symlink and reads it with os.readlink; the Windows launcher is pinned in test_update_windows and test_windows_install')
 class ApplyWithPlugin(Fixture):
     def test_plugin_step_runs_after_the_flip_with_the_new_binary_path(self):
         order = []
@@ -385,6 +389,7 @@ class ApplyWithPlugin(Fixture):
         self.assertUnchanged(before)
 
 
+@winskip.posix_only('builds bin/bff as a symlink and reads it with os.readlink; the Windows launcher is pinned in test_update_windows and test_windows_install')
 class Rollback(Fixture):
     def test_rollback_toggles(self):
         result = self.update()

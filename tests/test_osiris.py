@@ -13,6 +13,8 @@ from unittest import mock
 
 SDK = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SDK))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import winskip  # noqa: E402
 from bff import cli, osiris, paths, state, trusted_bin
 
 FAKE_BB = """#!%s
@@ -154,6 +156,7 @@ class CompatTests(Fake):
             osiris.load_compat(self.root / "absent")
 
 
+@winskip.posix_only('the fake bb/herdr is a #! script; trusted_bin refuses scripts on Windows by design (BB and Osiris-in-BB are unsupported there; test_osiris_windows pins the Windows rules)')
 class PluginStatusTests(Fake):
     def status(self):
         return osiris.plugin_status(self.bb)
@@ -215,6 +218,7 @@ class PrerequisiteTests(Fake):
         self.assertFalse(next(r for r in rows if r["name"] == "Node")["required"])
 
 
+@winskip.posix_only('the fake bb/herdr is a #! script; trusted_bin refuses scripts on Windows by design (BB and Osiris-in-BB are unsupported there; test_osiris_windows pins the Windows rules)')
 class SetupTests(Fake):
     def test_path_dev_source_with_yes_never_replaced(self):
         self.set_plugins(entry("path:" + HOME + "/dev/plugin"))
@@ -312,6 +316,7 @@ class SetupTests(Fake):
         self.assertEqual(self.installs(), [])
 
 
+@winskip.posix_only('the fake bb/herdr is a #! script; trusted_bin refuses scripts on Windows by design (BB and Osiris-in-BB are unsupported there; test_osiris_windows pins the Windows rules)')
 class UpdateTests(Fake):
     def update(self, **kw):
         kw.setdefault("staging_root", str(self.staging))
@@ -399,6 +404,7 @@ class UpdateTests(Fake):
         self.assertEqual(self.installs(), [])
 
 
+@winskip.posix_only('the fake bb/herdr is a #! script; trusted_bin refuses scripts on Windows by design (BB and Osiris-in-BB are unsupported there; test_osiris_windows pins the Windows rules)')
 class RollbackTests(Fake):
     def test_swaps_and_swaps_back(self):
         a, b = "path:" + str(self.root / "a"), "path:" + str(self.root / "b")
@@ -427,6 +433,7 @@ class RollbackTests(Fake):
         self.assertEqual(state.load(self.state_file)["plugin"], original["plugin"])
 
 
+@winskip.posix_only('the fake bb/herdr is a #! script; trusted_bin refuses scripts on Windows by design (BB and Osiris-in-BB are unsupported there; test_osiris_windows pins the Windows rules)')
 class CliTests(Fake):
     def command(self, args):
         stdout, stderr = io.StringIO(), io.StringIO()
@@ -498,7 +505,7 @@ class ReleaseTests(Fake):
         shutil.copytree(str(SDK / "plugins"), str(source / "plugins"), ignore=shutil.ignore_patterns("node_modules"))
         (source / "README.md").write_text("scratch\n", encoding="utf-8")
         result = installer.install(self.root / "prefix2", source=source)
-        release = self.root / "prefix2" / "share" / "bff" / "releases" / result["release"]
+        release = paths.releases_dir(prefix=self.root / "prefix2") / result["release"]
         self.assertTrue((release / "compat.json").is_file())
         self.assertTrue((release / "bff" / "osiris.py").is_file())
         self.assertFalse((release / "plugins").exists())
@@ -513,7 +520,7 @@ class ReleaseTests(Fake):
         for name in ("bff", "templates"):
             shutil.copytree(str(SDK / name), str(source / name), ignore=shutil.ignore_patterns("__pycache__"))
         result = installer.install(self.root / "prefix3", source=source)
-        release = self.root / "prefix3" / "share" / "bff" / "releases" / result["release"]
+        release = paths.releases_dir(prefix=self.root / "prefix3") / result["release"]
         installer.verify_release(release)
         # Forge an old 0.1.x release: add the bundled plugin, then re-seal the manifest under its new identity.
         (release / "plugins" / "osiris" / "dist").mkdir(parents=True)

@@ -13,7 +13,7 @@ from unittest import mock
 
 SDK = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SDK))
-from bff import __version__, cli
+from bff import __version__, cli, paths
 from bff.project import PROFILE, init_repo, load_profile, repo_root
 
 spec = importlib.util.spec_from_file_location("bff_installer", SDK / "install.py")
@@ -77,7 +77,7 @@ class InstallationTests(Scratch):
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(installer.main(["--prefix", str(self.prefix), "--disable"]), 0)
         self.assertFalse(command.exists())
-        release = self.prefix / "share" / "bff" / "releases" / first["release"]
+        release = paths.releases_dir(prefix=self.prefix) / first["release"]
         installer.activate(release, self.prefix)
         self.assertTrue(command.is_symlink())
         self.assertEqual(before, tree(self.prefix))
@@ -104,7 +104,7 @@ class InstallationTests(Scratch):
 
     def test_tamper_reinstall_and_activation_refused(self):
         result = installer.install(self.prefix, source=self.source)
-        release = self.prefix / "share" / "bff" / "releases" / result["release"]
+        release = paths.releases_dir(prefix=self.prefix) / result["release"]
         target = release / "bff" / "cli.py"
         target.write_text(target.read_text(encoding="utf-8") + "\n# mutation\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "integrity"):
@@ -114,7 +114,7 @@ class InstallationTests(Scratch):
 
     def test_complete_inventory_rejects_extra_missing_and_links(self):
         result = installer.install(self.prefix, source=self.source)
-        release = self.prefix / "share" / "bff" / "releases" / result["release"]
+        release = paths.releases_dir(prefix=self.prefix) / result["release"]
         extra = release / "unmanifested.txt"
         extra.write_text("unexpected", encoding="utf-8")
         with self.assertRaises(ValueError):
@@ -148,7 +148,7 @@ class InstallationTests(Scratch):
         (self.source / "docs" / "portable.md").write_text("portable docs", encoding="utf-8")
         (self.source / "private.txt").write_text("exclude", encoding="utf-8")
         result = installer.install(self.prefix, source=self.source)
-        release = self.prefix / "share" / "bff" / "releases" / result["release"]
+        release = paths.releases_dir(prefix=self.prefix) / result["release"]
         self.assertFalse((release / "private.txt").exists())
         self.assertTrue((release / "LICENSE").is_file())
         self.assertTrue((release / "docs" / "portable.md").is_file())
@@ -161,7 +161,7 @@ class InstallationTests(Scratch):
         (self.source / "README.md").write_text("new README", encoding="utf-8")
         second = installer.install(self.prefix, source=self.source)
         self.assertNotEqual(first["release"], second["release"])
-        releases = self.prefix / "share" / "bff" / "releases"
+        releases = paths.releases_dir(prefix=self.prefix)
         self.assertTrue((releases / first["release"]).exists())
         installer.activate(releases / first["release"], self.prefix)
         self.assertEqual((self.prefix / "bin" / "bff").resolve(), (releases / first["release"] / "bin" / "bff").resolve())
@@ -195,7 +195,7 @@ class InstallationTests(Scratch):
         (plugin / "node_modules" / "dep.js").write_text("dependency", encoding="utf-8")
         (self.source / "compat.json").write_text((SDK / "compat.json").read_text(encoding="utf-8"), encoding="utf-8")
         result = installer.install(self.prefix, source=self.source)
-        release = self.prefix / "share" / "bff" / "releases" / result["release"]
+        release = paths.releases_dir(prefix=self.prefix) / result["release"]
         self.assertFalse((release / "plugins").exists())
         self.assertTrue((release / "compat.json").is_file())
         self.assertTrue((release / "bff" / "osiris.py").is_file())

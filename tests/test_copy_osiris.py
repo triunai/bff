@@ -12,6 +12,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import winskip  # noqa: E402
 from bff import cli, osiris, state  # noqa: E402
 from tests.test_osiris import Fake  # noqa: E402
 
@@ -22,6 +24,7 @@ class StdinNotATty(io.StringIO):
 
 
 class UnpublishedCopy(Fake):
+    @winskip.posix_only('the fake bb/herdr is a #! script; trusted_bin refuses scripts on Windows by design (BB and Osiris-in-BB are unsupported there; test_osiris_windows pins the Windows rules)')
     def test_setup_says_nothing_to_install_with_its_own_exit(self):
         code = self.call(osiris.setup, yes=True, compat=self.compat(published=False))
         self.assertEqual(code, 4)
@@ -62,6 +65,7 @@ class RollbackConsent(Fake):
                 self.assertEqual(self.installs(), [])
                 self.assertIn("no changes made; re-run with --yes to apply", self.output())
 
+    @winskip.posix_only('the fake bb/herdr is a #! script; trusted_bin refuses scripts on Windows by design (BB and Osiris-in-BB are unsupported there; test_osiris_windows pins the Windows rules)')
     def test_yes_still_applies(self):
         self.record_previous()
         self.install_result(default={"source": "path:/old", "version": "0.2.0"})
@@ -79,6 +83,7 @@ class CliCopy(Fake):
                 code = exit_.code
         return code, stdout.getvalue(), stderr.getvalue()
 
+    @winskip.posix_only('the fake bb/herdr is a #! script; trusted_bin refuses scripts on Windows by design (BB and Osiris-in-BB are unsupported there; test_osiris_windows pins the Windows rules)')
     def test_bb_down_names_bb_and_the_url(self):
         self.set_plugins(__import__("tests.test_osiris", fromlist=["entry"]).entry("path:/x", version="0.2.1"))
         with mock.patch("bff.cli.http.client.HTTPConnection") as connection:
@@ -89,6 +94,7 @@ class CliCopy(Fake):
         self.assertIn("Start BB", stderr)
         self.assertNotIn("Errno", stderr)
 
+    @winskip.posix_only('the fake bb/herdr is a #! script; trusted_bin refuses scripts on Windows by design (BB and Osiris-in-BB are unsupported there; test_osiris_windows pins the Windows rules)')
     def test_init_ends_with_the_next_steps(self):
         repo = Path(tempfile.mkdtemp(prefix="bff init "))
         self.addCleanup(lambda: __import__("shutil").rmtree(str(repo), ignore_errors=True))

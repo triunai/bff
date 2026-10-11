@@ -71,7 +71,8 @@ def write_launcher(path, argv):
     descriptor, name = tempfile.mkstemp(prefix=".bff-launch-", dir=str(path.parent))
     temporary = Path(name)
     try:
-        os.fchmod(descriptor, 0o700)
+        if hasattr(os, "fchmod"):  # absent on Windows, where mkstemp files are already private to the user profile
+            os.fchmod(descriptor, 0o700)
         with os.fdopen(descriptor, "w") as stream:
             stream.write(OWNED_MARKER + "exec " + shlex.join(argv) + "\n")
             stream.flush()

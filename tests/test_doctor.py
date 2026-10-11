@@ -1,3 +1,4 @@
+import contextlib
 import io
 import subprocess
 import unittest
@@ -54,9 +55,13 @@ class Env:
         self.paths[tool] = PATHS.get(tool, "/new/" + tool)
         return self._result()
 
+    @contextlib.contextmanager
     def patch(self):
-        return mock.patch.multiple("bff.doctor", trusted_bin=mock.Mock(which=self.which, run=self.run, SubprocessError=subprocess.SubprocessError,
-                                                                      CompletedProcess=subprocess.CompletedProcess))
+        # These tests describe the macOS/Linux machine (brew, herdr installable); doctor's Windows branch is pinned by its own tests.
+        with mock.patch.multiple("bff.doctor", trusted_bin=mock.Mock(which=self.which, run=self.run, SubprocessError=subprocess.SubprocessError,
+                                                                    CompletedProcess=subprocess.CompletedProcess)), \
+                mock.patch("bff.osiris_tui.is_windows", return_value=False), mock.patch("bff.osiris_tui.tool_policy", return_value=None):
+            yield
 
 
 def run(env, **kwargs):

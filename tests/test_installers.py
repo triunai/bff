@@ -12,6 +12,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import winskip  # noqa: E402
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import install as installer  # noqa: E402
@@ -302,6 +304,7 @@ else:
 """
 
 
+@winskip.posix_only('runs install.sh with sh; the Windows installer is install.ps1 (PowerShellRunTests and the windows workflow)')
 class InstallShTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -414,6 +417,7 @@ sys.exit(3)
 """
 
 
+@winskip.posix_only('runs install.sh with sh; the Windows installer is install.ps1 (PowerShellRunTests and the windows workflow)')
 class InstallShGhSourceTests(InstallShTests):
     """The private-repo one-liner path: no BFF_RELEASE_BASE, downloads through a fake gh on PATH."""
 
