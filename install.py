@@ -69,6 +69,16 @@ def source_files(source):
             if path.is_symlink() or not path.is_file():
                 raise ValueError(name + " must be a regular file")
             selected[name] = digest(path.read_bytes())
+    plugin = source / "plugins" / "osiris"
+    if os.path.lexists(str(plugin)):
+        if plugin.is_symlink() or not plugin.is_dir() or (source / "plugins").is_symlink():
+            raise ValueError("plugins/osiris must be a regular directory")
+        for name, value in inventory(plugin).items():
+            if not plugin_file_allowed(name):
+                raise ValueError("Unreviewed plugin file: plugins/osiris/" + name)
+            selected["plugins/osiris/" + name] = value
+        if "plugins/osiris/package.json" not in selected:
+            raise ValueError("plugins/osiris has no package.json")
     docs = source / "docs"
     if os.path.lexists(str(docs)):
         if docs.is_symlink() or not docs.is_dir():
@@ -79,12 +89,18 @@ def source_files(source):
     return selected
 
 
+PLUGIN_SUFFIXES = {".js", ".cjs", ".mjs", ".ts", ".tsx", ".css", ".json", ".md", ".txt"}
+PLUGIN_BARE_NAMES = {"LICENSE", "NOTICE"}
+
+
 def plugin_file_allowed(name):
-    parts = Path(name).parts
-    return ("node_modules" not in parts and ".." not in parts and not Path(name).is_absolute()
-            and (name in ("package.json", "LICENSE", "THIRD_PARTY_NOTICES.txt")
-                 or (parts[0] == "dist" and Path(name).suffix == ".json")
-                 or Path(name).suffix in (".js", ".css", ".ts", ".tsx", ".md")))
+    """May `plugins/osiris/<name>` be in a release? BB rebuilds a path-installed plugin from source and ships no
+    dependencies for it, so the vendored node_modules (runtime closure only) must travel; source maps are never shipped."""
+    path = Path(name)
+    parts = path.parts
+    return (bool(parts) and not path.is_absolute() and ".." not in parts and "__pycache__" not in parts
+            and not name.endswith(".map")
+            and (path.suffix in PLUGIN_SUFFIXES or path.name in PLUGIN_BARE_NAMES))
 
 
 def verify_source_manifest(source):
@@ -234,7 +250,6 @@ def verify_release(release, system=None):
         valid = (name in ("bin/bff", "bin/bff.cmd", "README.md", "LICENSE", "PROVENANCE.md", "ARCHITECTURE.md", "install.sh", "install.ps1", "install.py", "compat.json") or
                  (name.startswith("bff/") and "/" not in name[4:] and name.endswith(".py")) or
                  (name.startswith("docs/") and "/" not in name[5:] and name.endswith(".md")) or
-                 # Kept so a rollback to an old 0.1.x release, which bundled the plugin, still verifies.
                  (name.startswith("plugins/osiris/") and plugin_file_allowed(name[len("plugins/osiris/"):])) or
                  name.startswith("templates/"))
         if not valid or Path(name).is_absolute() or ".." in Path(name).parts:

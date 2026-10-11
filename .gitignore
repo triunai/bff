@@ -3,3 +3,4 @@ __pycache__/
 node_modules/
 releases/
 .DS_Store
+!plugins/osiris/node_modules/
