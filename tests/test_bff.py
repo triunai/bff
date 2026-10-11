@@ -326,7 +326,7 @@ class ProjectTests(Scratch):
     def test_named_argv_only_on_explicit_run_and_result_statuses(self):
         self.init()
         marker = self.repo / "argv result.txt"
-        checks = {"argv": [sys.executable, "-c", "import pathlib,sys;pathlib.Path(sys.argv[1]).write_text(sys.argv[2], encoding="utf-8")", str(marker), "literal $(touch injected)"],
+        checks = {"argv": [sys.executable, "-c", "import pathlib,sys;pathlib.Path(sys.argv[1]).write_text(sys.argv[2], encoding='utf-8')", str(marker), "literal $(touch injected)"],
                   "failure": [sys.executable, "-c", "raise SystemExit(7)"],
                   "missing": ["bff-test-missing-executable-4f887"]}
         self.write_profile(checks=checks)
