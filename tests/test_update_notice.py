@@ -159,7 +159,7 @@ class CheckOutcomeTests(NoticeCase):
         self.assertEqual(text.count("\n"), 1)
 
     def test_corrupt_state_does_not_raise(self):
-        self.state_file.write_text("{not json")
+        self.state_file.write_text("{not json", encoding="utf-8")
         outcome, text = self.notice()
         self.assertEqual(outcome, "unknown")
         self.assertTrue(text.startswith("update check failed: "))
@@ -353,7 +353,7 @@ class RelaunchTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.prefix = Path(self.temporary.name)
         (self.prefix / "bin").mkdir()
-        (self.prefix / "bin" / "bff").write_text("#!/bin/sh\n")
+        (self.prefix / "bin" / "bff").write_text("#!/bin/sh\n", encoding="utf-8")
         (self.prefix / "bin" / "bff").chmod(0o755)  # the real launcher is executable, and the primitive refuses to exec a file that is not
 
     def relaunch(self, prefix):

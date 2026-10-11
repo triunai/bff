@@ -65,7 +65,7 @@ def write_launcher(path, argv):
         if current.is_symlink():
             raise ValueError("Herdr launcher symlink or parent refused")
     if path.exists():
-        if not path.is_file() or not path.read_text().startswith(OWNED_MARKER):
+        if not path.is_file() or not path.read_text(encoding="utf-8").startswith(OWNED_MARKER):
             raise ValueError("Refusing unrelated Herdr launcher")
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     descriptor, name = tempfile.mkstemp(prefix=".bff-launch-", dir=str(path.parent))

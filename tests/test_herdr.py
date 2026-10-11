@@ -87,7 +87,7 @@ class HerdrCaptureTests(unittest.TestCase):
 
     def test_output_and_parent_symlinks_and_traversal_refused(self):
         target = self.root / "target"
-        target.write_text("preserve")
+        target.write_text("preserve", encoding="utf-8")
         link = self.root / "link.json"
         link.symlink_to(target)
         with self.assertRaises(ValueError):
@@ -98,7 +98,7 @@ class HerdrCaptureTests(unittest.TestCase):
             herdr.write_atomic(linked_parent / "feed.json", b'{}')
         with self.assertRaises(ValueError):
             herdr.output_path(self.root / "missing" / ".." / "feed.json")
-        self.assertEqual(target.read_text(), "preserve")
+        self.assertEqual(target.read_text(encoding="utf-8"), "preserve")
 
     def test_cli_once_exact_session_and_short_output(self):
         with mock.patch("bff.herdr.NativeCollector") as collector:
@@ -110,7 +110,7 @@ class HerdrCaptureTests(unittest.TestCase):
             self.assertIn("Captured 1 local provider calls", stdout)
             self.assertIn("not a heartbeat", stdout)
             self.assertLess(len(stdout), 200)
-            parsed = json.loads(self.output.read_text())
+            parsed = json.loads(self.output.read_text(encoding="utf-8"))
             self.assertEqual(parsed["kind"], "herdr-provider-capture")
             self.assertEqual(len(parsed["calls"]), 1)
             self.assertGreater(parsed["capturedAt"], 100000)

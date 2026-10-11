@@ -36,7 +36,7 @@ def bumped(version, part):
 
 def changelog_section(root, version):
     """The body of `## [version] - date` in CHANGELOG.md; these are the release notes."""
-    text = (Path(root) / "CHANGELOG.md").read_text()
+    text = (Path(root) / "CHANGELOG.md").read_text(encoding="utf-8")
     match = re.search(r"^## \[" + re.escape(version) + r"\] - \d{4}-\d{2}-\d{2}\s*\n(.*?)(?=^## \[|^\[[^\]]+\]: |\Z)",
                       text, re.M | re.S)
     if not match or not match.group(1).strip():
@@ -138,7 +138,7 @@ def main(argv=None, root=REPOSITORY):
     print(build_archive(root, args.output))
     args.output.mkdir(parents=True, exist_ok=True)
     notes_file = args.output / "RELEASE_NOTES.md"
-    notes_file.write_text(notes)
+    notes_file.write_bytes(notes.encode("utf-8"))
     commands = release_commands(version, args.output, notes_file, args.title)
     if not args.publish:
         print("\nCommit the version bump, then run:")

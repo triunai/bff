@@ -26,7 +26,7 @@ def main():
     drift = versioning.check_pins(SOURCE)
     if drift:
         raise SystemExit("Version pins disagree with bff/__init__.py: " + "; ".join(drift))
-    specification = json.loads((SOURCE / "release-files.json").read_text())
+    specification = json.loads((SOURCE / "release-files.json").read_text(encoding="utf-8"))
     declared = specification.get("files")
     if not isinstance(declared, list) or len(declared) != len(set(declared)):
         raise SystemExit("Release file specification must contain unique paths.")
@@ -79,7 +79,7 @@ def main():
     for name in LOOSE_ASSETS:
         (args.output / name).write_bytes(files[name])
         lines.append(hashlib.sha256(files[name]).hexdigest() + "  " + name)
-    (args.output / "SHA256SUMS").write_text("\n".join(lines) + "\n")
+    (args.output / "SHA256SUMS").write_bytes(("\n".join(lines) + "\n").encode("utf-8"))  # bytes: never CRLF on Windows
     print(json.dumps({"archive": str(archive), "sha256": digest, "files": len(inventory)}))
 
 

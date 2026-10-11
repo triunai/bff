@@ -389,7 +389,7 @@ class NativeCollector:
 
 
 def fixture(path):
-    envelope = json.loads(Path(path).expanduser().read_text())
+    envelope = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
     if envelope.get('version') != 1 or not isinstance(envelope.get('calls'), list):
         raise ValueError('Expected comparison version1 calls envelope')
     calls = dedupe(envelope['calls'])
@@ -513,7 +513,7 @@ def main():
         return
     calls, coverage = loader()
     if args.export:
-        Path(args.export).expanduser().write_text(json.dumps({'version':1,'calls':calls},indent=2)+'\n')
+        Path(args.export).expanduser().write_text(json.dumps({'version':1,'calls':calls},indent=2)+'\n', encoding="utf-8")
     result = {**analyze(calls), 'coverage': coverage}
     if args.command == 'tui':
         print('\n'.join(presentation(result,args.view)))

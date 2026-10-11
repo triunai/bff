@@ -32,7 +32,7 @@ class Env:
         self.fail = set(fail)
         self.mutations = []
 
-    def which(self, name):
+    def which(self, name, policy=None):
         return self.paths.get(name)
 
     def _result(self, stdout="", code=0):
@@ -152,8 +152,8 @@ class DoctorTests(unittest.TestCase):
 
     def test_no_shell_true_anywhere(self):
         import pathlib
-        self.assertNotIn("shell=True", pathlib.Path(doctor.__file__).read_text())
-        self.assertNotIn("sudo", pathlib.Path(doctor.__file__).read_text())
+        self.assertNotIn("shell=True", pathlib.Path(doctor.__file__).read_text(encoding="utf-8"))
+        self.assertNotIn("sudo", pathlib.Path(doctor.__file__).read_text(encoding="utf-8"))
 
 
 class DoctorCliTests(unittest.TestCase):

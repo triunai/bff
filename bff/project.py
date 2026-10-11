@@ -56,7 +56,7 @@ def contained(repo, name):
 
 
 def load_profile(repo):
-    profile = json.loads(contained(repo, ".bff.json").read_text())
+    profile = json.loads(contained(repo, ".bff.json").read_text(encoding="utf-8"))
     if not isinstance(profile, dict) or profile.get("schema_version") != 1:
         raise ValueError("Unsupported BFF profile schema")
     spine = profile.get("spine")
@@ -151,7 +151,7 @@ def blocks(text):
 
 
 def inspect_spine(paths):
-    texts = {key: path.read_text() for key, path in paths.items()}
+    texts = {key: path.read_text(encoding="utf-8") for key, path in paths.items()}
     errors, workstreams, done, journal_claims = [], [], set(), set()
     entries = blocks(texts["board"])
     for heading, body in entries:

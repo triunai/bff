@@ -57,7 +57,7 @@ class GateFixture(unittest.TestCase):
 
     def allowlist(self, text):
         path = Path(self._tmp.name) / "allow.txt"
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
         return ["--allowlist", str(path)]
 
 

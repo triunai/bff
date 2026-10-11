@@ -24,7 +24,7 @@ def scratch(directory):
 
 def add_section(root, version):
     path = root / "CHANGELOG.md"
-    path.write_text(path.read_text().replace("## [Unreleased]\n", "## [Unreleased]\n\n## [%s] - 2030-01-01\n\n### Added\n- thing\n" % version, 1))
+    path.write_text(path.read_text(encoding="utf-8").replace("## [Unreleased]\n", "## [Unreleased]\n\n## [%s] - 2030-01-01\n\n### Added\n- thing\n" % version, 1))
 
 
 class PureHelperTests(unittest.TestCase):
@@ -72,9 +72,9 @@ class MainTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(versioning.read_version(root), target)
             self.assertEqual(versioning.check_pins(root), [])
-            self.assertIn("/v%s/install.sh" % target, (root / "README.md").read_text())
+            self.assertIn("/v%s/install.sh" % target, (root / "README.md").read_text(encoding="utf-8"))
             self.assertTrue((output / ("bff-%s.tar.gz" % target)).is_file())
-            self.assertIn("- thing", (output / "RELEASE_NOTES.md").read_text())
+            self.assertIn("- thing", (output / "RELEASE_NOTES.md").read_text(encoding="utf-8"))
             self.assertIn("gh release create v" + target, text)
             executed = [call.args[0][0] for call in spy.call_args_list]
             self.assertNotIn("gh", executed)

@@ -18,7 +18,7 @@ class OsirisTuiTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.plugin = Path(self.temporary.name).resolve() / "plugin dir"
         (self.plugin / "bin").mkdir(parents=True)
-        (self.plugin / "bin" / "osiris-tui.mjs").write_text("// stub\n")
+        (self.plugin / "bin" / "osiris-tui.mjs").write_text("// stub\n", encoding="utf-8")
 
     def run_cli(self, argv, env=None):
         stdout, stderr = io.StringIO(), io.StringIO()

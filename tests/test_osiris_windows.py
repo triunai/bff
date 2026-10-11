@@ -94,7 +94,7 @@ class WindowsTuiLaunch(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.plugin = Path(self.temporary.name).resolve() / "plugin dir"
         (self.plugin / "bin").mkdir(parents=True)
-        (self.plugin / "bin" / "osiris-tui.mjs").write_text("// stub\n")
+        (self.plugin / "bin" / "osiris-tui.mjs").write_text("// stub\n", encoding="utf-8")
 
     def launch(self, node, returncode=0, argv=("osiris", "factory", "--repo", "C:\\My Repos\\wedding site")):
         with mock.patch.dict(os.environ, {"OSIRIS_PLUGIN_DIR": str(self.plugin)}), \
@@ -136,7 +136,7 @@ class WindowsTuiLaunch(unittest.TestCase):
         self.assertIn("winget install OpenJS.NodeJS.LTS", str(caught.exception))
 
     def test_the_tui_script_guards_its_windows_only_lines(self):
-        script = (Path(__file__).resolve().parents[1] / "plugins" / "osiris" / "bin" / "osiris-tui.mjs").read_text()
+        script = (Path(__file__).resolve().parents[1] / "plugins" / "osiris" / "bin" / "osiris-tui.mjs").read_text(encoding="utf-8")
         self.assertIn('process.platform === "win32"', script)
         self.assertIn("setBlocking", script)
         self.assertNotIn("/dev/tty", script)

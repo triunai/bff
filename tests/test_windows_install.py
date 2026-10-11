@@ -95,13 +95,13 @@ class SimulatedInstall(unittest.TestCase):
         self.assertEqual(result["command"], str(command))
         self.assertFalse(command.is_symlink())
         release = result["release"]
-        self.assertEqual(installer.shim_release(command.read_text()), release)
+        self.assertEqual(installer.shim_release(command.read_text(encoding="utf-8")), release)
         # paths.command_path returns a PureWindowsPath, which a POSIX host cannot open: point it at the real file.
         with mock.patch.object(paths, "command_path", return_value=command):
             self.assertEqual(update._active_id(self.prefix, system="Windows"), release)
-        self.assertIn(str(self.prefix / "releases" / release), command.read_text())
+        self.assertIn(str(self.prefix / "releases" / release), command.read_text(encoding="utf-8"))
         self.assertTrue((self.prefix / "releases" / release / "bin" / "bff.cmd").is_file())
-        manifest = json.loads((self.prefix / "releases" / release / "manifest.json").read_text())
+        manifest = json.loads((self.prefix / "releases" / release / "manifest.json").read_text(encoding="utf-8"))
         self.assertIn("bin/bff.cmd", manifest["files"])
         self.assertEqual([p.name for p in (self.prefix / "bin").iterdir()], ["bff.cmd"])
 

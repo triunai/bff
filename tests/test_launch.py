@@ -49,8 +49,8 @@ class StartTests(unittest.TestCase):
             self.assertEqual(result, 0, stderr)
             path = self.home / ".local/share/bff/launchers/osiris-herdr.command"
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o700)
-            self.assertTrue(path.read_text().endswith("exec '/fake path/herdr'\n"))
-            self.assertNotIn("--session", path.read_text())
+            self.assertTrue(path.read_text(encoding="utf-8").endswith("exec '/fake path/herdr'\n"))
+            self.assertNotIn("--session", path.read_text(encoding="utf-8"))
             observer.assert_called_once_with(cli.OSIRIS_URL, False)
             run.assert_called_once_with(["/usr/bin/open", "-a", "Terminal", str(path)], timeout=10, inherit=trusted_bin.TOOL_INHERIT)
             self.assertIn("startup is unverified", stdout)
@@ -58,10 +58,10 @@ class StartTests(unittest.TestCase):
 
     def test_unrelated_launcher_and_symlinks_refused(self):
         path = self.home / "launch.command"
-        path.write_text("user-owned")
+        path.write_text("user-owned", encoding="utf-8")
         with self.assertRaises(ValueError):
             launch.write_launcher(path, ["/fake/herdr"])
-        self.assertEqual(path.read_text(), "user-owned")
+        self.assertEqual(path.read_text(encoding="utf-8"), "user-owned")
         path.unlink()
         path.symlink_to(self.home / "missing")
         with self.assertRaises(ValueError):

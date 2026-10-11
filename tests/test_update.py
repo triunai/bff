@@ -51,7 +51,7 @@ class Fixture(unittest.TestCase):
         copy_repo(newer)
         versioning.apply_version(newer, NEW)
         changelog = newer / "CHANGELOG.md"
-        changelog.write_text(changelog.read_text().replace(
+        changelog.write_text(changelog.read_text(encoding="utf-8").replace(
             "## [Unreleased]", "## [Unreleased]\n\n## [" + NEW + "] - 2026-10-06\n\n### Added\n- Synthetic change line.\n", 1))
         built = root / "built"
         subprocess.run([sys.executable, str(newer / "scripts" / "build-bff-release.py"), "--output", str(built)],
@@ -83,7 +83,7 @@ class Fixture(unittest.TestCase):
     def fake_gh(self, ok):
         record = self.root / ("gh-ok.argv" if ok else "gh-bad.argv")
         script = self.bin / ("gh-ok" if ok else "gh-bad")
-        script.write_text((GH_OK if ok else GH_BAD).format(rec=str(record)))
+        script.write_text((GH_OK if ok else GH_BAD).format(rec=str(record)), encoding="utf-8")
         script.chmod(0o755)
         return script, record
 
@@ -111,7 +111,7 @@ class Fixture(unittest.TestCase):
 
     def rewrite_sums(self):
         sums = self.srv / "download" / ("v" + NEW) / "SHA256SUMS"
-        sums.write_text(sha(self.tarball()) + "  " + self.tarball().name + "\n")
+        sums.write_text(sha(self.tarball()) + "  " + self.tarball().name + "\n", encoding="utf-8")
 
 
 class UpdateFlow(Fixture):
@@ -137,7 +137,7 @@ class UpdateFlow(Fixture):
         gh, record = self.fake_gh(True)
         result = self.update(gh=str(gh))
         self.assertTrue(result["attested"])
-        argv = record.read_text().split("\n")[:-1]
+        argv = record.read_text(encoding="utf-8").split("\n")[:-1]
         self.assertTrue(argv[2].endswith("bff-" + NEW + ".tar.gz"))
         self.assertEqual(argv[:2] + argv[3:], [
             "attestation", "verify", "-R", "triunai/bff",
@@ -269,7 +269,7 @@ class UpdateFlow(Fixture):
         before = self.snapshot()
         extracted = self.root / "tamper"
         update.safe_extract(self.tarball(), extracted, "bff-" + NEW)
-        (extracted / ("bff-" + NEW) / "bff" / "cli.py").write_text("# changed\n")
+        (extracted / ("bff-" + NEW) / "bff" / "cli.py").write_text("# changed\n", encoding="utf-8")
         with tarfile.open(str(self.tarball()), "w:gz") as tf:
             tf.add(str(extracted / ("bff-" + NEW)), arcname="bff-" + NEW)
         self.rewrite_sums()
@@ -449,7 +449,7 @@ class Engine(unittest.TestCase):
         directory = Path(temporary.name) / "latest" / "download"
         directory.mkdir(parents=True)
         if text is not None:
-            (directory / "SHA256SUMS").write_text(text)
+            (directory / "SHA256SUMS").write_text(text, encoding="utf-8")
         return "file://" + temporary.name
 
     def test_latest_version(self):
@@ -568,7 +568,7 @@ class Commands(Fixture):
         self.assertEqual(os.readlink(str(self.prefix / "bin" / "bff")), before)
 
     def test_check_up_to_date_and_unknown(self):
-        (self.srv / "latest" / "download" / "SHA256SUMS").write_text("a" * 64 + "  bff-" + OLD + ".tar.gz\n")
+        (self.srv / "latest" / "download" / "SHA256SUMS").write_text("a" * 64 + "  bff-" + OLD + ".tar.gz\n", encoding="utf-8")
         code, out, _ = self.run_cli(["update", "--check"], {"BFF_RELEASE_BASE": self.base})
         self.assertIn("bff " + OLD + " is up to date", out)
         shutil.rmtree(str(self.srv / "latest"))
@@ -642,7 +642,7 @@ class Commands(Fixture):
         order = []
         data = {"plugin": {"previous_source": "path:/x"}} if previous else {}
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
-        self.state_file.write_text(json.dumps(data))
+        self.state_file.write_text(json.dumps(data), encoding="utf-8")
 
         def self_side(**kwargs):
             order.append("self")

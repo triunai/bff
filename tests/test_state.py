@@ -21,7 +21,7 @@ class StateFile(unittest.TestCase):
 
     def test_round_trip_format(self):
         state.save(self.path, {"b": 1, "a": {"z": [1]}})
-        text = self.path.read_text()
+        text = self.path.read_text(encoding="utf-8")
         self.assertTrue(text.endswith("}\n"))
         self.assertEqual(text, json.dumps({"a": {"z": [1]}, "b": 1, "schema_version": 1}, indent=2, sort_keys=True) + "\n")
         self.assertEqual(state.load(self.path)["a"], {"z": [1]})
@@ -56,7 +56,7 @@ class StateFile(unittest.TestCase):
 
     def test_higher_schema_version_still_loads(self):
         self.path.parent.mkdir()
-        self.path.write_text('{"schema_version": 99, "new": 1}')
+        self.path.write_text('{"schema_version": 99, "new": 1}', encoding="utf-8")
         self.assertEqual(state.load(self.path), {"schema_version": 99, "new": 1})
 
     def test_failed_replace_keeps_original_and_leaves_no_temp(self):

@@ -24,7 +24,7 @@ def sandbox(test):
 
 def script(directory, name, body, mode=0o755):
     path = Path(directory) / name
-    path.write_text("#!/bin/sh\n" + body + "\n")
+    path.write_text("#!/bin/sh\n" + body + "\n", encoding="utf-8")
     path.chmod(mode)
     return str(path)
 
@@ -177,7 +177,7 @@ class Spawning(unittest.TestCase):
         program = script(directory, "dumpenv", "/usr/bin/env > '%s'" % out)
         with mock.patch.dict(os.environ, self.HOSTILE if hasattr(self, "HOSTILE") else Environment.HOSTILE):
             trusted_bin.run([program], policy=self.policy(directory), inherit=("HOME",), env={"EXPLICIT": "1"})
-        seen = sorted(line.split("=")[0] for line in out.read_text().splitlines() if line and line.split("=")[0] not in ("PWD", "SHLVL", "_", "OLDPWD"))
+        seen = sorted(line.split("=")[0] for line in out.read_text(encoding="utf-8").splitlines() if line and line.split("=")[0] not in ("PWD", "SHLVL", "_", "OLDPWD"))
         self.assertEqual(seen, ["EXPLICIT", "HOME", "LANG", "PATH"])
 
     def test_an_untrusted_program_is_refused_at_spawn_time_and_never_runs(self):

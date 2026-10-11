@@ -330,7 +330,7 @@ def offer_path(bin_dir, *, env, stdin, out, home, system, yes=False, no_modify=F
     if not interactive:
         _say(out, hint)
         return {"path_modified": False, "path_hint": hint}
-    existing = rc.read_text() if rc.is_file() else ""
+    existing = rc.read_text(encoding="utf-8") if rc.is_file() else ""
     if PATH_MARKER in existing:
         return {"path_modified": False, "path_hint": "Already added to " + str(rc)}
     out.write("Add " + str(bin_dir) + " to PATH in " + str(rc) + "? [Y/n] ")
@@ -340,7 +340,7 @@ def offer_path(bin_dir, *, env, stdin, out, home, system, yes=False, no_modify=F
         return {"path_modified": False, "path_hint": hint}
     rc.parent.mkdir(parents=True, exist_ok=True)
     separator = "" if not existing or existing.endswith("\n") else "\n"
-    with open(str(rc), "a") as handle:
+    with open(str(rc), "a", encoding="utf-8") as handle:
         handle.write(separator + PATH_MARKER + "\n" + line + "\n")
     _say(out, "Added to " + str(rc) + ". Open a new terminal to pick it up.")
     return {"path_modified": True, "path_hint": "Added to " + str(rc)}
@@ -384,7 +384,7 @@ def stage(prefix, source=SOURCE, interpreter=None, system=None):
                     raise ValueError("Release input changed during installation")
                 destination.write_bytes(data)
             (staging / "bin" / "bff").chmod(0o755)
-            (staging / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            (staging / "manifest.json").write_bytes((json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8"))
             os.rename(str(staging), str(release))
         finally:
             if staging.exists():

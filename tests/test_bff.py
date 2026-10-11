@@ -43,7 +43,7 @@ class Scratch(unittest.TestCase):
         self.source.mkdir()
         for name in ("bff", "templates"):
             shutil.copytree(str(SDK / name), str(self.source / name), ignore=shutil.ignore_patterns("__pycache__"))
-        (self.source / "README.md").write_text("BFF scratch release\n")
+        (self.source / "README.md").write_text("BFF scratch release\n", encoding="utf-8")
 
     def command(self, args):
         stdout, stderr = io.StringIO(), io.StringIO()
@@ -58,9 +58,9 @@ class Scratch(unittest.TestCase):
 
     def write_profile(self, **changes):
         path = self.repo / ".bff.json"
-        profile = json.loads(path.read_text())
+        profile = json.loads(path.read_text(encoding="utf-8"))
         profile.update(changes)
-        path.write_text(json.dumps(profile))
+        path.write_text(json.dumps(profile), encoding="utf-8")
 
 
 class InstallationTests(Scratch):
@@ -84,7 +84,7 @@ class InstallationTests(Scratch):
 
     def test_collision_has_no_writes(self):
         (self.prefix / "bin").mkdir(parents=True)
-        (self.prefix / "bin" / "bff").write_text("unrelated")
+        (self.prefix / "bin" / "bff").write_text("unrelated", encoding="utf-8")
         before = tree(self.prefix)
         with self.assertRaisesRegex(ValueError, "unrelated"):
             installer.install(self.prefix, source=self.source)
@@ -106,7 +106,7 @@ class InstallationTests(Scratch):
         result = installer.install(self.prefix, source=self.source)
         release = self.prefix / "share" / "bff" / "releases" / result["release"]
         target = release / "bff" / "cli.py"
-        target.write_text(target.read_text() + "\n# mutation\n")
+        target.write_text(target.read_text(encoding="utf-8") + "\n# mutation\n")
         with self.assertRaisesRegex(ValueError, "integrity"):
             installer.install(self.prefix, source=self.source)
         with self.assertRaisesRegex(ValueError, "integrity"):
@@ -116,7 +116,7 @@ class InstallationTests(Scratch):
         result = installer.install(self.prefix, source=self.source)
         release = self.prefix / "share" / "bff" / "releases" / result["release"]
         extra = release / "unmanifested.txt"
-        extra.write_text("unexpected")
+        extra.write_text("unexpected", encoding="utf-8")
         with self.assertRaises(ValueError):
             installer.activate(release, self.prefix)
         extra.unlink()
@@ -134,7 +134,7 @@ class InstallationTests(Scratch):
     def test_python_interpreter_with_spaces(self):
         interpreter = self.root / "python interpreter with spaces"
         import shlex
-        interpreter.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable) + ' "$@"\n')
+        interpreter.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable) + ' "$@"\n', encoding="utf-8")
         interpreter.chmod(0o755)
         installer.install(self.prefix, source=self.source, interpreter=interpreter)
         result = subprocess.run([str(self.prefix / "bin" / "bff"), "--version"], capture_output=True, text=True)
@@ -143,10 +143,10 @@ class InstallationTests(Scratch):
 
     def test_source_allowlist_and_no_symlink_vendoring(self):
         for name in ("LICENSE", "PROVENANCE.md", "install.sh"):
-            (self.source / name).write_text(name)
+            (self.source / name).write_text(name, encoding="utf-8")
         (self.source / "docs").mkdir()
-        (self.source / "docs" / "portable.md").write_text("portable docs")
-        (self.source / "private.txt").write_text("exclude")
+        (self.source / "docs" / "portable.md").write_text("portable docs", encoding="utf-8")
+        (self.source / "private.txt").write_text("exclude", encoding="utf-8")
         result = installer.install(self.prefix, source=self.source)
         release = self.prefix / "share" / "bff" / "releases" / result["release"]
         self.assertFalse((release / "private.txt").exists())
@@ -158,7 +158,7 @@ class InstallationTests(Scratch):
 
     def test_new_release_preserves_old_and_rollback(self):
         first = installer.install(self.prefix, source=self.source)
-        (self.source / "README.md").write_text("new README")
+        (self.source / "README.md").write_text("new README", encoding="utf-8")
         second = installer.install(self.prefix, source=self.source)
         self.assertNotEqual(first["release"], second["release"])
         releases = self.prefix / "share" / "bff" / "releases"
@@ -170,30 +170,30 @@ class InstallationTests(Scratch):
         shutil.copy2(str(SDK / "install.py"), str(self.source / "install.py"))
         manifest = {"version": installer.__version__, "files": installer.inventory(self.source)}
         path = self.source / "release-manifest.json"
-        path.write_text(json.dumps(manifest))
+        path.write_text(json.dumps(manifest), encoding="utf-8")
         installer.verify_source_manifest(self.source)
-        (self.source / "README.md").write_text("tamper")
+        (self.source / "README.md").write_text("tamper", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "integrity"):
             installer.install(self.prefix, source=self.source)
         self.assertFalse(self.prefix.exists())
-        (self.source / "README.md").write_text("BFF scratch release\n")
-        (self.source / "unexpected.txt").write_text("extra")
+        (self.source / "README.md").write_text("BFF scratch release\n", encoding="utf-8")
+        (self.source / "unexpected.txt").write_text("extra", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "integrity"):
             installer.verify_source_manifest(self.source)
         (self.source / "unexpected.txt").unlink()
         manifest["files"]["../escape"] = "0" * 64
-        path.write_text(json.dumps(manifest))
+        path.write_text(json.dumps(manifest), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "Invalid"):
             installer.verify_source_manifest(self.source)
 
     def test_release_no_longer_bundles_the_plugin(self):
         plugin = self.source / "plugins" / "osiris"
         (plugin / "dist").mkdir(parents=True)
-        (plugin / "package.json").write_text('{}')
-        (plugin / "dist" / "app.js.map").write_text("source map")
+        (plugin / "package.json").write_text('{}', encoding="utf-8")
+        (plugin / "dist" / "app.js.map").write_text("source map", encoding="utf-8")
         (plugin / "node_modules").mkdir()
-        (plugin / "node_modules" / "dep.js").write_text("dependency")
-        (self.source / "compat.json").write_text((SDK / "compat.json").read_text())
+        (plugin / "node_modules" / "dep.js").write_text("dependency", encoding="utf-8")
+        (self.source / "compat.json").write_text((SDK / "compat.json").read_text(encoding="utf-8"))
         result = installer.install(self.prefix, source=self.source)
         release = self.prefix / "share" / "bff" / "releases" / result["release"]
         self.assertFalse((release / "plugins").exists())
@@ -205,18 +205,18 @@ class ProjectTests(Scratch):
     def test_init_repeat_preserves_edited_router(self):
         self.assertEqual(self.init()["status"], "initialized")
         router = self.repo / "hygiene.md"
-        router.write_text(router.read_text() + "\nProject addition\n")
+        router.write_text(router.read_text(encoding="utf-8") + "\nProject addition\n")
         before = tree(self.repo)
         self.assertEqual(self.init()["status"], "already-initialized")
         self.assertEqual(before, tree(self.repo))
-        self.assertEqual(json.loads((self.repo / ".bff.json").read_text()), PROFILE)
+        self.assertEqual(json.loads((self.repo / ".bff.json").read_text(encoding="utf-8")), PROFILE)
 
     def test_init_collision_preflight_no_writes(self):
         for name in ("hygiene.md", "docs/workstreams.md", ".bff.json", ".agents/skills/bff-hydrate/SKILL.md"):
             with self.subTest(name=name):
                 target = self.repo / name
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text("existing")
+                target.write_text("existing", encoding="utf-8")
                 before = tree(self.repo)
                 with self.assertRaises((ValueError, json.JSONDecodeError)):
                     self.init()
@@ -263,7 +263,7 @@ class ProjectTests(Scratch):
     def test_checker_teeth_real_bad_mutations(self):
         self.init()
         board = self.repo / "docs" / "workstreams.md"
-        original = board.read_text()
+        original = board.read_text(encoding="utf-8")
         mutations = (("empty", "# Empty\n", "no canonical"),
                      ("duplicate", original + original, "Duplicate workstream"),
                      ("malformed", original.replace("### WS-01", "### WS-1"), "Malformed"),
@@ -272,12 +272,12 @@ class ProjectTests(Scratch):
                      ("malformed-reference", original + "\nDepends: WS-1\n", "Malformed"))
         for name, content, message in mutations:
             with self.subTest(name=name):
-                board.write_text(content)
+                board.write_text(content, encoding="utf-8")
                 code, stdout, stderr = self.command(["check", "--repo", str(self.repo)])
                 self.assertEqual(code, 1, stderr)
                 self.assertIn(message, stdout)
                 self.assertIn("Threads read:", stdout)
-        board.write_text(original)
+        board.write_text(original, encoding="utf-8")
         self.assertEqual(self.command(["check", "--repo", str(self.repo)])[0], 0)
 
     def test_duplicate_decision_backlog_journal_ids(self):
@@ -285,27 +285,27 @@ class ProjectTests(Scratch):
         for filename, heading in (("decisions.md", "D-001"), ("state-backlog.md", "#001"),
                                   ("project-log.md", "2026-10-05#1")):
             path = self.repo / "docs" / filename
-            original = path.read_text()
+            original = path.read_text(encoding="utf-8")
             if filename == "project-log.md":
-                path.write_text(original + original)
+                path.write_text(original + original, encoding="utf-8")
             else:
-                path.write_text("### " + heading + " — one\nWS: WS-01\n\n### " + heading + " — two\nWS: WS-01\n")
+                path.write_text("### " + heading + " — one\nWS: WS-01\n\n### " + heading + " — two\nWS: WS-01\n", encoding="utf-8")
             code, stdout, stderr = self.command(["check", "--repo", str(self.repo)])
             self.assertEqual(code, 1, stderr)
             self.assertIn("Duplicate", stdout)
-            path.write_text(original)
+            path.write_text(original, encoding="utf-8")
 
     def test_first_bodyline_and_done_journal_claim(self):
         self.init()
         journal = self.repo / "docs" / "project-log.md"
-        journal.write_text("### 2026-10-05#1 — bad\nOwner: somebody\nWS: WS-01\n")
+        journal.write_text("### 2026-10-05#1 — bad\nOwner: somebody\nWS: WS-01\n", encoding="utf-8")
         board = self.repo / "docs" / "workstreams.md"
-        board.write_text(board.read_text().replace("Status: 🟢 ACTIVE", "Status: DONE"))
+        board.write_text(board.read_text(encoding="utf-8").replace("Status: 🟢 ACTIVE", "Status: DONE"))
         code, stdout, _ = self.command(["check", "--repo", str(self.repo)])
         self.assertEqual(code, 1)
         self.assertIn("First body line", stdout)
         self.assertIn("lacks journal claim", stdout)
-        journal.write_text("### 2026-10-05#1 — done\nWS: WS-01\nDone.\n")
+        journal.write_text("### 2026-10-05#1 — done\nWS: WS-01\nDone.\n", encoding="utf-8")
         self.assertEqual(self.command(["check", "--repo", str(self.repo)])[0], 0)
 
     def test_paths_and_symlink_escape_are_refused_with_canary(self):
@@ -318,7 +318,7 @@ class ProjectTests(Scratch):
         router = self.repo / "hygiene.md"
         router.unlink()
         external = self.root / "outside.md"
-        external.write_text("outside")
+        external.write_text("outside", encoding="utf-8")
         router.symlink_to(external)
         self.assertEqual(self.command(["check", "--repo", str(self.repo)])[0], 2)
         self.assertEqual(self.command(["hydrate", "--repo", str(self.repo)])[0], 2)
@@ -326,7 +326,7 @@ class ProjectTests(Scratch):
     def test_named_argv_only_on_explicit_run_and_result_statuses(self):
         self.init()
         marker = self.repo / "argv result.txt"
-        checks = {"argv": [sys.executable, "-c", "import pathlib,sys;pathlib.Path(sys.argv[1]).write_text(sys.argv[2])", str(marker), "literal $(touch injected)"],
+        checks = {"argv": [sys.executable, "-c", "import pathlib,sys;pathlib.Path(sys.argv[1]).write_text(sys.argv[2], encoding="utf-8")", str(marker), "literal $(touch injected)"],
                   "failure": [sys.executable, "-c", "raise SystemExit(7)"],
                   "missing": ["bff-test-missing-executable-4f887"]}
         self.write_profile(checks=checks)
@@ -334,12 +334,12 @@ class ProjectTests(Scratch):
         self.assertFalse(marker.exists())
         code, stdout, _ = self.command(["check", "--repo", str(self.repo), "--run"])
         self.assertEqual(code, 1)
-        self.assertEqual(marker.read_text(), "literal $(touch injected)")
+        self.assertEqual(marker.read_text(encoding="utf-8"), "literal $(touch injected)")
         self.assertFalse((self.repo / "injected").exists())
         self.assertIn('"status": "nonzero"', stdout)
         self.assertIn('"status": "missing-executable"', stdout)
         denied = self.repo / "not executable"
-        denied.write_text("not executable")
+        denied.write_text("not executable", encoding="utf-8")
         self.write_profile(checks={"denied": [str(denied)]})
         code, stdout, _ = self.command(["check", "--repo", str(self.repo), "--run"])
         self.assertEqual(code, 1)

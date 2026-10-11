@@ -314,12 +314,12 @@ def main(argv=None):
         if args.command == "hydrate":
             selected = None
             if args.ws:
-                board = paths["board"].read_text()
+                board = paths["board"].read_text(encoding="utf-8")
                 selected = [(heading, body) for heading, body in blocks(board)
                             if heading == "### " + args.ws or heading.startswith("### " + args.ws + " — ")]
                 if len(selected) != 1:
                     raise ValueError("Select exactly one existing canonical --ws")
-            payload = [(str(paths[key].relative_to(repo)), paths[key].read_text())
+            payload = [(str(paths[key].relative_to(repo)), paths[key].read_text(encoding="utf-8"))
                        for key in ("router", "seed", "hot_state")]
             if selected:
                 payload.append(("selected " + args.ws, "".join(heading + body for heading, body in selected)))

@@ -42,10 +42,10 @@ class VersionSourceTests(unittest.TestCase):
         # not occurrences: an occurrence count broke when a harmless README edit (6249415, 690e573)
         # left one install URL where there had been two, although every pin still agreed.
         self.assertEqual(pinned_files(SDK), expected_pin_files())
-        released = set(json.loads((SDK / "release-files.json").read_text())["files"]) | {"release-files.json"}
+        released = set(json.loads((SDK / "release-files.json").read_text(encoding="utf-8"))["files"]) | {"release-files.json"}
         self.assertLessEqual(expected_pin_files() & released, pinned_files(SDK))  # every shipped pin file carries one
         self.assertEqual(versioning.check_pins(SDK), [])
-        self.assertIn("/v" + __version__ + "/install.sh", (SDK / "README.md").read_text())
+        self.assertIn("/v" + __version__ + "/install.sh", (SDK / "README.md").read_text(encoding="utf-8"))
 
     def test_cli_version_flag_reports_the_source_version(self):
         run = subprocess.run([sys.executable, "-m", "bff", "--version"], cwd=str(SDK), capture_output=True, text=True)
@@ -58,11 +58,11 @@ class VersionSourceTests(unittest.TestCase):
                                    ("install.py", '__version__ = "' + __version__ + '"', '__version__ = "9.9.9"'),
                                    ("install.ps1", "$BffVersion = '" + __version__ + "'", "$BffVersion = '9.9.9'"),
                                    ("README.md", "bff/v" + __version__ + "/install.sh", "bff/v9.9.9/install.sh")):
-                original = (root / name).read_text()
-                (root / name).write_text(original.replace(old, new))
+                original = (root / name).read_text(encoding="utf-8")
+                (root / name).write_text(original.replace(old, new), encoding="utf-8")
                 problems = versioning.check_pins(root)
                 self.assertTrue(problems and all("9.9.9" in p for p in problems), (name, problems))
-                (root / name).write_text(original)
+                (root / name).write_text(original, encoding="utf-8")
             self.assertEqual(versioning.check_pins(root), [])
 
     def test_floor_goes_red_when_a_pin_file_loses_its_pin(self):
@@ -71,25 +71,25 @@ class VersionSourceTests(unittest.TestCase):
             root = scratch_copy(directory)
             for name, pin in (("README.md", "bff/v" + __version__ + "/install.sh"),
                               ("install.ps1", "$BffVersion = '" + __version__ + "'")):
-                original = (root / name).read_text()
+                original = (root / name).read_text(encoding="utf-8")
                 self.assertIn(pin, original)
-                (root / name).write_text(original.replace(pin, "no pin here"))
+                (root / name).write_text(original.replace(pin, "no pin here"), encoding="utf-8")
                 self.assertNotIn(name, pinned_files(root))
                 self.assertNotEqual(pinned_files(root), expected_pin_files())
                 self.assertTrue(versioning.check_pins(root), name)
-                (root / name).write_text(original)
+                (root / name).write_text(original, encoding="utf-8")
             self.assertEqual(pinned_files(root), expected_pin_files())
 
     def test_apply_version_rewrites_every_pin_and_nothing_else(self):
         with tempfile.TemporaryDirectory() as directory:
             root = scratch_copy(directory)
-            lock_before = json.loads((root / "package-lock.json").read_text())
+            lock_before = json.loads((root / "package-lock.json").read_text(encoding="utf-8"))
             changed = versioning.apply_version(root, "7.8.9")
             self.assertEqual(versioning.read_version(root), "7.8.9")
             self.assertEqual(versioning.check_pins(root), [])
             self.assertEqual(set(changed), {"bff/__init__.py", "install.py", "install.sh", "install.ps1", "README.md",
                                             "release-files.json", "package.json", "package-lock.json"})
-            lock = json.loads((root / "package-lock.json").read_text())
+            lock = json.loads((root / "package-lock.json").read_text(encoding="utf-8"))
             lock["version"] = lock["packages"][""]["version"] = lock_before["version"]
             self.assertEqual(lock, lock_before)  # dependency versions untouched
             self.assertEqual(versioning.apply_version(root, "7.8.9"), [])  # idempotent
@@ -103,7 +103,7 @@ class VersionSourceTests(unittest.TestCase):
             built = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(built.returncode, 0, built.stderr)
             self.assertTrue((Path(directory) / "out" / ("bff-" + __version__ + ".tar.gz")).is_file())
-            (root / "install.sh").write_text((root / "install.sh").read_text().replace("BFF_VERSION=" + __version__, "BFF_VERSION=0.0.1"))
+            (root / "install.sh").write_text((root / "install.sh").read_text(encoding="utf-8").replace("BFF_VERSION=" + __version__, "BFF_VERSION=0.0.1"))
             broken = subprocess.run(command, capture_output=True, text=True)
             self.assertNotEqual(broken.returncode, 0)
             self.assertIn("disagree", broken.stderr)

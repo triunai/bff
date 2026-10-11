@@ -51,7 +51,7 @@ class RollbackConsent(Fake):
     def record_previous(self):
         self.set_plugins({"id": "tool-observer", "version": "0.2.1", "source": "path:/now", "enabled": True,
                           "status": "running", "sourceDisplay": "path:/now"})
-        self.state_file.write_text(json.dumps({"plugin": {"id": "tool-observer", "previous_source": "path:/old"}}))
+        self.state_file.write_text(json.dumps({"plugin": {"id": "tool-observer", "previous_source": "path:/old"}}), encoding="utf-8")
 
     def test_non_tty_without_yes_applies_nothing(self):
         self.record_previous()
