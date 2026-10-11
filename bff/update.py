@@ -30,6 +30,9 @@ MAX_MEMBERS = 5000
 MAX_BYTES = 100 * 1024 * 1024
 MAX_SUMS = 1024 * 1024
 MAX_CHANGE_LINES = 15
+# Characters and shapes that mean something to the Windows filesystem but nothing to a POSIX one: a drive letter or stream (`C:x`, `a:b`), a backslash separator,
+# a trailing dot or space (silently stripped), and the device names. Refused on EVERY OS so one archive behaves the same everywhere.
+WINDOWS_HOSTILE = re.compile(r'[\\:<>"|?*\x00-\x1f]|[. ]$|^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$', re.IGNORECASE)
 
 
 class UpdateError(ValueError):
@@ -103,7 +106,8 @@ def safe_extract(archive, dest, root):
                 posix = m.name
                 pure = PurePosixPath(posix)
                 if (pure.is_absolute() or ".." in pure.parts or not pure.parts or pure.parts[0] != root
-                        or not (m.isfile() or m.isdir()) or posix != pure.as_posix() or posix in seen):
+                        or not (m.isfile() or m.isdir()) or posix != pure.as_posix() or posix in seen
+                        or any(WINDOWS_HOSTILE.search(part) for part in pure.parts)):
                     raise UpdateError("archive contains an unsafe entry: " + repr(m.name))
                 seen.add(posix)
             base = dest.resolve()
@@ -125,6 +129,11 @@ def safe_extract(archive, dest, root):
     if not extracted.is_dir():
         raise UpdateError("archive has no " + root + " directory")
     return extracted
+
+
+def python_command(system=None):
+    """What to type for Python in a manual fallback command: `python3` on POSIX, `python` on Windows (where `python3` is the Store stub)."""
+    return "python" if (platform.system() if system is None else system) == "Windows" else "python3"
 
 
 def _active_id(prefix, system=None):
@@ -364,7 +373,7 @@ def rollback(*, prefix, state_file, yes=False, stdin=None, out=None):
     target, source = node.get("previous"), "recorded previous release"
     if installer is None:
         guess = target if isinstance(target, str) and paths.RELEASE_NAME.fullmatch(target) else "<release id>"
-        raise UpdateError("the running bff has no install.py to switch releases; run: python3 "
+        raise UpdateError("the running bff has no install.py to switch releases; run: " + python_command() + " "
                           + str(releases / guess / "install.py") + " --prefix " + str(prefix)
                           + " --activate " + guess)
     try:
@@ -390,7 +399,7 @@ def rollback(*, prefix, state_file, yes=False, stdin=None, out=None):
     try:
         installer.activate(releases / target, prefix)
     except (ValueError, OSError) as error:
-        raise UpdateError("rollback failed: " + str(error) + "; manual fallback: python3 "
+        raise UpdateError("rollback failed: " + str(error) + "; manual fallback: " + python_command() + " "
                           + str(releases / target / "install.py") + " --prefix " + str(prefix) + " --activate " + target)
 
     def mutate(doc):

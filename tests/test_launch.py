@@ -86,7 +86,7 @@ class StartTests(unittest.TestCase):
                 mock.patch("bff.launch.trusted_bin.popen") as popen:
             self.assertEqual(self.command(["start"])[0], 0)
             popen.assert_called_once_with(["/fake/terminal", "-e", "/fake/herdr"], start_new_session=True, inherit=trusted_bin.TOOL_INHERIT)
-        with mock.patch("bff.launch.sys.platform", "win32"), \
+        with mock.patch("bff.launch.sys.platform", "linux"), \
                 mock.patch("bff.cli.launch_osiris", return_value=0), \
                 mock.patch("bff.launch.trusted_bin.which", side_effect=["/fake/herdr", None]):
             result, stdout, stderr = self.command(["start"])

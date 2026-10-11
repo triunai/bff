@@ -11,7 +11,7 @@ import shutil
 import sys
 import tempfile
 
-from . import paths, state, trusted_bin
+from . import osiris_tui, paths, state, trusted_bin
 from .prompt import answer_is_yes
 
 PLUGIN_ID = "tool-observer"
@@ -19,12 +19,13 @@ PLUGIN_ID = "tool-observer"
 
 def _which(name):
     """Late-bound so a caller (or a test) that replaces trusted_bin.which is honoured by every default."""
-    return trusted_bin.which(name)
+    return osiris_tui.which(name)
 
 
 def _run(argv, **kwargs):
-    """The default runner: trusted_bin.run (argv[0] must be an absolute trusted program, minimal env) plus the shared tool variables bb and git need."""
-    return trusted_bin.run(argv, inherit=trusted_bin.TOOL_INHERIT, **kwargs)
+    """The default runner: trusted_bin.run (argv[0] must be an absolute trusted program, minimal env) plus the shared tool variables bb and git need
+    (and, on Windows, the variables a Windows program needs to start)."""
+    return trusted_bin.run(argv, inherit=osiris_tui.tool_inherit(), **kwargs)
 
 
 UNPUBLISHED = ("Osiris is not publicly released yet; nothing to install. "
@@ -32,6 +33,15 @@ UNPUBLISHED = ("Osiris is not publicly released yet; nothing to install. "
 UNPUBLISHED_EXIT = 4  # distinct from 3, which means a prerequisite is missing
 NEEDED_FOR = {"bd": "needed for the Work tab", "herdr": "needed to join terminal panes"}
 NO_BB = "BB not found: run bff osiris setup to see what to install"
+WINDOWS_NO_HERDR = "herdr has no Windows build; nothing to install. Use bff osiris factory directly."
+# BB ships a Windows x64 installer (bb-<version>-x64.exe on https://github.com/get-bb/bb/releases) and its npm package lists win32; it needs Node 22.19+.
+POSIX_HINTS = {"node": "Install Node yourself: https://nodejs.org or brew install node",
+               "bb": "Install BB yourself: npx bb-app@latest (needs {minimum} or newer)",
+               "git": "Install git yourself: https://git-scm.com", "gh": ""}
+WINDOWS_HINTS = {"node": "Install Node 22.19 or newer yourself: winget install OpenJS.NodeJS.LTS",
+                 "bb": "Install BB yourself: npx bb-app@latest, or the Windows installer (bb-<version>-x64.exe) from https://github.com/get-bb/bb/releases (needs {minimum} or newer)",
+                 "git": "Install git yourself: winget install Git.Git",
+                 "gh": "Optional, verifies update provenance: winget install GitHub.cli"}
 
 
 def load_compat(root=None):
@@ -126,18 +136,25 @@ def prerequisites(system=None, which=_which, run=_run, compat=None, bb=None):
         rows.append({"name": name, "found": found, "version": version, "required": required, "how": how,
                      "ok": found if ok is None else ok})
 
+    windows = system == "Windows"
+    hints = WINDOWS_HINTS if windows else POSIX_HINTS
     if system == "Darwin":
         row("Homebrew", which("brew"), False, "Install Homebrew yourself: https://brew.sh")
     node = which("node")
-    row("Node", node, bb is None, "Install Node yourself: https://nodejs.org or brew install node",
-        _tool_version([node, "--version"], run) if node else None)
+    row("Node", node, bb is None, hints["node"], _tool_version([node, "--version"], run) if node else None)
     bb_version = _tool_version([bb, "--version"], run) if bb else None
     minimum = compat["bb_min"]
     recent = bb is not None and _version(bb_version) is not None and _version(bb_version) >= _version(minimum)
-    row("BB", bb, True, "Install BB yourself: npx bb-app@latest (needs " + minimum + " or newer)", bb_version, recent)
-    row("git", which("git"), False, "Install git yourself: https://git-scm.com",
-        _tool_version([which("git"), "--version"], run) if which("git") else None)
-    row("herdr", which("herdr"), False, "Install herdr yourself; bff doctor explains how")
+    row("BB", bb, True, hints["bb"].format(minimum=minimum), bb_version, recent)
+    git = which("git")
+    row("git", git, False, hints["git"], _tool_version([git, "--version"], run) if git else None)
+    if windows:
+        gh = which("gh")
+        row("gh", gh, False, hints["gh"], _tool_version([gh, "--version"], run) if gh else None)
+        row("herdr", None, False, WINDOWS_NO_HERDR, ok=True)
+        rows[-1]["note"] = "no Windows build (not needed)"
+    else:
+        row("herdr", which("herdr"), False, "Install herdr yourself; bff doctor explains how")
     row("bd", which("bd"), False, "Install bd (beads) yourself; bff doctor explains how")
     row("bdi", which("bdi"), False, "Optional" + ("" if system == "Darwin" else " off macOS") + ": install bdi yourself if you use it")
     return rows
@@ -149,7 +166,7 @@ def _print_plan(rows, out):
         mark = "ok" if item["ok"] else ("MISSING" if item["required"] else "missing (optional)")
         if item["found"] and not item["ok"]:
             mark = "TOO OLD"
-        note = item["version"] or ("" if item["found"] else NEEDED_FOR.get(item["name"], ""))
+        note = item.get("note") or item["version"] or ("" if item["found"] else NEEDED_FOR.get(item["name"], ""))
         _say(out, "  {:<9} {:<18} {}".format(item["name"], mark, note))
 
 

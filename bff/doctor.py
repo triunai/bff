@@ -10,7 +10,7 @@ import re
 import sys
 import urllib.request
 
-from . import __version__, trusted_bin
+from . import __version__, osiris_tui, trusted_bin
 from .prompt import answer_is_yes
 
 SELF_RELEASE_API = "https://api.github.com/repos/triunai/bff/releases/latest"
@@ -31,7 +31,8 @@ RECIPES = (
      "manual": "Install BB from https://github.com/get-bb/bb (desktop release, or `npx bb-app@latest`). "
                "The upstream README documents no global package-manager install."},
     {"component": "Herdr", "executables": ("herdr",), "routes": (("brew", "herdr"),),
-     "source": "https://herdr.dev"},
+     "source": "https://herdr.dev",
+     "windows_manual": "herdr has no Windows build; use bff osiris factory directly (nothing to install)."},
     {"component": "Beads", "executables": ("bd", "br"), "routes": (("brew", "beads"), ("npm", "@beads/bd")),
      "source": "https://github.com/gastownhall/beads"},
     {"component": "OMC", "executables": ("omc",), "routes": (("npm", "oh-my-claude-sisyphus"),),
@@ -60,8 +61,19 @@ OWNER_MARKERS = {"npm": ("node_modules",), "brew": ("/Cellar/", "/Caskroom/")}
 INSTALL_INHERIT = trusted_bin.TOOL_INHERIT + ("HOMEBREW_NO_AUTO_UPDATE", "HOMEBREW_NO_ANALYTICS", "HOMEBREW_NO_INSTALL_CLEANUP")
 
 
+def install_inherit():
+    """INSTALL_INHERIT plus, on Windows, the variables a Windows program needs to start (SystemRoot, the profile paths)."""
+    return INSTALL_INHERIT + (osiris_tui.WINDOWS_INHERIT if osiris_tui.is_windows() else ())
+
+
+def _which(name):
+    """trusted_bin.which with the Windows tool directories on Windows (a fixed list; never PATH)."""
+    policy = osiris_tui.tool_policy()
+    return trusted_bin.which(name) if policy is None else trusted_bin.which(name, policy)
+
+
 def _run(argv, timeout):
-    return trusted_bin.run(argv, capture_output=True, text=True, timeout=timeout, inherit=INSTALL_INHERIT)
+    return trusted_bin.run(argv, capture_output=True, text=True, timeout=timeout, inherit=install_inherit())
 
 
 def parse_version(text):
@@ -81,7 +93,7 @@ def is_stable(version):
 def detect(recipe):
     """Return (executable path or None, installed version or None). Best effort, never raises."""
     for name in recipe["executables"]:
-        path = trusted_bin.which(name)
+        path = _which(name)
         if not path:
             continue
         try:
@@ -94,7 +106,7 @@ def detect(recipe):
 
 def owner_of(path):
     try:
-        real = str(__import__("pathlib").Path(path).resolve())
+        real = str(__import__("pathlib").Path(path).resolve()).replace("\\", "/")  # Windows paths too: the markers use "/"
     except OSError:
         return None
     for manager, markers in OWNER_MARKERS.items():
@@ -104,7 +116,7 @@ def owner_of(path):
 
 
 def latest_stable(manager, package):
-    binary = trusted_bin.which(manager)
+    binary = _which(manager)
     if not binary:
         return None
     try:
@@ -123,7 +135,7 @@ def latest_stable(manager, package):
 
 def available_route(recipe):
     for manager, package in recipe["routes"]:
-        binary = trusted_bin.which(manager)
+        binary = _which(manager)
         if binary:
             return manager, package, binary
     return None
@@ -181,7 +193,9 @@ def survey(upgrade=True):
         if recipe["routes"] and route:
             row["latest"] = latest_stable(route[0], route[1])
         if path is None:
-            if not recipe["routes"]:
+            if recipe.get("windows_manual") and osiris_tui.is_windows():
+                row.update(action="manual", reason=recipe["windows_manual"])
+            elif not recipe["routes"]:
                 row.update(action="manual", reason=recipe["manual"])
             elif route is None:
                 row.update(action="skip", reason="no supported package manager found ("
@@ -193,10 +207,10 @@ def survey(upgrade=True):
                 row.update(action="manual", reason=recipe["manual"])
             else:
                 owner = owner_of(path)
-                match = next((r for r in recipe["routes"] if r[0] == owner and trusted_bin.which(r[0])), None)
+                match = next((r for r in recipe["routes"] if r[0] == owner and _which(r[0])), None)
                 if match:
                     row.update(action="upgrade", manager=match[0],
-                               argv=[trusted_bin.which(match[0])] + MANAGERS[match[0]][1](match[1]))
+                               argv=[_which(match[0])] + MANAGERS[match[0]][1](match[1]))
                 else:
                     row.update(action="skip", reason="installed outside a known package manager; upgrade it where you installed it")
         rows.append(row)
@@ -238,7 +252,7 @@ def execute(rows, out):
             out.write("\n$ %s\n" % " ".join(row["argv"]))
             out.flush()
             try:
-                result = trusted_bin.run(row["argv"], timeout=STEP_TIMEOUT, inherit=INSTALL_INHERIT)
+                result = trusted_bin.run(row["argv"], timeout=STEP_TIMEOUT, inherit=install_inherit())
                 failure = "exit %s" % result.returncode if result.returncode else None
             except (OSError, trusted_bin.SubprocessError) as error:
                 failure = type(error).__name__
