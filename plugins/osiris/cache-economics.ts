@@ -42,28 +42,38 @@ export interface ParseResult {
 }
 
 /** $ per million tokens. Source: token-cost.md section 2 "Pricing, current" (Anthropic list prices, 2026-10-06). */
-export interface Price { input: number; write5m: number; write1h: number; read: number; output: number }
+export interface Price { input: number; write5m: number; write1h: number; read: number; output: number; /** Rates for a request whose prompt exceeds LONG_PROMPT_TOKENS (tiered models only). */ over100k?: Price }
+/** Haiku 5.5 is tiered per request by prompt length = input + cache write (5m+1h) + cache read tokens; "up to 100,000" is the low tier. */
+export const LONG_PROMPT_TOKENS = 100_000;
 export const PRICES: Readonly<Record<string, Price>> = {
     "claude-fable-5-1": { input: 10, write5m: 12.5, write1h: 20, read: 0.25, output: 50 },
     "claude-opus-5-5": { input: 4, write5m: 5, write1h: 8, read: 0.2, output: 20 },
-    "claude-sonnet-5-5": { input: 2, write5m: 2.5, write1h: 4, read: 0.2, output: 10 },
-    "claude-haiku-4-5": { input: 1, write5m: 1.25, write1h: 2, read: 0.1, output: 5 }
+    "claude-sonnet-5-5": { input: 2, write5m: 2.5, write1h: 4, read: 0.1, output: 10 },
+    "claude-haiku-4-5": { input: 1, write5m: 1.25, write1h: 2, read: 0.1, output: 5 },
+    // Sources: https://platform.claude.com/docs/en/models/haiku-5-5/overview (Pricing: tiered by prompt length) and https://www.anthropic.com/claude-haiku-5-5.
+    "claude-haiku-5-5": { input: 0.1, write5m: 0.125, write1h: 0.2, read: 0.01, output: 0.5, over100k: { input: 0.5, write5m: 0.625, write1h: 1, read: 0.05, output: 2.5 } }
 };
-/** Exact id, else the longest known id that prefixes it (`claude-haiku-4-5-20251001`). Unknown is null, never zero prices. */
-export function priceFor(model: string | null): Price | null {
+/**
+ * Exact id, else the longest known id that prefixes it (`claude-haiku-4-5-20251001`). Unknown is null, never zero prices.
+ * `promptTokens` (one request's input + cache write + cache read) selects the long-prompt tier on tiered models; omitted, the base tier.
+ */
+export function priceFor(model: string | null, promptTokens?: number): Price | null {
     if (!model)
         return null;
-    if (Object.hasOwn(PRICES, model))
-        return PRICES[model];
-    let best: string | null = null;
-    for (const k of Object.keys(PRICES))
-        if (model.startsWith(`${k}-`) && (best === null || k.length > best.length))
-            best = k;
-    return best ? PRICES[best] : null;
+    let key: string | null = Object.hasOwn(PRICES, model) ? model : null;
+    if (key === null)
+        for (const k of Object.keys(PRICES))
+            if (model.startsWith(`${k}-`) && (key === null || k.length > key.length))
+                key = k;
+    if (key === null)
+        return null;
+    const p = PRICES[key];
+    return p.over100k && promptTokens !== undefined && promptTokens > LONG_PROMPT_TOKENS ? p.over100k : p;
 }
 /** Dollar cost of one row, or null when the model is unpriced (the ccusage $0 bug is the thing to avoid). */
 export function rowCost(r: UsageRow): number | null {
-    const p = priceFor(r.model);
+    // One UsageRow is one deduped API request (message.id + requestId), so the long-prompt tier applies per row.
+    const p = priceFor(r.model, r.input + r.cacheWrite5m + r.cacheWrite1h + r.cacheRead);
     // Divide each count by 1e6 BEFORE multiplying so a huge count stays finite; a non-finite total is shown as n/a by the views.
     return p ? (r.input / 1e6) * p.input + (r.cacheWrite5m / 1e6) * p.write5m + (r.cacheWrite1h / 1e6) * p.write1h + (r.cacheRead / 1e6) * p.read + (r.output / 1e6) * p.output : null;
 }

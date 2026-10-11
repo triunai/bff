@@ -17,7 +17,7 @@ import { paneSeen, readPaneTail, readWorkSnapshot } from "./work/bdi-feed.ts";
 import { defaultDeps, dispatch, previewDispatch } from "./work/dispatch.ts";
 import { createTelemetryService } from "./work/telemetry-rpc.ts";
 import { READ_CAP_MS, rangeSpanMs } from "./work/calls-range.ts";
-import { makeRepoGuard, PIN_KEY } from "./work/repo-allow.ts";
+import { makeRepoGuard, PIN_KEY, repoAllowedFact } from "./work/repo-allow.ts";
 import { runTrackerMove, MOVE_STATUSES } from "./work/tracker-write.ts";
 import { checkHerdrSession } from "./work/seam-guards/herdr-session.ts";
 import { availableClis, defaultHerdrDispatchDeps, runHerdrDispatch, runHerdrTeam, trustedCli } from "./work/herdr-dispatch/run.ts";
@@ -276,7 +276,7 @@ export default async function plugin(bb: BbPluginApi) {
         workTelemetry: async ({ repo, range }, c) => pluginCaller(c) ? { ok: false, reason: NO_PLUGIN } : telemetry.read(await assertAllowedRepo(repo), range ? Math.min(rangeSpanMs(range, Date.now()), READ_CAP_MS) : undefined),
         keepAwakeStatus: async () => keepAwakeFact(),
         // Runtime seam guards (td-osi.12): read-only; the answer is a verdict per guard, never an action. Never for a plugin caller.
-        seamReport: async (view, c) => pluginCaller(c) ? { ok: false, reason: NO_PLUGIN } : { ok: true, report: await runGuards(makeSeamCtx(view, { isRepoAllowed: p => assertAllowedRepo(p).then(() => true, () => false), herdrSession: async v => ({ run: dispatchDeps.herdr, picked: v.terminalSession ?? null, launched: v.terminalId ? await launchedSessionOf(bb.storage.kv, v.terminalId) : null }), keepAwake: async () => keepAwakeFact() })) },
+        seamReport: async (view, c) => pluginCaller(c) ? { ok: false, reason: NO_PLUGIN } : { ok: true, report: await runGuards(makeSeamCtx(view, { isRepoAllowed: p => repoAllowedFact(assertAllowedRepo, p), herdrSession: async v => ({ run: dispatchDeps.herdr, picked: v.terminalSession ?? null, launched: v.terminalId ? await launchedSessionOf(bb.storage.kv, v.terminalId) : null }), keepAwake: async () => keepAwakeFact() })) },
         fleetSnapshot: async (_i, c) => pluginCaller(c) ? { ok: false, reason: NO_PLUGIN } : telemetry.fleet(),
         listPinnedRepos: async (_r, c) => { if (pluginCaller(c)) throw new Error(NO_PLUGIN); return { ok: true, pinned: await repoGuard.listPinned() }; },
         unpinRepo: async ({ path }, c) => { if (pluginCaller(c)) throw new Error(NO_PLUGIN); return { ok: true, pinned: await repoGuard.unpinRepo(path) }; },

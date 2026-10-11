@@ -78,7 +78,7 @@ export async function sealedSample(): Promise<{ raw: string[]; sealed: string }>
   return { raw: [A, A.slice(1), U, U.slice(0, 8)], sealed };
 }
 
-export type SeamCtxDeps = { isRepoAllowed(path: string): Promise<boolean>; keepAwake(): Promise<KeepAwakeFact>; installedBuild?(): Promise<BuildFact | null>; herdrSession?(view: ViewFacts): Promise<HerdrGuardCtx>; now?(): number; platform?: string };
+export type SeamCtxDeps = { isRepoAllowed(path: string): Promise<boolean | "busy">; keepAwake(): Promise<KeepAwakeFact>; installedBuild?(): Promise<BuildFact | null>; herdrSession?(view: ViewFacts): Promise<HerdrGuardCtx>; now?(): number; platform?: string };
 /** The ONE GuardCtx constructor. Every reader is required except installedBuild (only a caller that can ask BB provides it). */
 export function makeSeamCtx(view: ViewFacts, d: SeamCtxDeps): GuardCtx {
   return { now: d.now ?? Date.now, platform: d.platform ?? process.platform, view, isRepoAllowed: d.isRepoAllowed, runningBuild, ...(d.installedBuild ? { installedBuild: d.installedBuild } : {}), ...(d.herdrSession ? { herdrSession: () => d.herdrSession!(view) } : {}),

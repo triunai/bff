@@ -31,8 +31,8 @@ export interface GuardCtx {
   now(): number;
   platform: string;
   view: ViewFacts;
-  /** Is this repo on the allowlist (assertAllowedRepo)? */
-  isRepoAllowed(path: string): Promise<boolean>;
+  /** Is this repo on the allowlist (assertAllowedRepo)? "busy" = could not check (the host is starved): unknown, NOT a denial. */
+  isRepoAllowed(path: string): Promise<boolean | "busy">;
   /** The plugin build that is running. null = cannot be identified. */
   runningBuild(): Promise<BuildFact | null>;
   /** The install dir BB reports for this plugin. Absent when no reader can ask BB (the server); then the build guard has nothing to compare. */
