@@ -34,8 +34,30 @@ jobs:
           repository: triunai/bff-install
           ref: ${{ inputs.install_ref || 'win/W3' }}
           path: bff-install
-      - name: Parse every install.ps1
-        shell: ${{ matrix.engine }}
+      - if: matrix.engine == 'powershell'
+        name: Parse every install.ps1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          "PowerShell $($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))"
+          $bad = 0
+          foreach ($file in @('install.ps1', 'bff-install/install.ps1')) {
+            $path = (Resolve-Path $file).Path
+            $tokens = $null; $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors)
+            if ($errors -and $errors.Count -gt 0) {
+              $bad++
+              foreach ($e in $errors) { Write-Host "PARSE ERROR $file line $($e.Extent.StartLineNumber): $($e.Message)" }
+            } else { Write-Host "parsed OK: $file" }
+            $bytes = [IO.File]::ReadAllBytes($path)
+            $nonAscii = @($bytes | Where-Object { $_ -gt 127 }).Count
+            if ($nonAscii -gt 0) { $bad++; Write-Host "NON-ASCII bytes in ${file}: $nonAscii (Windows PowerShell 5.1 reads BOM-less files as ANSI)" }
+          }
+          if ($bad -gt 0) { exit 1 }
+
+      - if: matrix.engine == 'pwsh'
+        name: Parse every install.ps1
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           "PowerShell $($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))"
@@ -127,8 +149,9 @@ jobs:
       - name: Fake gh serving the locally built release (the installers call the real gh code path)
         shell: cmd
         run: python .github/ci/windows_smoke.py fake-gh --bindir "%FAKEGH%"
-      - name: Release install.ps1 (bff repo copy) under ${{ matrix.engine }}
-        shell: ${{ matrix.engine }}
+      - if: matrix.engine == 'powershell'
+        name: Release install.ps1 (bff repo copy) under ${{ matrix.engine }}
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PATH = "$env:FAKEGH;$env:PATH"; $env:BFF_FAKE_GH_DIST = $env:DIST
@@ -138,8 +161,21 @@ jobs:
           catch { Write-Host "INSTALL FAILED: $_"; Write-Host $_.ScriptStackTrace; exit 1 }
           python .github/ci/windows_smoke.py verify --prefix $prefix --tag "repo-ps1-${{ matrix.engine }}"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: bff-install install.ps1 as a file under ${{ matrix.engine }}
-        shell: ${{ matrix.engine }}
+      - if: matrix.engine == 'pwsh'
+        name: Release install.ps1 (bff repo copy) under ${{ matrix.engine }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PATH = "$env:FAKEGH;$env:PATH"; $env:BFF_FAKE_GH_DIST = $env:DIST
+          $prefix = Join-Path $env:RUNNER_TEMP "prefix-repo-$env:PSEdition-$([guid]::NewGuid().ToString('N').Substring(0,6))"
+          New-Item -ItemType Directory -Force -Path $env:BFF_SMOKE_LOGS | Out-Null
+          try { & .\install.ps1 -Prefix $prefix -Yes -NoModifyPath *>&1 | Tee-Object -FilePath (Join-Path $env:BFF_SMOKE_LOGS "install-ps1-repo-${{ matrix.engine }}-py${{ matrix.python-version }}.log") }
+          catch { Write-Host "INSTALL FAILED: $_"; Write-Host $_.ScriptStackTrace; exit 1 }
+          python .github/ci/windows_smoke.py verify --prefix $prefix --tag "repo-ps1-${{ matrix.engine }}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - if: matrix.engine == 'powershell'
+        name: bff-install install.ps1 as a file under ${{ matrix.engine }}
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PATH = "$env:FAKEGH;$env:PATH"; $env:BFF_FAKE_GH_DIST = $env:DIST
@@ -150,8 +186,35 @@ jobs:
           catch { Write-Host "INSTALL FAILED: $_"; Write-Host $_.ScriptStackTrace; exit 1 }
           python .github/ci/windows_smoke.py verify --prefix $prefix --tag "install-file-${{ matrix.engine }}"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: bff-install one-liner shape (script text piped to Invoke-Expression) under ${{ matrix.engine }}
-        shell: ${{ matrix.engine }}
+      - if: matrix.engine == 'pwsh'
+        name: bff-install install.ps1 as a file under ${{ matrix.engine }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PATH = "$env:FAKEGH;$env:PATH"; $env:BFF_FAKE_GH_DIST = $env:DIST
+          $prefix = Join-Path $env:RUNNER_TEMP "prefix-install-file-$([guid]::NewGuid().ToString('N').Substring(0,6))"
+          $env:BFF_YES = '1'; $env:BFF_NO_SETUP = '1'; $env:BFF_NO_MODIFY_PATH = '1'; $env:BFF_PREFIX = $prefix
+          New-Item -ItemType Directory -Force -Path $env:BFF_SMOKE_LOGS | Out-Null
+          try { & .\bff-install\install.ps1 *>&1 | Tee-Object -FilePath (Join-Path $env:BFF_SMOKE_LOGS "bff-install-file-${{ matrix.engine }}-py${{ matrix.python-version }}.log") }
+          catch { Write-Host "INSTALL FAILED: $_"; Write-Host $_.ScriptStackTrace; exit 1 }
+          python .github/ci/windows_smoke.py verify --prefix $prefix --tag "install-file-${{ matrix.engine }}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - if: matrix.engine == 'powershell'
+        name: bff-install one-liner shape (script text piped to Invoke-Expression) under ${{ matrix.engine }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PATH = "$env:FAKEGH;$env:PATH"; $env:BFF_FAKE_GH_DIST = $env:DIST
+          $prefix = Join-Path $env:RUNNER_TEMP "prefix-install-iex-$([guid]::NewGuid().ToString('N').Substring(0,6))"
+          $env:BFF_YES = '1'; $env:BFF_NO_SETUP = '1'; $env:BFF_NO_MODIFY_PATH = '1'; $env:BFF_PREFIX = $prefix
+          New-Item -ItemType Directory -Force -Path $env:BFF_SMOKE_LOGS | Out-Null
+          try { Get-Content -Raw .\bff-install\install.ps1 | Invoke-Expression *>&1 | Tee-Object -FilePath (Join-Path $env:BFF_SMOKE_LOGS "bff-install-iex-${{ matrix.engine }}-py${{ matrix.python-version }}.log") }
+          catch { Write-Host "INSTALL FAILED: $_"; Write-Host $_.ScriptStackTrace; exit 1 }
+          python .github/ci/windows_smoke.py verify --prefix $prefix --tag "install-iex-${{ matrix.engine }}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - if: matrix.engine == 'pwsh'
+        name: bff-install one-liner shape (script text piped to Invoke-Expression) under ${{ matrix.engine }}
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PATH = "$env:FAKEGH;$env:PATH"; $env:BFF_FAKE_GH_DIST = $env:DIST
