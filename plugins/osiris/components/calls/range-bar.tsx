@@ -1,9 +1,9 @@
 import { RANGES, freshnessOf, rangeNote } from "../../work/calls-range.ts";
-import type { RangeId } from "../../work/calls-range.ts";
+import type { RangeId, StaleMark } from "../../work/calls-range.ts";
 
 /** The ONE time range control, shown by both Overview and Cost & cache, plus the freshness badge of the cost read. */
-export function RangeBar(p: { range: RangeId; onRange: (r: RangeId) => void; polledAt?: number | null; now: number }) {
-  const note = rangeNote(p.range), f = freshnessOf(p.polledAt, p.now);
+export function RangeBar(p: { range: RangeId; onRange: (r: RangeId) => void; polledAt?: number | null; stale?: StaleMark | null; now: number }) {
+  const note = rangeNote(p.range), f = freshnessOf(p.polledAt, p.now, p.stale);
   return <div className="oi-rb">
     <span className="oi-rb-segs" role="group" aria-label="Time range">{RANGES.map(r => <button key={r.id} type="button" className="oi-rb-seg" aria-pressed={p.range === r.id} title={r.hint} onClick={() => p.onRange(r.id)}>{r.label}</button>)}</span>
     <span className={`oi-rb-fresh oi-rb-${f.state}`} role="status" title="When the cost and cache numbers were last read from the agent transcripts.">{f.text}</span>

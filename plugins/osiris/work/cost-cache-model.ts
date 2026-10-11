@@ -1,6 +1,7 @@
 // Model of the Calls "Cost & cache" tab (pure, no React): the workTelemetry answer -> header cards, a sortable per-lane table with
 // highlight flags, a miss-event list and the coverage note. No second poller or join: the ONE answer is useWorkTelemetry's, built by
 // telemetry-model.ts. Every number comes from the answer; a missing price reads "unpriced model: <name>", never a blank or a $0.
+import { staleSinceText } from "./calls-range.ts";
 import { criticalSteps } from "./critical-steps.ts";
 import { QUEST_STATES, boardQuests, questLabel } from "./lane-state.ts";
 import type { QuestState } from "./lane-state.ts";
@@ -107,7 +108,10 @@ export function readNoteOf(t: WorkTelemetry): string | null {
   const f = t.freshness, parts: string[] = [];
   if (f.catchingUp) parts.push("still reading older transcripts");
   if (f.oversizedSkipped) parts.push(`${f.oversizedSkipped} oversized record${f.oversizedSkipped === 1 ? " was" : "s were"} skipped`);
-  return parts.length ? `Incomplete read: ${parts.join(" · ")}. Numbers below may be too low.` : null;
+  const incomplete = parts.length ? `Incomplete read: ${parts.join(" · ")}. Numbers below may be too low.` : null;
+  // D-138: the server serves its last good answer while a slow or failed recompute runs; say so, never let it pass as fresh.
+  const stale = f.stale ? `${staleSinceText(f.stale)}. These are the last good numbers; a newer read is on its way.` : null;
+  return stale && incomplete ? `${stale} ${incomplete}` : stale ?? incomplete;
 }
 /** `windowLabel` names the range the answer was built for ("today", "last 30 days"); default is the 7-day window. */
 export function costCacheView(t: WorkTelemetry, windowLabel: string = WINDOW_LABEL): CostCacheView {

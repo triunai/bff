@@ -6,6 +6,18 @@ Versioning policy: [Semantic Versioning](https://semver.org/). While BFF is 0.x,
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-11
+
+Bundled Osiris is now 0.3.1 (c8aa44e).
+
+### Fixed (bundled Osiris 0.3.1)
+- Osiris no longer freezes BB on large transcript histories. The cost, telemetry and fleet reads are incremental, async and budgeted, and cost shows "stale since ..." instead of "missing" while a read catches up.
+
+### Added (bundled Osiris 0.3.1)
+- A live mod feed and a 5-hour / weekly plan-window tile with a run-out forecast.
+- Loop and flip-flop signals, plus metadata-only message rows, from the osiris-bridge mod.
+- An outbound fleet pager, OFF by default. Free channels only: ntfy or Telegram, configured in Osiris settings.
+
 ## [0.3.0] - 2026-10-11
 
 Osiris now ships inside the bff release, so one install gets bff and the Osiris workbench for BB.

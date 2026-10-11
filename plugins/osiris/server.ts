@@ -8,7 +8,10 @@ import type { Call } from "./analytics.ts";
 import { readHerdrFeed, readHerdrPanes, readHerdrSessions, resolveHerdrBin, resolveRootBin, resolveEnvBin, launchPlanFor, readHerdrStamps, writeHerdrStamp, launchedSessionOf } from "./herdr-feed.ts";
 import { spawnCaffeinate } from "./work/keep-awake-spawn.ts";
 import { CAFFEINATE_BIN, createKeepAwake, TICK_MS } from "./work/keep-awake.ts";
+import { createPagerService, PAGER_TICK_MS, type PagerRateMemo } from "./work/pager-service.ts";
 import { readSpineIndex } from "./spine-feed.ts";
+import { createModFeedReader, createTranscriptActivity } from "./mod-feed-live.ts";
+import { TRANSCRIPT_ROOT } from "./transcript-feed.ts";
 import { readFleetIncidents } from "./ledger-feed.ts";
 import { defaultProjectsDir, readProjects } from "./projects-feed.ts";
 import { readDocSection } from "./doc-feed.ts";
@@ -49,6 +52,7 @@ export const rpcContract = defineRpcContract({
     herdrSessionCheck: { input: z.object({ terminalId: z.string().min(1).max(200), session: z.string().regex(/^[A-Za-z0-9._][A-Za-z0-9._-]{0,63}$/).optional() }), output: z.discriminatedUnion("ok", [z.object({ ok: z.literal(true) }), z.object({ ok: z.literal(false), severity: z.enum(["crit", "warn"]), what: z.string(), why: z.string(), fix: z.string() })]) },
     herdrLaunchPlan: { input: z.object({ session: z.string().regex(/^[A-Za-z0-9._][A-Za-z0-9._-]{0,63}$/).optional() }), output: z.discriminatedUnion("ok", [z.object({ ok: z.literal(true), argv: z.array(z.string()), cwd: z.string(), title: z.string() }), z.object({ ok: z.literal(false), reason: z.string() })]) },
     spineIndex: { input: z.object({ repo: z.string().max(4096) }), output: z.discriminatedUnion("state", [z.object({ state: z.literal("ok"), path: z.string(), mtimeMs: z.number(), index: z.any(), dropped: z.number() }), z.object({ state: z.literal("missing"), path: z.string(), hint: z.string() }), z.object({ state: z.literal("invalid"), path: z.string(), reason: z.string() })]) },
+    modFeed: { input: z.object({ limit: z.number().int().min(1).max(200).optional() }), output: z.any() },
     fleetIncidents: { input: z.object({ repo: z.string().max(4096) }), output: z.any() },
     projectSpines: { input: z.object({ dir: z.string().max(4096).optional() }), output: z.any() },
     gitRepos: { input: z.object({ extra: z.array(z.string().max(4096)).max(20) }), output: z.any() },
@@ -187,10 +191,43 @@ export default async function plugin(bb: BbPluginApi) {
     const keepAwake = createKeepAwake({ platform: process.platform, enabled: () => awakeOn, trusted: () => resolveRootBin(CAFFEINATE_BIN), now: Date.now,
         spawn: spawnCaffeinate });
     bb.background.service("keep-awake", { start: signal => new Promise<void>(done => {
-        const run = () => { if (demoSwitch.on()) { keepAwake.release(); return; } let f: ReturnType<typeof telemetry.fleet> | null = null; try { f = telemetry.fleet(); } catch { /* count as 0 */ } awakeLive = f?.ok ? f.value.summary.live : 0; keepAwake.tick(awakeLive); };
+        const run = () => { if (demoSwitch.on()) { keepAwake.release(); return; } void telemetry.fleet().catch(() => null).then(f => { awakeLive = f?.ok ? f.value.summary.live : 0; keepAwake.tick(awakeLive); }); };
         run(); const timer = setInterval(run, TICK_MS);
         signal.addEventListener("abort", () => { clearInterval(timer); keepAwake.release(); done(); }, { once: true });
         if (signal.aborted) { clearInterval(timer); keepAwake.release(); done(); }
+    }) });
+    // Async, incremental and single-flight: a polled modFeed never blocks the event loop or re-parses the whole feed (mod-feed-live.ts).
+    const modFeedReader = createModFeedReader(), transcriptActivity = createTranscriptActivity(TRANSCRIPT_ROOT);
+    // The ONE place the seam guards run (the RPC below and the fleet pager both call it): one registry over one ctx builder.
+    // The pager passes terminal=false: it has no Terminal tab, so the herdr-session guard has nothing to compare (it would read "cannot tell" as a crit and page falsely).
+    const runSeams = (view: Parameters<typeof makeSeamCtx>[0], terminal = true) => runGuards(makeSeamCtx(view, { isRepoAllowed: p => repoAllowedFact(assertAllowedRepo, p), ...(terminal ? { herdrSession: async (v: typeof view) => ({ run: dispatchDeps.herdr, picked: v.terminalSession ?? null, launched: v.terminalId ? await launchedSessionOf(bb.storage.kv, v.terminalId) : null }) } : {}), keepAwake: async () => keepAwakeFact() }));
+    // build8 lane F: ONE outbound fleet pager (ideas-final #7). DISABLED by default; with no channel it only appends to a local outbox file.
+    // Secrets are `secret: true` settings (0600 file, never sent to the UI). Outbound only: nothing here reads a reply. work/pager*.ts.
+    const pagerSettings = bb.settings.define({
+        pagerEnabled: { type: "boolean", label: "Fleet pager (off by default)", description: "One page per fleet event: lanes waiting on you, a stalled lane, fleet idle, a red seam. Text is trigger + counts + lane names only. With no channel below, pages go only to ~/.local/share/osiris/pager-outbox.jsonl.", default: false },
+        pagerChannel: { type: "string", label: "Pager channel: none, ntfy or telegram", description: "Free channels only. Leave as none to keep pages on this machine.", default: "none" },
+        pagerNtfyServer: { type: "string", label: "ntfy server URL (self-hosted, or https://ntfy.sh)", description: "WARNING: topics on ntfy.sh are public to anyone who knows the name. Use a long random topic or self-host." },
+        pagerNtfyTopic: { type: "string", label: "ntfy topic" },
+        pagerNtfyAuth: { type: "string", label: "ntfy access key (optional)", secret: true },
+        pagerTelegramBotKey: { type: "string", label: "Telegram bot key", secret: true },
+        pagerTelegramChatId: { type: "string", label: "Telegram chat id" },
+        pagerStallMin: { type: "number", label: "Pager: minutes before a running lane counts as stalled (10 to 55)", default: 30 },
+        pagerCooldownMin: { type: "number", label: "Pager: minimum minutes between pages of the same kind", default: 30 },
+        pagerDailyCap: { type: "number", label: "Pager: most pages per day", default: 12 },
+    });
+    const pager = createPagerService({
+        rate: { load: async () => (await bb.storage.kv.get<PagerRateMemo>("pager.rate")) ?? null, save: async m => { await bb.storage.kv.set("pager.rate", m); } },
+        now: Date.now, fetch: (u, i) => fetch(u, i), outboxPath: join(homedir(), ".local", "share", "osiris", "pager-outbox.jsonl"), log: l => bb.log.warn(l),
+        settings: async () => { const v = await pagerSettings.get(); const ch = v.pagerChannel === "ntfy" || v.pagerChannel === "telegram" ? v.pagerChannel : "none";
+            return { enabled: v.pagerEnabled, channel: ch, ntfyServer: v.pagerNtfyServer, ntfyTopic: v.pagerNtfyTopic, ntfyAuth: v.pagerNtfyAuth, telegramBotKey: v.pagerTelegramBotKey, telegramChatId: v.pagerTelegramChatId, stallMin: v.pagerStallMin, cooldownMin: v.pagerCooldownMin, dailyCap: v.pagerDailyCap }; },
+        fleet: async () => { if (demoSwitch.on()) return null; const f = await telemetry.fleet(); return f.ok ? { live: f.value.summary.live, needsYou: f.value.summary.needsYou ?? 0, lanes: f.value.lanes } : null; },
+        // No view facts server-side: the view-dependent guards read "nothing selected" and stay ok; the rest (build, roots, keep-awake, sealing) are the ones that can go red here.
+        seamCrits: async () => (await runSeams({ trackerRepo: null, snapshotRepo: null, gitRepo: null, terminalSession: null }, false)).entries.flatMap(e => (!e.result.ok && e.result.severity === "crit" ? [e.id] : [])),
+    });
+    bb.background.service("fleet-pager", { start: signal => new Promise<void>(done => {
+        const timer = setInterval(() => { void pager.tick(); }, PAGER_TICK_MS);
+        signal.addEventListener("abort", () => { clearInterval(timer); done(); }, { once: true });
+        if (signal.aborted) { clearInterval(timer); done(); }
     }) });
     const keepAwakeFact = () => ({ supported: process.platform === "darwin", enabled: awakeOn, active: keepAwake.active(), live: awakeLive });
     const projectPaths = async (): Promise<string[]> => { const ps = await bb.sdk.projects.list(); return ps.flatMap(p => p.sources.filter(s => s.type === "local_path").map(s => s.path)); };
@@ -250,6 +287,7 @@ export default async function plugin(bb: BbPluginApi) {
         herdrSessions: async (_r, c) => pluginCaller(c) ? { ok: false as const, reason: NO_PLUGIN } : readHerdrSessions(dispatchDeps.herdr),
         herdrPanes: async (_r, c) => pluginCaller(c) ? { state: "unreachable" as const, panes: [], note: NO_PLUGIN } : readHerdrPanes(dispatchDeps.herdr, () => readHerdrFeed()),
         spineIndex: async ({ repo }) => readSpineIndex(await assertAllowedRepo(repo)),
+        modFeed: async ({ limit }, c) => pluginCaller(c) ? { ok: false as const, reason: NO_PLUGIN } : modFeedReader.read({ limit, transcriptActiveMs: await transcriptActivity.get() }),
         fleetIncidents: async ({ repo }) => readFleetIncidents(await assertAllowedRepo(repo)),
         projectSpines: async ({ dir }) => readProjects(await assertAllowedRepo(dir || defaultProjectsDir())),
         gitRepos: async ({ extra }) => discoverRepos(await filterAllowedRepos(extra)),
@@ -276,7 +314,7 @@ export default async function plugin(bb: BbPluginApi) {
         workTelemetry: async ({ repo, range }, c) => pluginCaller(c) ? { ok: false, reason: NO_PLUGIN } : telemetry.read(await assertAllowedRepo(repo), range ? Math.min(rangeSpanMs(range, Date.now()), READ_CAP_MS) : undefined),
         keepAwakeStatus: async () => keepAwakeFact(),
         // Runtime seam guards (td-osi.12): read-only; the answer is a verdict per guard, never an action. Never for a plugin caller.
-        seamReport: async (view, c) => pluginCaller(c) ? { ok: false, reason: NO_PLUGIN } : { ok: true, report: await runGuards(makeSeamCtx(view, { isRepoAllowed: p => repoAllowedFact(assertAllowedRepo, p), herdrSession: async v => ({ run: dispatchDeps.herdr, picked: v.terminalSession ?? null, launched: v.terminalId ? await launchedSessionOf(bb.storage.kv, v.terminalId) : null }), keepAwake: async () => keepAwakeFact() })) },
+        seamReport: async (view, c) => pluginCaller(c) ? { ok: false, reason: NO_PLUGIN } : { ok: true, report: await runSeams(view) },
         fleetSnapshot: async (_i, c) => pluginCaller(c) ? { ok: false, reason: NO_PLUGIN } : telemetry.fleet(),
         listPinnedRepos: async (_r, c) => { if (pluginCaller(c)) throw new Error(NO_PLUGIN); return { ok: true, pinned: await repoGuard.listPinned() }; },
         unpinRepo: async ({ path }, c) => { if (pluginCaller(c)) throw new Error(NO_PLUGIN); return { ok: true, pinned: await repoGuard.unpinRepo(path) }; },

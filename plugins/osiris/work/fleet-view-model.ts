@@ -6,6 +6,7 @@ import type { FleetCount, FleetKind, FleetLane, FleetNow, FleetRole, FleetRuntim
 import { modelTier, tierTitle } from "./model-tiers.ts";
 import { agentsWaitingText } from "./needs-you.ts";
 import { countText, lastActivityText, usdText } from "./cost-cache-model.ts";
+import { staleSinceText } from "./calls-range.ts";
 
 const DASH = "—";
 export const NO_FLEET_TEXT = "Fleet count is not available yet. Restart Osiris, or choose a tracker in Work.";
@@ -72,9 +73,11 @@ export interface ChipView {
   unread: number; unreadText: string;
   big: string; sub: string; /** The window the big number is measured over, e.g. "5 min". */ window: string; segments: Segment[]; /** Live per provider, for the header chip's bar. */ providerBar: Segment[]; roles: { role: FleetRole; live: number }[];
   title: string; empty: string | null; live: number; spark: number[]; definition: string;
+  /** "Stale since 22:30:05: recomputing" when the server served its last good fleet (D-138), else null. */
+  stale: string | null;
 }
 export function chipView(fleet?: FleetSnapshot | null): ChipView {
-  if (!fleet) return { needsYou: 0, needsText: "", chipNeedsText: "", needsTitle: "", unread: 0, unreadText: "", big: DASH, sub: "", window: "", segments: [], providerBar: [], roles: [], title: NO_FLEET_TEXT, empty: NO_FLEET_TEXT, live: 0, spark: [], definition: LIVE_DEFINITION };
+  if (!fleet) return { needsYou: 0, needsText: "", chipNeedsText: "", needsTitle: "", unread: 0, unreadText: "", big: DASH, sub: "", window: "", segments: [], providerBar: [], roles: [], title: NO_FLEET_TEXT, empty: NO_FLEET_TEXT, live: 0, spark: [], definition: LIVE_DEFINITION, stale: null };
   const s = fleet.summary;
   const roles = rolesOf(s.byRole);
   const roleWords = roles.filter(r => r.live > 0).map(r => `${r.live} ${r.role}`).join(", ");
@@ -82,7 +85,7 @@ export function chipView(fleet?: FleetSnapshot | null): ChipView {
   return {
     needsYou, needsText: needsTextOf(needsYou), chipNeedsText: agentsWaitingText(needsYou), needsTitle, unread, unreadText: unreadTextOf(unread),
     big: String(s.live), sub: `+${s.idle} idle`, window: mins(s.liveWindowMs), segments: segmentsOf(s.byModel), providerBar: providerBarOf(s.byRuntime), roles, empty: null, live: s.live,
-    spark: norm(s.liveSpark ?? []), definition: LIVE_DEFINITION,
+    spark: norm(s.liveSpark ?? []), definition: LIVE_DEFINITION, stale: fleet.stale ? staleSinceText(fleet.stale) : null,
     title: `${s.live} live (last ${mins(s.liveWindowMs)}), ${s.idle} idle${roleWords ? ` (${roleWords})` : ""}.${needsTitle ? ` ${needsTitle}` : ""}${unreadTitle ? ` ${unreadTitle}` : ""} ${LIVE_DEFINITION} ${heuristic(s.liveWindowMs, s.idleWindowMs)}`,
   };
 }

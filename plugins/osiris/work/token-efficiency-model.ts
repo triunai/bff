@@ -5,6 +5,8 @@ import { aggregate, priceFor, rowCost } from "../cache-economics.ts";
 import type { UsageRow } from "../cache-economics.ts";
 import { redactForDisplay } from "./sanitize.ts";
 import type { ToolOutputEvent } from "./tool-output-facts.ts";
+import { runSteps } from "./yield-steps.ts";
+import type { Steps } from "./yield-steps.ts";
 
 /** Context at or above NEAR is "near a wrap"; at or above WRAP the agent should hand off (the coordinator rule is 250k, leads 200k). */
 export const NEAR_WRAP = 150_000, WRAP = 200_000, LIVE_MS = 15 * 60_000;
@@ -65,12 +67,18 @@ function topModel(rows: readonly UsageRow[]): string | null {
 }
 
 export function buildTokenEfficiency(units: readonly EffUnit[], tools: readonly EffToolUnit[], now: number, windowMs: number): TokenEfficiency {
+  return runSteps(buildTokenEfficiencySteps(units, tools, now, windowMs));
+}
+/** buildTokenEfficiency as cooperative steps (work/yield-steps.ts): one step per unit, so the server's build never holds the loop for the
+ *  whole history (~70 ms on the real 7-day window, 2026-10-11). Nothing else differs. */
+export function* buildTokenEfficiencySteps(units: readonly EffUnit[], tools: readonly EffToolUnit[], now: number, windowMs: number): Steps<TokenEfficiency> {
   const inWin = (t: number | null) => t === null || !Number.isFinite(t) || now - t <= windowMs;
   const toolsBy = new Map(tools.map(t => [unitKey(t), t]));
   const agents: EffAgent[] = [], allRows: UsageRow[] = [], outputs: EffBigOutput[] = [];
   const reads = new Map<string, EffRepeatRead>();
   let toolResults = 0;
   for (const u of units) {
+    yield;
     const rows = u.rows.filter(r => inWin(r.timestamp)).sort(byTime);
     if (!rows.length) continue;
     allRows.push(...rows);
@@ -107,6 +115,7 @@ export function buildTokenEfficiency(units: readonly EffUnit[], tools: readonly 
   const repeatedReads = [...reads.values()].filter(r => r.reads >= 2).map(r => ({ ...r, why: `Read ${r.reads} times by the same agent (${kb(r.totalBytes)} in total); each read puts the file into context again. Keep a note, or read only the part you need (peek --range).` }))
     .sort((a, b) => b.totalBytes - a.totalBytes || (a.file < b.file ? -1 : 1)).slice(0, MAX_REPEATS);
 
+  yield;
   const fam = new Map<EffFamilyShare["family"], { calls: number; cost: number; unpriced: boolean }>();
   for (const r of allRows) {
     const f = family(r.model), c = fam.get(f) ?? { calls: 0, cost: 0, unpriced: false }, rc = rowCost(r);
@@ -118,6 +127,7 @@ export function buildTokenEfficiency(units: readonly EffUnit[], tools: readonly 
     why: f === "opus" ? "Opus costs about twice Sonnet per token; use it for design and adversarial review, not chores." : f === "haiku" ? "Cheapest tier; good for mechanical sweeps." : f === "sonnet" ? "The default workhorse." : "Not priced here.",
   })).sort((a, b) => b.costUsd - a.costUsd || (a.family < b.family ? -1 : 1));
 
+  yield;
   const modelCache: EffModelCache[] = aggregate(allRows, r => r.model ?? "unknown").map(u => {
     const write = u.cacheWrite5m + u.cacheWrite1h, ratio = u.cacheRead > 0 ? write / u.cacheRead : null;
     return { model: s(u.key, 40), writeTokens: write, readTokens: u.cacheRead, writeToRead: ratio, why: ratio !== null && ratio > CHURN_RATIO ? "Many tokens written to the cache per token read back: the cache is being rebuilt (a changed prompt start, or a pause longer than its lifetime). A write costs at least 12 times a read." : "Mostly reads: the cache is being reused, which is the cheap path." };

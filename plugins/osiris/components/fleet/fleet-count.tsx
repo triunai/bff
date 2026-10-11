@@ -5,9 +5,14 @@ import type { FleetFilters, FleetGroupBy, FleetRow, FleetSort, PanelGroup, Segme
 import type { FleetSnapshot } from "../../work/fleet-types.ts";
 import { ROLE_WORDS } from "../../work/model-tiers.ts";
 import { cleanText } from "../../work/sanitize.ts";
+import { badgeOf } from "../../work/loop-signals.ts";
+import type { LaneSignal } from "../../work/loop-signals.ts";
 
 /** Lets a child of the popover (a FLAGS row) ask the list to clear its filters and bring one agent's row into view. */
 export const FleetFocusContext = createContext<((key: string) => void) | null>(null);
+/** Lane key -> loop / unverified signal from the osiris-bridge feed. Empty when no feed. */
+export const LoopSignalsContext = createContext<ReadonlyMap<string, LaneSignal>>(new Map());
+const NO_SIGNALS: ReadonlyMap<string, LaneSignal> = new Map();
 type Focus = { key: string | null; n: number };
 type Common = { fleet?: FleetSnapshot | null; now: number };
 
@@ -29,7 +34,7 @@ function LiveSpark({ values }: { values: number[] }) {
 
 /** Compact top-bar chip: the big live number, "+n idle", a mini model bar. Click opens the list in a popover (Esc or outside click closes). */
 /** `extra`: rendered under the lane list in the popover (the message-flow panel). */
-export function FleetChip({ fleet, now, onSelectLane, extra, onOpenList }: Common & { onSelectLane?: (key: string) => void; extra?: ReactNode; onOpenList?: () => void }) {
+export function FleetChip({ fleet, now, onSelectLane, extra, onOpenList, signals }: Common & { signals?: ReadonlyMap<string, LaneSignal>; onSelectLane?: (key: string) => void; extra?: ReactNode; onOpenList?: () => void }) {
   const [open, setOpen] = useState(false);
   const [filters, setFilters] = useState<FleetFilters>(DEFAULT_FILTERS);
   const [focus, setFocus] = useState<Focus>({ key: null, n: 0 });
@@ -60,6 +65,7 @@ export function FleetChip({ fleet, now, onSelectLane, extra, onOpenList }: Commo
       <span className="oi-fc-chip-n">{v.big}</span>
       <span className="oi-fc-chip-meta"><span className="oi-fc-chip-word">{v.empty ? "agents" : "live"}{v.window && <span className="oi-fc-chip-win" title={v.definition}> {v.window.replace(/ min$/, "m")}</span>}</span>{v.sub && <span className="oi-fc-chip-sub">{v.sub}</span>}</span>
       <ModelBar segments={v.providerBar} />
+      {v.stale && <span className="oi-fc-stale" role="status" title={v.stale}>stale</span>}
     </button>
     {open && <div ref={pop} className="oi-fc-pop" role="dialog" aria-label="Live agents" tabIndex={-1}>
       <div className="oi-fc-pophead" title={v.definition}>
@@ -68,14 +74,15 @@ export function FleetChip({ fleet, now, onSelectLane, extra, onOpenList }: Commo
           <span>live in the last {v.window} · {v.sub}{v.needsYou > 0 ? " · " : ""}</span>
           {v.needsYou > 0 && <button type="button" className={`oi-fc-needbtn${filters.preset === "needs" ? " oi-fc-needbtn-on" : ""}`} aria-pressed={filters.preset === "needs"} onClick={() => toggle({ preset: filters.preset === "needs" ? "working" : "needs" })}>{v.needsText}</button>}
         </span>
+        {v.stale && <span className="oi-fc-stale" role="status">{v.stale}</span>}
         <button type="button" className="oi-fc-close" aria-label="Close live agents" title="Close (Esc)" onClick={close}>×</button>
       </div>
-      <div className="oi-fc-scroll">
+      <LoopSignalsContext.Provider value={signals ?? NO_SIGNALS}><div className="oi-fc-scroll">
         <FleetFocusContext.Provider value={k => { setFilters({ preset: "everything" }); focusLane(k); }}>
           <FleetList fleet={fleet} now={now} onSelectLane={k => { onSelectLane?.(k); }} filters={filters} onFilters={setFilters} focus={focus} onOpenList={onOpenList ? () => { close(); onOpenList(); } : undefined} />
           {extra}
         </FleetFocusContext.Provider>
-      </div>
+      </div></LoopSignalsContext.Provider>
     </div>}
   </span>;
 }
@@ -147,6 +154,7 @@ function WsHeader({ r, shut, onToggle }: { r: FleetRow; shut: boolean; onToggle:
 export type FleetDensity = "compact" | "full";
 export function FleetAgentRow({ r, onSelectLane, focused, density = "compact" }: { r: FleetRow; onSelectLane?: (key: string) => void; focused?: boolean; density?: FleetDensity }) {
   const text = cleanText(r.label);
+  const badge = badgeOf(useContext(LoopSignalsContext).get(r.key));
   if (r.group) return <li className={`oi-fc-row oi-fc-group oi-fc-${r.state}`} style={{ paddingLeft: 8 }} title={`${r.childCount} agents named ${text}…, grouped because no parent is known. Not an agent itself.`}>
     <span className="oi-fc-shape" role="img" aria-label={r.stateWord}>{r.shape}</span>
     <span className="oi-fc-gname">{text} <em>{r.childCount}</em></span>
@@ -156,6 +164,7 @@ export function FleetAgentRow({ r, onSelectLane, focused, density = "compact" }:
     <span className="oi-fc-nm">
       <button type="button" className="oi-fc-name" onClick={() => onSelectLane?.(r.key)} title={r.childCount ? `${text}, ${r.childCount} sub-agents` : text}>{r.depth > 0 ? "↳ " : ""}{text}{r.childCount ? <em> +{r.childCount}</em> : null}</button>
       <small className={`oi-fc-act${r.activityLong ? " oi-fc-act-long" : ""}`} title={r.activity ? (r.activityRunning ? "Running now" : "Finished") : "No tool activity seen"}>{r.activityRunning ? <i className="oi-fc-dot" aria-hidden="true" /> : null}{r.activity}</small>
+      {badge && <small className={`oi-fc-loop oi-fc-loop-${badge.word}`} title={badge.title}><span aria-hidden="true">{badge.word === "looping" ? "↻" : "△"}</span> {badge.word}</small>}
     </span>
     {r.waiting ? <span className="oi-fc-wait" title={r.waitingTitle}><span aria-hidden="true">{r.waitingShape}</span> {r.waitingWord}</span> : <span />}
     <span className="oi-fc-bead">{r.beadId ? cleanText(r.beadId) : ""}</span>
@@ -232,6 +241,7 @@ export const fleetCountStyles = `
 .oi-fc-chip-live .oi-fc-chip-n{color:var(--oi-tone-running);text-shadow:var(--oi-glow,none)}
 .oi-fc-chip-meta{display:flex;flex-direction:column;line-height:1.1;font-size:10px;color:var(--oi-muted);text-align:left}
 .oi-fc-chip-word,.oi-fc-chip-sub{text-transform:uppercase;letter-spacing:.04em}
+.oi-fc-stale{font-size:10px;font-weight:600;color:var(--oi-tone-attention);border:1px solid currentColor;padding:0 4px;white-space:nowrap}
 .oi-fc-bar{display:inline-flex;width:44px;height:6px;border-radius:3px;overflow:hidden;background:color-mix(in srgb,var(--oi-text) 12%,transparent)}
 .oi-fc-bar-big{display:flex;width:100%;height:20px;border-radius:5px}
 .oi-fc-seg{display:flex;align-items:center;justify-content:center;min-width:2px;font-size:11px;font-weight:700;color:var(--oi-bg);overflow:hidden}
@@ -281,6 +291,7 @@ export const fleetCountStyles = `
 .oi-fc-nm>.oi-fc-name{text-align:left}
 .oi-fc-name{padding:0;border:0;background:transparent;color:var(--oi-text);font:inherit;text-align:left;cursor:pointer}
 .oi-fc-name:hover{text-decoration:underline}
+.oi-fc-loop{margin-left:6px;padding:0 4px;border:1px solid currentColor;border-radius:3px;font-size:10px}.oi-fc-loop-looping{color:var(--oi-tone-attention)}.oi-fc-loop-unverified{color:var(--oi-warning)}
 .oi-fc-name em{color:var(--oi-muted);font-style:normal}
 .oi-fc-shape{text-align:center;color:var(--oi-tone-muted)}
 .oi-fc-live .oi-fc-shape{color:var(--oi-tone-running);text-shadow:var(--oi-glow,none)}

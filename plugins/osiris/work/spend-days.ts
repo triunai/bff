@@ -6,6 +6,8 @@ import type { Call } from "../analytics.ts";
 import type { UsageRow } from "../cache-economics.ts";
 import type { TelemetryUnit } from "../telemetry-join.ts";
 import { providerOf } from "./providers/registry.ts";
+import { runSteps } from "./yield-steps.ts";
+import type { Steps } from "./yield-steps.ts";
 import type { ProviderId } from "./providers/registry.ts";
 export type { ProviderId };
 
@@ -40,9 +42,16 @@ const slim = (p: ReturnType<typeof part>): SpendPart => ({ usd: p.usd, pricedUsd
 
 /** Oldest day first. `units` are already deduplicated (dedupeUnits); `laneOf` names a unit (the caller's sanitizer). */
 export function buildSpendDays(units: readonly TelemetryUnit[], now: number, windowMs: number, laneOf: (u: TelemetryUnit) => string): DaySpend[] {
+  return runSteps(buildSpendDaysSteps(units, now, windowMs, laneOf));
+}
+/** buildSpendDays as cooperative steps (work/yield-steps.ts): one step per unit and per day (~50 ms in one piece on the real 7-day
+ *  window, 2026-10-11). Nothing else differs. */
+export function* buildSpendDaysSteps(units: readonly TelemetryUnit[], now: number, windowMs: number, laneOf: (u: TelemetryUnit) => string): Steps<DaySpend[]> {
   type Bucket = { rows: UsageRow[]; hour: UsageRow[][]; prov: Map<ProviderId, UsageRow[]>; unit: Map<number, UsageRow[]> };
   const days = new Map<string, Bucket>();
-  units.forEach((u, ui) => {
+  for (let ui = 0; ui < units.length; ui++) {
+    yield;
+    const u = units[ui];
     for (const r of u.rows) {
       if (r.timestamp === null || !Number.isFinite(r.timestamp) || now - r.timestamp > windowMs) continue;
       const k = localDay(r.timestamp);
@@ -52,8 +61,10 @@ export function buildSpendDays(units: readonly TelemetryUnit[], now: number, win
       if (p) (b.prov.get(p) ?? b.prov.set(p, []).get(p)!).push(r);
       (b.unit.get(ui) ?? b.unit.set(ui, []).get(ui)!).push(r);
     }
-  });
-  return [...days].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([date, b]) => {
+  }
+  const out: DaySpend[] = [];
+  for (const [date, b] of [...days].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+    yield;
     const t = part(b.rows), byProvider: DaySpend["byProvider"] = {};
     for (const [p, rows] of b.prov) byProvider[p] = slim(part(rows));
     // One lane name can span several units (a lane re-spawned): merge by name so a chip is one agent, not one transcript file.
@@ -61,8 +72,9 @@ export function buildSpendDays(units: readonly TelemetryUnit[], now: number, win
     for (const [ui, rows] of b.unit) { const n = laneOf(units[ui]); lanes.set(n, [...(lanes.get(n) ?? []), ...rows]); }
     const topAgents = [...lanes].map(([lane, rows]) => ({ lane, ...slim(part(rows)) })).sort((x, y) => y.pricedUsd - x.pricedUsd || y.tokens - x.tokens || (x.lane < y.lane ? -1 : 1)).slice(0, MAX_AGENTS);
     const hp = b.hour.map(rows => part(rows));
-    return { date, ...slim(t), input: t.input, output: t.output, cacheRead: t.cacheRead, cacheWrite: t.cacheWrite, hitRate: t.hitRate, byProvider, topAgents, hours: hp.map(h => h.pricedUsd), hoursTokens: hp.map(h => h.tokens) };
-  });
+    out.push({ date, ...slim(t), input: t.input, output: t.output, cacheRead: t.cacheRead, cacheWrite: t.cacheWrite, hitRate: t.hitRate, byProvider, topAgents, hours: hp.map(h => h.pricedUsd), hoursTokens: hp.map(h => h.tokens) });
+  }
+  return out;
 }
 
 /** Calendar glue: the call -> usage join (work/call-usage-join.ts) prices what the telemetry rows do not carry, i.e. Codex and Gemini.

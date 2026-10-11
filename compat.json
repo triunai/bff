@@ -1,1 +1,1 @@
-{"schema_version": 1, "bb_min": "0.45.0", "osiris": {"id": "tool-observer", "version": "0.3.0", "source": "bundled", "commit": "5f84862113f7e86ec74213eed27339c883256a46", "published": true}}
+{"schema_version": 1, "bb_min": "0.45.0", "osiris": {"id": "tool-observer", "version": "0.3.1", "source": "bundled", "commit": "c8aa44ec8c4f01a6616208df0c91fec613d9a438", "published": true}}

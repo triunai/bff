@@ -133,6 +133,8 @@ export interface FleetSnapshot {
   messages?: MessageEvent[];
   /** Set on every payload the server returns (opaque-key.ts sealFleet): keys are opaque, and the client re-keys with this per-process salt. */
   keySalt?: string;
+  /** Set by the server when this is the LAST GOOD fleet served while a slow or failed recompute runs (D-138: said, not hidden). */
+  stale?: { since: number; reason: string };
   /** Provider coverage (providers/status.ts): which providers are installed and have sessions. Set by the telemetry service, not buildFleet. */
   providers?: ProviderStatus[];
   /** The call -> model-request usage index per provider, SEALED (opaque keys, no ids or paths): the client joins its own calls with it (call-usage-join.ts). Absent in an older answer. */

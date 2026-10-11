@@ -28,7 +28,17 @@ export function sha256Hex(text: string): string {
   return Array.from(h, x => x.toString(16).padStart(8, "0")).join("");
 }
 /** `k` + 28 hex chars of SHA-256(salt NUL raw). Same raw id + same salt = same key; nothing of the raw id survives. */
-export const opaqueKey = (raw: string, salt: string): string => `k${sha256Hex(`${salt}\u0000${raw}`).slice(0, 28)}`;
+// Memoised: a fleet / usage-index seal re-keys the same few thousand ids on every poll, and this pure-JS SHA-256 was the top self-time of a
+// steady-state poll (2.5 s of 39 s profiled on the real ~/.claude, 2026-10-11). Bounded: cleared whole when full, so memory stays flat.
+const KEY_MEMO = new Map<string, string>(), KEY_MEMO_MAX = 50_000;
+export const opaqueKey = (raw: string, salt: string): string => {
+  const text = `${salt}\u0000${raw}`, hit = KEY_MEMO.get(text);
+  if (hit !== undefined) return hit;
+  const out = `k${sha256Hex(text).slice(0, 28)}`;
+  if (KEY_MEMO.size >= KEY_MEMO_MAX) KEY_MEMO.clear();
+  KEY_MEMO.set(text, out);
+  return out;
+};
 /** Shapes of ids that may appear as a message sender/recipient: agent ids (a + 16-17 hex, a<name>-<16 hex>, agent- prefixed), uuids. */
 const ID_SHAPE = /^(agent-)?a[0-9a-f]{16,17}$|^(agent-)?a[A-Za-z0-9._-]+-[0-9a-f]{16}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** A name-index entry made from an id keeps its provider prefix; only the tag is re-derived from the sealed key. */
