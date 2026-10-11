@@ -439,8 +439,18 @@ class InstallShGhSourceTests(InstallShTests):
         extra.update(env_extra or {})
         return self.run_sh(*args, base=False, env_extra=extra)
 
+    def path_without_gh(self):
+        """A PATH of symlinks to every tool in /usr/bin and /bin EXCEPT gh, so 'gh is missing' holds on machines (CI runners) that ship a real gh."""
+        bindir = self.tmp / "nogh-bin"
+        bindir.mkdir()
+        for directory in ("/usr/bin", "/bin"):
+            for entry in sorted(os.listdir(directory)):
+                if entry != "gh" and not (bindir / entry).exists():
+                    os.symlink(os.path.join(directory, entry), str(bindir / entry))
+        return str(self.fakebin) + ":" + str(bindir)
+
     def test_gh_missing_prints_install_and_login_fix(self):
-        run = self.run_sh("--prefix", str(self.prefix), "--no-modify-path", base=False)
+        run = self.run_sh("--prefix", str(self.prefix), "--no-modify-path", base=False, env_extra={"PATH": self.path_without_gh()})
         self.assertNotEqual(run.returncode, 0)
         self.assertIn("https://cli.github.com", run.stderr)
         self.assertIn("gh auth login", run.stderr)
