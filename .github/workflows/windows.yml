@@ -10,7 +10,7 @@ on:
     inputs:
       install_ref:
         description: "Ref of the public triunai/bff-install repo whose install.ps1 is exercised"
-        default: win/W3
+        default: main
       inject_failure:
         description: "Break bff.cmd on purpose at the end; the job must go RED (proves the smoke test can fail)"
         type: boolean
@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: triunai/bff-install
-          ref: ${{ inputs.install_ref || 'win/W3' }}
+          ref: ${{ inputs.install_ref || 'main' }}
           path: bff-install
       - if: matrix.engine == 'powershell'
         name: Parse every install.ps1
@@ -113,7 +113,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: triunai/bff-install
-          ref: ${{ inputs.install_ref || 'win/W3' }}
+          ref: ${{ inputs.install_ref || 'main' }}
           path: bff-install
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:

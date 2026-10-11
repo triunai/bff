@@ -10,21 +10,23 @@
 
 ## Install
 
-**Prerequisites:** the [GitHub CLI](https://cli.github.com) signed in with an account that can read `triunai/bff` (`gh auth login`; the repository is private), Python 3.9+, and, for Osiris, [BB](#install-in-30-seconds). No `sudo`; everything lands in your user directory.
+**Prerequisites:** Python 3.9+ and, for Osiris, [BB](#install-in-30-seconds). No account and no login: the repository is public and the installer downloads the release over plain HTTPS and verifies `SHA256SUMS` before installing. No `sudo`; everything lands in your user directory.
 
 macOS (Intel and Apple Silicon) and Linux:
 
 ```sh
-sh -c "$(gh release download --repo triunai/bff --pattern install.sh -O -)" bff-install --setup
+curl -fsSL https://raw.githubusercontent.com/triunai/bff-install/main/install.sh | sh
 ```
 
-Windows (PowerShell 5.1 or 7, no admin; installs to `%LOCALAPPDATA%\bff` and writes a `bff.cmd` shim). New and not yet run on a real Windows machine; WSL2 with the macOS line is the fallback:
+Windows (PowerShell 5.1 or 7, no admin; installs to `%LOCALAPPDATA%\bff` and writes a `bff.cmd` shim). Proven on real `windows-latest` runners (PowerShell 5.1 and 7, Python 3.9 and 3.12) by the `windows` workflow:
 
 ```powershell
-& ([scriptblock]::Create((gh release download --repo triunai/bff --pattern install.ps1 -O - | Out-String))) -Setup
+irm https://raw.githubusercontent.com/triunai/bff-install/main/install.ps1 | iex
 ```
 
-Re-running either line updates in place. Both check `gh` first and print the exact fix if it is missing or signed out, download through `gh`, verify `SHA256SUMS` before installing, offer to add `~/.local/bin` to your `PATH` once (it asks, and prints the line instead if you decline), then run `bff osiris setup`. The script is passed to `sh` as an argument rather than piped in, so the PATH question can reach your terminal. Read it first with `gh release download --repo triunai/bff --pattern install.sh -O -`.
+Re-running either line updates in place. They offer to add the bin directory to your `PATH` once (they ask, and print the line instead if you decline), then run `bff osiris setup`. If the GitHub CLI is installed and signed in it is used for the download instead; `BFF_DOWNLOAD=https` forces the plain download. The scripts live in [triunai/bff-install](https://github.com/triunai/bff-install); read them first, they are short.
+
+**Windows limits:** `herdr` has no Windows build, the `caffeinate` keep-awake is macOS only, and BB (so Osiris inside BB) is not supported on Windows. `bff`, `bff doctor`, `bff update`, `bff check` and the terminal apps `bff osiris factory | worktrees | prune` work (the terminal apps need Node 22.6 or newer).
 
 BFF is a portable CLI and a set of repo conventions for running coding agents without losing the plot. Osiris, its workbench, shows what the agents actually did. It runs inside **BB**, a separate desktop workbench app that hosts Osiris as a plugin; BFF does not install BB, so install it first if you want Osiris (the CLI works without it). [Install the CLI](#install-in-30-seconds) below.
 
@@ -85,7 +87,7 @@ This installs the BFF command-line tool. Osiris also needs BB, which you install
 Needs Python 3.9+, Git and `curl`. BB and Herdr (the separate terminal-session app BFF uses to capture agent runs) are upstream applications; BFF does not quietly install agent runtimes, rewrite your shell profile or seize your hooks.
 
 ```sh
-curl -fsSLO https://raw.githubusercontent.com/triunai/bff/v0.2.0/install.sh
+curl -fsSLO https://raw.githubusercontent.com/triunai/bff/v0.2.1/install.sh
 sh install.sh
 bff doctor     # what is present, what is missing, what it would do
 ```
