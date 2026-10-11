@@ -39,7 +39,10 @@ export const transcriptSourcesGuard: SeamGuard = { id: "transcript-sources", sea
     if (r.exists && !r.readable) return bad("crit", `Transcript root ${r.path} exists but cannot be read`, "The fleet and calls views will show no agents from it.", `Fix the permissions on ${r.path} (the user running BB must be able to read it).`);
     if (!r.exists) return bad(r.required ? "crit" : "warn", `Transcript root ${r.path} does not exist`, r.required ? "Osiris cannot see any agent activity without it." : "Agents of that runtime will not appear.", r.required ? `Start a Claude Code session once so ${r.path} is created, or check the path.` : "Ignore this if you do not use that runtime.");
   }
-  const stale = roots.find(r => r.newestMtime === null || t - r.newestMtime > TRANSCRIPT_STALE_MS);
+  const fresh = (r: (typeof roots)[number]) => r.newestMtime !== null && t - r.newestMtime <= TRANSCRIPT_STALE_MS;
+  const unfinished = roots.find(r => r.incomplete && !fresh(r));
+  if (unfinished) return bad("warn", `Could not finish checking transcript root ${unfinished.path} (${unfinished.incomplete!.scanned} files scanned)`, "The machine was too busy to look through it in time, so whether it is still being written is unknown, not broken.", "Refresh in a moment; if it stays, check the machine's load.");
+  const stale = roots.find(r => !fresh(r));
   if (stale) return bad("warn", stale.newestMtime === null ? `Transcript root ${stale.path} holds no transcripts` : `Newest transcript under ${stale.path} is ${Math.floor((t - stale.newestMtime) / DAY * 10) / 10} days old`, "Nothing has been written there for a long time, so live views may be quietly empty.", "Check that your agents still write transcripts to this root; ignore this on an idle machine.");
   return ok;
 } };

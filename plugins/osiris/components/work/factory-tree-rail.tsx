@@ -5,7 +5,7 @@ import { buildGraphModel } from "../../work/graph/graph.ts";
 import { toBeadIssues } from "../../work/graph/adapter.ts";
 import { floorAt, type FloorFrame } from "../../work/factory-floor-model.ts";
 import { treeFromSnapshot } from "../../work/tree-layout.ts";
-import { STATION_ABBR, STATION_TONE, epicMixes, lockMark, railBeads, railTitle, railHover, showsChip, type EpicMix, type RailBead, type RailOwn } from "../../work/factory-tree-rail-model.ts";
+import { STATION_ABBR, STATION_TONE, epicMixes, lockMark, railBeads, railTitle, railHover, scrollDelta, showsChip, type EpicMix, type RailBead, type RailOwn } from "../../work/factory-tree-rail-model.ts";
 import { BeadTree } from "./bead-tree.tsx";
 
 // The arkham-parity WORK tree fused INTO the Factory (owner 2026-10-07: "combine arkham here with this somehow"; fg-lead design
@@ -13,7 +13,7 @@ import { BeadTree } from "./bead-tree.tsx";
 // fork), each decorated with its bead's current station chip, a live spark dot and a padlock, all read from the floor's own
 // FloorFrame; an epic shows n/m and a stacked station-mix bar. The shell owns everything shared: `open` and key T, the one
 // hover card (this reports `onHover({id,x,y})`), selection, and `roles` (chainRoles over blockChain, tinting rows: focus =
-// accent band, up / down = tinted guide, dim = 40%). A card hovered on the floor passes `hoverId` and its row scrolls into view.
+// accent band, up / down = tinted guide, dim = 40%). A card hovered on the floor passes `hoverId`; the rail ignores it for layout (hover never moves the strip).
 
 export type FactoryTreeRailProps = {
   snap: WorkSurfaceSnapshot; now: number; selectedId: string | null; onSelect(id: string): void;
@@ -23,7 +23,7 @@ export type FactoryTreeRailProps = {
   /** The shell's frame (it computes floorAt once). Absent = the rail computes the live frame itself with the same floorAt. */
   frame?: FloorFrame | null;
   transcriptLive?: ReadonlyMap<string, { lane: string; lastAt: number }> | null;
-  /** A bead hovered elsewhere (floor card, iso, timeline): its row scrolls into view. */
+  /** A bead hovered elsewhere (floor card, iso, timeline). Accepted for the shell's wiring but deliberately UNUSED: hover never scrolls or resizes this strip. */
   hoverId?: string | null;
   onInspect?(id: string): void;
   /** The stage is scrubbed into the past: the tree stays LIVE, and says so (design 2.4). */
@@ -55,10 +55,16 @@ export function FactoryTreeRail(p: FactoryTreeRailProps) {
   // an UNFOLDED layout, so an epic's mix still counts the kids its folded row hides
   const mixes = useMemo(() => epicMixes(treeFromSnapshot(p.snap, p.now, { showDone: true }).lines, id => beads.get(id)?.station ?? null), [p.snap, p.now, beads]);
   const liveN = useMemo(() => [...beads.values()].filter(b => b.live).length, [beads]);
-  useEffect(() => { // a card hovered on the floor brings its row into view
-    if (!p.open || !p.hoverId) return;
-    Array.from(box.current?.querySelectorAll<HTMLElement>("[data-row]") ?? []).find(r => r.dataset.id === p.hoverId)?.scrollIntoView({ block: "nearest" });
-  }, [p.open, p.hoverId]);
+  // SELECTION (a click or key press) brings its row into view; HOVER never moves anything in this strip (owner 23:30: hovering an item
+  // jarred the bottom strip). scrollIntoView is out too: it scrolls EVERY scrollable ancestor (the whole floor page), so the one
+  // scroller here is the tree body and `scrollDelta` moves only it.
+  useEffect(() => {
+    if (!p.open || !p.selectedId) return;
+    const body = box.current?.querySelector<HTMLElement>(".oi-bt-body"); if (!body) return;
+    const row = Array.from(body.querySelectorAll<HTMLElement>("[data-row]")).find(r => r.dataset.id === p.selectedId); if (!row) return;
+    const v = body.getBoundingClientRect(), r = row.getBoundingClientRect();
+    body.scrollLeft += scrollDelta({ start: v.left, end: v.right }, { start: r.left, end: r.right });
+  }, [p.open, p.selectedId]);
   if (!p.open) return <aside className="oi-ftr oi-ftr-shut" ref={box} aria-label="Work tree rail, hidden">
     <button type="button" className="oi-ftr-sliver" title={`Show the work tree${liveN ? ` · ${liveN} agent${liveN === 1 ? "" : "s"} working` : ""} (T)`} aria-expanded="false" onClick={p.onToggle}>
       <span aria-hidden="true">▸</span><span className="oi-ftr-count">{liveN > 0 ? `◍ ${liveN}` : "tree"}</span>
@@ -68,7 +74,7 @@ export function FactoryTreeRail(p: FactoryTreeRailProps) {
     onKeyDown={e => { if (e.key !== " " && e.key !== "ArrowLeft" && e.key !== "ArrowRight") return; e.stopPropagation(); const t = (e.target as HTMLElement).tagName; if (t !== "BUTTON" && t !== "INPUT") e.preventDefault(); }}>
     {p.scrubbed && <span className="oi-ftr-live" title="The stage shows the past; this tree is always live">live</span>}
     <button type="button" className="oi-ftr-toggle" title="Hide the work tree (T)" aria-expanded="true" onClick={p.onToggle}>◂</button>
-    <BeadTree snap={p.snap} now={p.now} selectedId={p.selectedId} onSelect={p.onSelect} onInspect={p.onInspect} roles={p.roles ?? EMPTY}
+    <BeadTree snap={p.snap} now={p.now} selectedId={p.selectedId} onSelect={p.onSelect} onInspect={p.onInspect} roles={p.roles ?? EMPTY} fullTitles
       onHoverRow={(id, anchor, via) => {
         if (!via) return;
         const step = railHover(mine.current, { kind: id !== null ? (via.kind === "pointer" ? "enter" : "focus") : (via.kind === "pointer" ? "leave" : "blur"), id: via.origin, floorHoverId: p.hoverId ?? null });

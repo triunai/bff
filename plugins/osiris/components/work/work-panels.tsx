@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { PaneTail, WorkSurfaceSnapshot } from "../../work/surface-types.ts";
-import type { WorkPanelId } from "../../work/panel-ids.ts";
+import { workPanelGate, type WorkPanelId } from "../../work/panel-ids.ts";
 import { BeadTree, beadTreeStyles } from "./bead-tree.tsx";
 import { GraphTab } from "./graph/graph-tab.tsx";
 import { BoardView, boardViewStyles } from "./board-view.tsx";
@@ -27,10 +27,19 @@ export type WorkPanelCtx = {
   /** Only `work.factory` reads these: the archive vault opens the Archive view; the shell's pending Mod+K chord start. */
   onOpenArchive?(ids: readonly string[]): void;
   chordAt?(): number | null;
+  /** The chosen tracker repo (null = none chosen), the last snapshot read error, and the shell's "open the tracker picker". With them a null
+   *  `snap` reads as one of three states (none chosen, still reading, read failed) instead of one. */
+  tracker?: string | null;
+  error?: string | null;
+  onChooseTracker?(): void;
 };
 
-const needTracker = (what: string) => <p className="oi-note oi-wp-note">{what}</p>;
-const withSnap = (c: WorkPanelCtx, render: (s: WorkSurfaceSnapshot) => ReactNode): ReactNode => (c.snap ? <div className="oi-wp">{render(c.snap)}</div> : needTracker("Choose a tracker to see this."));
+function withSnap(c: WorkPanelCtx, render: (s: WorkSurfaceSnapshot) => ReactNode): ReactNode {
+  const g = workPanelGate(c);
+  if (g.kind === "ready") return <div className="oi-wp">{render(c.snap!)}</div>;
+  if (g.kind === "none") return <div className="oi-wp-note"><p className="oi-note">{g.text}</p>{c.onChooseTracker && <button type="button" className="oi-wp-choose" onClick={c.onChooseTracker}>{g.action}</button>}</div>;
+  return <p className={g.kind === "error" ? "oi-alert oi-wp-note" : "oi-note oi-wp-note"} role={g.kind === "error" ? "alert" : undefined}>{g.text}</p>;
+}
 
 /** ONE render map, typed over WORK_PANEL_IDS: adding an id there without a renderer here is a compile error, and a test pins the registry both ways. */
 const RENDER: Record<WorkPanelId, (c: WorkPanelCtx) => ReactNode> = {

@@ -24,8 +24,7 @@ export function planCommand(id: string, layout: Layout): CommandPlan {
   const v = layout.view, set = (patch: Partial<Layout["view"]>): CommandPlan => ({ kind: "layout", action: { type: "setView", patch } });
   switch (id) {
     case CMD.primarySideBar: return set({ primarySideBar: !v.primarySideBar });
-    case CMD.secondarySideBar: case CMD.secondarySideBarAlt: return set({ secondarySideBar: !v.secondarySideBar });
-    case CMD.bottomPanel: return set({ bottomPanel: !v.bottomPanel });
+    case CMD.secondarySideBar: case CMD.secondarySideBarAlt: case CMD.sidePanel: return set({ secondarySideBar: !v.secondarySideBar });
     case CMD.zen: return set({ zen: !v.zen });
     case CMD.zoomIn: return { kind: "layout", action: { type: "zoom", dir: "in" } };
     case CMD.zoomOut: return { kind: "layout", action: { type: "zoom", dir: "out" } };
@@ -47,14 +46,13 @@ export function allowShortcut(r: { command: string | null; supersedes?: string }
 // ---- menu -----------------------------------------------------------------------------------------------------------------
 /** Menu rows whose geometry 0.2.15 does not draw. They are shown, disabled, with the reason: never a silent no-op. */
 export const UNSUPPORTED_ITEMS: Readonly<Record<string, string>> = {
-  "panelPosition.left": "(bottom only for now)", "panelPosition.right": "(bottom only for now)",
   "panelAlign.justify": "(centre only for now)",
   "activityBar.top": "(side only for now)", "activityBar.hidden": "(side only for now)",
   movePrimary: "(left only for now)",
 };
 /** The side/bottom toggles draw nothing while their slot holds no panel (slotVisible needs panels), so they say so instead of flipping a
  * check mark silently (review W-2B M3). Item id -> the slot it shows. */
-export const SLOT_TOGGLES: Readonly<Record<string, SlotId>> = { primarySideBar: "left", secondarySideBar: "right", bottomPanel: "bottom" };
+export const SLOT_TOGGLES: Readonly<Record<string, SlotId>> = { primarySideBar: "left", secondarySideBar: "right" };
 export const EMPTY_SLOT_REASON = "(move a panel here first)";
 
 export function decorateMenu(items: ViewItem[], layout?: Layout): ViewItem[] {

@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import type { PaneTail, WorkSurfaceSnapshot } from "../../work/surface-types.ts";
-import { headerSegs, TREE_KEYS, treeFromSnapshot, type Seg, type TreeLine, type TreeTerms } from "../../work/tree-layout.ts";
+import { plainTitle } from "../../work/surface-model.ts";
+import { headerSegs, shortCwd, TREE_KEYS, treeFromSnapshot, type Seg, type TreeLine, type TreeTerms } from "../../work/tree-layout.ts";
 
 // The WORK tree, held to PARITY with beady-eye's README "arkham" frame (owner 23:00: "it has to look better than beady-eye"),
 // then better where a GUI can be. work/tree-layout.ts computes every guide, column, tone and hint; this only paints them.
@@ -30,6 +31,8 @@ export type BeadTreeProps = {
   trail?(id: string, folded: boolean): ReactNode;
   onHoverRow?(id: string | null, anchor?: { x: number; y: number }, via?: { origin: string; kind: "pointer" | "focus" }): void;
   roles?: ReadonlyMap<string, "focus" | "up" | "down" | "dim">;
+  /** Paint the whole title and let CSS ellipsize at the real edge (the model clips at 48 chars for the narrow column; the Factory strip has room). */
+  fullTitles?: boolean;
 };
 
 /** A segment in three widths; the container query picks one (full ≥ 520px, short ≥ 320px, tiny below). */
@@ -92,11 +95,11 @@ export function BeadTree(p: BeadTreeProps) {
             : <span className="oi-bt-guide" aria-hidden="true">{l.guide}</span>}
           <button type="button" className="oi-bt-chip" title={`Open ${l.id} in the inspector`} onClick={e => { e.stopPropagation(); (p.onInspect ?? p.onSelect)(l.id); }}><span className="oi-bt-glyph" aria-hidden="true">{l.glyph}</span> <span className="oi-bt-id">{l.shortId}</span></button>
           {p.lead?.(l.id)}
-          <span className="oi-bt-title">{l.title}</span>
+          <span className="oi-bt-title" title={l.fullTitle}>{p.fullTitles ? plainTitle(l.fullTitle) : l.title}</span>
           <span className="oi-bt-right">{p.trail?.(l.id, l.folded)}<Segs segs={l.right} /></span>
         </div>;
         if (l.kind === "pane") return <div key={l.key} className="oi-bt-row oi-bt-pane" title={l.hint}>
-          <span className="oi-bt-guide" aria-hidden="true">{l.guide}</span><span className={`oi-bt-t-success${l.live ? " oi-bt-live" : ""}`}>◍ {l.label} {l.state}</span><span className="oi-bt-title oi-bt-cwd">{l.cwd ?? ""}</span>
+          <span className="oi-bt-guide" aria-hidden="true">{l.guide}</span><span className={`oi-bt-t-success${l.live ? " oi-bt-live" : ""}`}>◍ {l.label} {l.state}</span><span className="oi-bt-title oi-bt-cwd" title={l.cwd ?? undefined}>{l.cwd ? shortCwd(l.cwd, p.snap.repo) : ""}</span>
         </div>;
         return <div key={l.key} className={`oi-bt-row oi-bt-${l.kind}${l.kind === "group" && l.drift ? " oi-bt-drift" : ""}`} title={l.kind === "group" ? l.hint : undefined}>
           <span className="oi-bt-guide" aria-hidden="true">{l.guide}</span><span className={l.kind === "group" ? (l.drift ? "oi-bt-t-drift" : "oi-bt-t-attention") : "oi-bt-t-muted"}>{l.text}</span>

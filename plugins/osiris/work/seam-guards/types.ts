@@ -8,7 +8,9 @@ export type GuardResult = { ok: true } | { ok: false; severity: "crit" | "warn";
 export type SeamGuard = { id: string; seam: string; run: (ctx: GuardCtx) => Promise<GuardResult> };
 
 /** One transcript root as read from disk. `required`: Osiris cannot show agent activity without it. */
-export type TranscriptRootFact = { path: string; required: boolean; exists: boolean; readable: boolean; newestMtime: number | null };
+export type TranscriptRootFact = { path: string; required: boolean; exists: boolean; readable: boolean; newestMtime: number | null;
+  /** The walk ran out of its time/file budget before it found a recent transcript: `newestMtime` is the newest of the `scanned` files only. */
+  incomplete?: { scanned: number } };
 export type KeepAwakeFact = { supported: boolean; enabled: boolean; active: boolean; live: number };
 export type BuildFact = { dir: string; version: string };
 

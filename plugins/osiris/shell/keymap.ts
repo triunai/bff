@@ -5,8 +5,8 @@ import type { KeyBinding, KeyChord } from "./layout-types.ts";
 
 /** Command ids. The shell maps these to LayoutActions (or to opening the search palette); view-items.ts uses the same ids. */
 export const CMD = {
-  search: "palette.search", primarySideBar: "view.primarySideBar", secondarySideBar: "view.secondarySideBar", bottomPanel: "view.bottomPanel",
-  zen: "view.zen", zoomIn: "view.zoomIn", zoomOut: "view.zoomOut", zoomReset: "view.zoomReset", openView: "view.openView", secondarySideBarAlt: "view.secondarySideBar.alt", swapCentre: "view.swapWithCentre", shortcuts: "view.shortcuts", help: "view.help", navBack: "nav.back", navForward: "nav.forward",
+  search: "palette.search", primarySideBar: "view.primarySideBar", secondarySideBar: "view.secondarySideBar",
+  zen: "view.zen", zoomIn: "view.zoomIn", zoomOut: "view.zoomOut", zoomReset: "view.zoomReset", openView: "view.openView", secondarySideBarAlt: "view.secondarySideBar.alt", sidePanel: "view.sidePanel", swapCentre: "view.swapWithCentre", shortcuts: "view.shortcuts", help: "view.help", navBack: "nav.back", navForward: "nav.forward",
 } as const;
 
 export const KEYMAP: KeyBinding[] = [
@@ -14,7 +14,8 @@ export const KEYMAP: KeyBinding[] = [
   { chord: "Alt+Mod+B", command: CMD.secondarySideBar, label: "Toggle Secondary Side Bar", when: "notTyping" },
   // Non-colliding alternative to ⌥⌘B (BB / the browser may take it): ⌘K then B, same leader as Zen.
   { chord: "Mod+K B", command: CMD.secondarySideBarAlt, label: "Toggle Secondary Side Bar (alt)", when: "notTyping" },
-  { chord: "Mod+J", command: CMD.bottomPanel, label: "Toggle Bottom Panel", when: "notTyping" },
+  // Mod+J used to toggle the (retired) bottom strip; it now toggles the one right-side panel that replaced it.
+  { chord: "Mod+J", command: CMD.sidePanel, label: "Toggle Side Panel", when: "notTyping" },
   { chord: "Mod+K Z", command: CMD.zen, label: "Zen Mode", when: "notTyping" },
   { chord: "Mod+=", command: CMD.zoomIn, label: "Zoom In", when: "notTyping" },
   { chord: "Mod+-", command: CMD.zoomOut, label: "Zoom Out", when: "notTyping" },

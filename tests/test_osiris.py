@@ -46,7 +46,7 @@ else:
 """
 
 HOME = "/Users/" + "example"
-GIT_SOURCE = "git:https://github.com/example/bb-plugin-osiris@v0.3.1"
+GIT_SOURCE = "git:https://github.com/example/bb-plugin-osiris@v0.3.2"
 
 
 def entry(source, version="0.2.0", **extra):
@@ -149,7 +149,7 @@ class CompatTests(Fake):
         data = osiris.load_compat()
         self.assertEqual(data["osiris"]["id"], "tool-observer")
         self.assertIs(data["osiris"]["published"], True)
-        self.assertEqual((data["osiris"]["source"], data["osiris"]["version"]), (osiris.BUNDLED_SOURCE, "0.3.1"))
+        self.assertEqual((data["osiris"]["source"], data["osiris"]["version"]), (osiris.BUNDLED_SOURCE, "0.3.2"))
         self.assertRegex(data["osiris"]["commit"], r"^[0-9a-f]{40}$")
         shipped = json.loads((SDK / "plugins" / "osiris" / "package.json").read_text(encoding="utf-8"))["version"]
         self.assertEqual(shipped, data["osiris"]["version"])
@@ -207,13 +207,13 @@ class PluginStatusTests(Fake):
 
     def test_stable_copy_is_managed_never_stale_and_a_dev_path_is_neither(self):
         data = Path(str(paths.data_dir(prefix=self.root / "prefix")))
-        stable = data / "osiris" / "osiris-0.3.1-0123456789ab"
+        stable = data / "osiris" / "osiris-0.3.2-0123456789ab"
         self.set_plugins(entry("path:" + str(stable)))
         status = self.status()
         self.assertEqual((status["stale_bundled"], status["managed_bundle"]), (False, True))
         # The owner's kind of install: a worktree path outside bff's data directory, the dev channel.
-        for dev in (self.root / "osiris-worktrees" / "install-0.2.16-abc1234", data / "elsewhere" / "osiris-0.3.1-0123456789ab",
-                    data / "osiris" / "nested" / "osiris-0.3.1-0123456789ab"):
+        for dev in (self.root / "osiris-worktrees" / "install-0.2.16-abc1234", data / "elsewhere" / "osiris-0.3.2-0123456789ab",
+                    data / "osiris" / "nested" / "osiris-0.3.2-0123456789ab"):
             self.set_plugins(entry("path:" + str(dev)))
             status = self.status()
             self.assertEqual((status["stale_bundled"], status["managed_bundle"]), (False, False), dev)
@@ -267,16 +267,16 @@ class SetupTests(Fake):
     def test_published_fresh_install_records_state(self):
         compat = self.compat(published=True)
         target = compat["osiris"]["source"]
-        self.install_result(default={"source": target, "version": "0.3.1"})
+        self.install_result(default={"source": target, "version": "0.3.2"})
         self.set_plugins()
         self.assertEqual(self.call(osiris.setup, yes=True, compat=compat), 0)
         self.assertEqual(self.installs(), [["plugin", "install", target, "--yes"]])
         self.assertEqual(state.load(self.state_file)["plugin"],
-                         {"id": "tool-observer", "source": target, "version": "0.3.1", "previous_source": None})
+                         {"id": "tool-observer", "source": target, "version": "0.3.2", "previous_source": None})
 
     def test_commit_replaces_the_tag(self):
         compat = self.compat(published=True, commit="abc123")
-        self.install_result(default={"source": "git:https://github.com/example/bb-plugin-osiris@abc123", "version": "0.3.1"})
+        self.install_result(default={"source": "git:https://github.com/example/bb-plugin-osiris@abc123", "version": "0.3.2"})
         self.set_plugins()
         self.call(osiris.setup, yes=True, compat=compat)
         self.assertEqual(self.installs(), [["plugin", "install", "git:https://github.com/example/bb-plugin-osiris@abc123", "--yes"]])
@@ -294,7 +294,7 @@ class SetupTests(Fake):
 
     def test_already_on_target(self):
         compat = self.compat(published=True)
-        self.set_plugins(entry(compat["osiris"]["source"], "0.3.1"))
+        self.set_plugins(entry(compat["osiris"]["source"], "0.3.2"))
         self.assertEqual(self.call(osiris.setup, yes=True, compat=compat), 0)
         self.assertIn("up to date", self.output())
         self.assertEqual(self.installs(), [])
@@ -390,13 +390,13 @@ class UpdateTests(Fake):
         self.assertEqual(self.installs(), [])
 
     def test_from_dir_refuses_unfit_directory(self):
-        bad = self.plugin("install-0.3.1", symlink=True)
+        bad = self.plugin("install-0.3.2", symlink=True)
         self.assertEqual(self.update(from_dir=str(bad)), 1)
         self.assertEqual(self.installs(), [])
 
     def test_from_dir_installs_with_gate(self):
-        good = self.plugin("install-0.3.1", "0.3.1")
-        self.install_result(default={"source": "path:" + str(good), "version": "0.3.1"})
+        good = self.plugin("install-0.3.2", "0.3.2")
+        self.install_result(default={"source": "path:" + str(good), "version": "0.3.2"})
         self.assertEqual(self.update(from_dir=str(good)), 0)
         self.assertEqual(self.installs(), [["plugin", "install", str(good), "--yes"]])
 
@@ -414,7 +414,7 @@ class UpdateTests(Fake):
         self.install_result(default={"source": target, "version": "0.4.0"})
         self.set_plugins()
         self.assertEqual(self.update(version="0.4.0", yes=True, compat=compat), 0)
-        self.assertIn("off pin: compat.json pins 0.3.1", self.output())
+        self.assertIn("off pin: compat.json pins 0.3.2", self.output())
         self.assertEqual(self.installs(), [["plugin", "install", target, "--yes"]])
 
     def test_no_flags_respects_dev_channel(self):
@@ -575,12 +575,12 @@ class ReleaseTests(Fake):
 @winskip.posix_only('the fake bb is a #! script; trusted_bin refuses scripts on Windows by design')
 class BundledTests(Fake):
     """The bundled channel: a fake release root (manifest + plugin files), the fake bb, a private prefix. Nothing real is touched."""
-    VERSION = "0.3.1"
+    VERSION = "0.3.2"
 
     def setUp(self):
         super().setUp()
         self.release = self.root / "prefix" / "share" / "bff" / "releases" / "0.2.1-0123456789ab"
-        self.bundle = {"package.json": '{"version": "0.3.1"}', "server.ts": "export default {};\n",
+        self.bundle = {"package.json": '{"version": "0.3.2"}', "server.ts": "export default {};\n",
                        "node_modules/@xterm/xterm/package.json": '{"name": "@xterm/xterm"}', "bin/osiris-tui.mjs": "// tui\n"}
         for name, text in self.bundle.items():
             path = self.release / "plugins" / "osiris" / name
@@ -724,7 +724,7 @@ class BundledTests(Fake):
         code = self.call(osiris.update, version="0.9.9", yes=True, compat=self.pin(), root=self.release)
         self.assertEqual(code, 1)
         self.assertEqual(self.installs(), [])
-        self.assertIn("bundles Osiris 0.3.1 only", self.output())
+        self.assertIn("bundles Osiris 0.3.2 only", self.output())
 
     def test_cli_setup_dry_run_with_the_shipped_pin_points_at_the_stable_copy(self):
         self.set_plugins()

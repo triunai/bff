@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { captureText, fmtMs, overviewNote, type CallMetrics, type RepoStats } from "../overview.ts";
-import { toolcallDashboardStyles } from "./toolcall-dashboard.tsx";
 
 export type OverviewTarget = "problems" | "signals" | "trace" | "changes";
 export type OverviewProps = {
@@ -64,7 +63,7 @@ export function OverviewCards(p: OverviewProps) {
   </div>;
 }
 
-export const overviewStyles = toolcallDashboardStyles + `
+export const overviewStyles = `
 .oi-ov{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;padding:8px;color:var(--oi-text);font-size:11px}
 .oi-ov-card{display:flex;flex-direction:column;gap:2px;min-width:0;padding:5px 7px;text-align:left;font:inherit;color:inherit;border-bottom:1px solid var(--oi-border)}
 button.oi-ov-card{cursor:pointer}button.oi-ov-card:hover{background:var(--oi-hover)}

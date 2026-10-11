@@ -1,6 +1,6 @@
 import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
-import { activePreset, cardView, chipView, DEFAULT_FILTERS, facetsNarrowed, filterPanel, listRows, PRESETS, presetLabel, PROVIDER_LABEL, showingText, wsHeaderText } from "../../work/fleet-view-model.ts";
+import { activePreset, cardView, chipView, DEFAULT_FILTERS, NO_FLEET_TEXT, facetsNarrowed, filterPanel, listRows, PRESETS, presetLabel, PROVIDER_LABEL, showingText, wsHeaderText } from "../../work/fleet-view-model.ts";
 import type { FleetFilters, FleetGroupBy, FleetRow, FleetSort, PanelGroup, Segment } from "../../work/fleet-view-model.ts";
 import type { FleetSnapshot } from "../../work/fleet-types.ts";
 import { ROLE_WORDS } from "../../work/model-tiers.ts";
@@ -34,11 +34,11 @@ function LiveSpark({ values }: { values: number[] }) {
 
 /** Compact top-bar chip: the big live number, "+n idle", a mini model bar. Click opens the list in a popover (Esc or outside click closes). */
 /** `extra`: rendered under the lane list in the popover (the message-flow panel). */
-export function FleetChip({ fleet, now, onSelectLane, extra, onOpenList, signals }: Common & { signals?: ReadonlyMap<string, LaneSignal>; onSelectLane?: (key: string) => void; extra?: ReactNode; onOpenList?: () => void }) {
+export function FleetChip({ fleet, now, onSelectLane, extra, onOpenList, signals, reading }: Common & { reading?: string | null; signals?: ReadonlyMap<string, LaneSignal>; onSelectLane?: (key: string) => void; extra?: ReactNode; onOpenList?: (view: FleetListView) => void }) {
   const [open, setOpen] = useState(false);
   const [filters, setFilters] = useState<FleetFilters>(DEFAULT_FILTERS);
   const [focus, setFocus] = useState<Focus>({ key: null, n: 0 });
-  const v = useMemo(() => chipView(fleet), [fleet]);
+  const v = useMemo(() => chipView(fleet, reading), [fleet, reading]);
   const focusLane = (key: string | null) => setFocus(f => ({ key, n: f.n + 1 }));
   const toggle = (apply: FleetFilters) => setFilters(f => ({ ...f, ...apply }));
   const btn = useRef<HTMLButtonElement>(null), pop = useRef<HTMLDivElement>(null);
@@ -79,7 +79,7 @@ export function FleetChip({ fleet, now, onSelectLane, extra, onOpenList, signals
       </div>
       <LoopSignalsContext.Provider value={signals ?? NO_SIGNALS}><div className="oi-fc-scroll">
         <FleetFocusContext.Provider value={k => { setFilters({ preset: "everything" }); focusLane(k); }}>
-          <FleetList fleet={fleet} now={now} onSelectLane={k => { onSelectLane?.(k); }} filters={filters} onFilters={setFilters} focus={focus} onOpenList={onOpenList ? () => { close(); onOpenList(); } : undefined} />
+          <FleetList fleet={fleet} reading={reading} now={now} onSelectLane={k => { onSelectLane?.(k); }} filters={filters} onFilters={setFilters} focus={focus} onOpenList={onOpenList ? (v: FleetListView) => { close(); onOpenList(v); } : undefined} />
           {extra}
         </FleetFocusContext.Provider>
       </div></LoopSignalsContext.Provider>
@@ -176,13 +176,16 @@ export function FleetAgentRow({ r, onSelectLane, focused, density = "compact" }:
   </li>;
 }
 
+/** What the popover hands to the full list: its current filters and sort, so the full list opens looking the same, uncapped. */
+export interface FleetListView { filters: FleetFilters; sort: FleetSort }
+
 /** Every agent as a tree, one ~28px row each: state shape, name, work item, model letter, role, workspace, last activity, tokens, cost, spark. */
-export function FleetList({ fleet, now, onSelectLane, filters: given, onFilters, focus, onOpenList, density = "compact" }: Common & { density?: FleetDensity; onSelectLane?: (key: string) => void; filters?: FleetFilters; onFilters?: (f: FleetFilters) => void; focus?: Focus; onOpenList?: () => void }) {
+export function FleetList({ fleet, now, onSelectLane, filters: given, onFilters, focus, onOpenList, density = "compact", initialSort, reading }: Common & { reading?: string | null; density?: FleetDensity; initialSort?: FleetSort; onSelectLane?: (key: string) => void; filters?: FleetFilters; onFilters?: (f: FleetFilters) => void; focus?: Focus; onOpenList?: (view: FleetListView) => void }) {
   const [own, setOwn] = useState<FleetFilters>(DEFAULT_FILTERS);
   const filters = given ?? own;
   const setFilters = (fn: (f: FleetFilters) => FleetFilters) => (onFilters ? onFilters(fn(filters)) : setOwn(fn));
   const root = useRef<HTMLDivElement>(null);
-  const [sort, setSort] = useState<FleetSort>("state");
+  const [sort, setSort] = useState<FleetSort>(initialSort ?? "state");
   const [groupBy, setGroupBy] = useState<FleetGroupBy>(readGroupBy);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const rows = useMemo(() => (fleet ? listRows(fleet, filters, sort, now, groupBy) : []), [fleet, filters, sort, now, groupBy]);
@@ -204,7 +207,7 @@ export function FleetList({ fleet, now, onSelectLane, filters: given, onFilters,
   const toggle = (key: string) => setCollapsed(c => { const n = new Set(c); if (!n.delete(key)) n.add(key); return n; });
   const [more, setMore] = useState<ReadonlySet<string>>(new Set());
   const groups = useMemo(() => (fleet ? filterPanel(fleet, filters, more) : null), [fleet, filters, more]);
-  if (!fleet || !groups) return <div className="oi-fc-list"><p className="oi-note">Fleet count is not available yet. Restart Osiris, or choose a tracker in Work.</p></div>;
+  if (!fleet || !groups) return <div className="oi-fc-list"><p className="oi-note">{reading ?? NO_FLEET_TEXT}</p></div>;
   const pick = (apply: FleetFilters) => setFilters(f => ({ ...f, ...apply }));
   const preset = activePreset(filters), shownCount = rows.filter(r => !r.group).length;
   const toggleMore = (id: string) => setMore(m => { const n = new Set(m); if (!n.delete(id)) n.add(id); return n; });
@@ -227,7 +230,7 @@ export function FleetList({ fleet, now, onSelectLane, filters: given, onFilters,
       {visible.map(r => r.wsGroup ? <WsHeader key={r.key} r={r} shut={collapsed.has(r.key)} onToggle={() => toggle(r.key)} /> : <FleetAgentRow key={r.key} r={r} onSelectLane={onSelectLane} focused={focus?.key === r.key} density={density} />)}
       {!rows.length && <li className="oi-note">No agents match these filters.</li>}
     </ul>
-    <p className="oi-fc-foot"><span>"Working" = wrote in the last 5 min (a guess from transcripts){fleet.truncated ? ` · list capped, counts cover all ${fleet.summary.total}` : ""}</span>{onOpenList && density === "compact" && <button type="button" className="oi-fc-btn" onClick={onOpenList}>Open full list ↗</button>}</p>
+    <p className="oi-fc-foot"><span>"Working" = wrote in the last 5 min (a guess from transcripts){fleet.truncated ? ` · list capped, counts cover all ${fleet.summary.total}` : ""}</span>{onOpenList && density === "compact" && <button type="button" className="oi-fc-btn" onClick={() => onOpenList({ filters, sort })}>Open full list ↗</button>}</p>
   </div>;
 }
 

@@ -15,7 +15,7 @@ const DEFAULT_PANEL: Record<SideSlot, string> = { left: "sidebar", right: "inspe
 export function sideSlotFor(command: string, layout: Layout): SideSlot | null {
   const pr = layout.view.primaryRight;
   if (command === CMD.primarySideBar) return pr ? "right" : "left";
-  if (command === CMD.secondarySideBar || command === CMD.secondarySideBarAlt) return pr ? "left" : "right";
+  if (command === CMD.secondarySideBar || command === CMD.secondarySideBarAlt || command === CMD.sidePanel) return pr ? "left" : "right";
   return null;
 }
 const flagKey = (slot: SideSlot, layout: Layout) => ((layout.view.primaryRight ? "right" : "left") === slot ? "primarySideBar" : "secondarySideBar") as "primarySideBar" | "secondarySideBar";

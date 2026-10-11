@@ -8,7 +8,7 @@ import { ENV_BIN, herdrLaunchPlan } from "../../herdr-feed.ts";
 import { HERDR_CHILD } from "../herdr-spawn.ts";
 import { detectLaunchPath } from "../providers/detect.ts";
 import { trustedRun } from "../trusted-bin.ts";
-import { buildTeamPlan, type TeamCard, type TeamMember } from "../team-dispatch/plan.ts";
+import { buildTeamPlan, type BlastSilo, type TeamCard, type TeamMember } from "../team-dispatch/plan.ts";
 import { teamPrompts } from "../team-dispatch/prompts.ts";
 import type { RunResult } from "../beads-adapter.ts";
 import { cleanPrompt, cleanTitle, isHerdrCli, HERDR_CLIS, paneCommand, paneRunArgv, paneSplitArgv, rootPaneOf, safeAbsPath, splitPaneOf, tabCreateArgv, type HerdrCli, type HerdrDispatchRequest, type HerdrDispatchResult } from "./plan.ts";
@@ -49,11 +49,11 @@ export async function runHerdrDispatch(req: Partial<HerdrDispatchRequest> & { re
 
 /** Team dispatch: a NEW tab in the default session, the lead in its root pane, each worker in a split. Same deps, same spawn, same file-based prompt.
  *  The request is STRUCTURE ONLY (cards, cli/model, count): the prompts are built and sealed HERE (team-dispatch/prompts.ts), never accepted from a caller. */
-export type HerdrTeamRequest = { repo?: string; epic?: string | null; lead: TeamMember; worker: TeamMember; cards: Pick<TeamCard, "id" | "title">[]; workers?: number };
+export type HerdrTeamRequest = { repo?: string; epic?: string | null; preset?: BlastSilo | null; lead: TeamMember; worker: TeamMember; cards: Pick<TeamCard, "id" | "title">[]; workers?: number };
 export type HerdrTeamResult = { ok: true; tab: string; panes: string[] } | { ok: false; reason: string; started: number; fallback: boolean };
 export async function runHerdrTeam(req: Partial<HerdrTeamRequest>, d: HerdrDispatchDeps): Promise<HerdrTeamResult> {
   const bad = (reason: string, started = 0, fallback = false): HerdrTeamResult => ({ ok: false, reason, started, fallback });
-  const built = buildTeamPlan({ cards: Array.isArray(req.cards) ? req.cards.map(c => ({ id: c?.id, title: typeof c?.title === "string" ? c.title : "" })) : [], lead: req.lead, worker: req.worker, workers: req.workers, epic: req.epic });
+  const built = buildTeamPlan({ cards: Array.isArray(req.cards) ? req.cards.map(c => ({ id: c?.id, title: typeof c?.title === "string" ? c.title : "" })) : [], lead: req.lead, worker: req.worker, workers: req.workers, epic: req.epic, preset: req.preset });
   if (!built.ok) return bad(built.reason);
   const texts = teamPrompts(built.plan);
   const panes: { cli: HerdrCli; model: string | null; prompt: string; bin: string }[] = [];

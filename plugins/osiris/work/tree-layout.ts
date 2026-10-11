@@ -170,3 +170,15 @@ export function headerSegs(h: TreeHeader): { left: Seg[]; right: Seg[] } {
 
 /** The key row, in beady-eye's order ("a all   ? keys   / find   q quit"). In a GUI there is nothing to quit: q hides the strip. */
 export const TREE_KEYS: readonly { key: string; label: string }[] = [{ key: "a", label: "all" }, { key: "?", label: "keys" }, { key: "/", label: "find" }, { key: "q", label: "hide" }];
+
+/** A pane's working directory in the shortest honest form: repo-relative ("./sub") inside the tracker repo, else home-relative ("~/x"),
+ * else the last three segments behind an ellipsis. The full path stays in the row's tooltip. Pure. */
+export function shortCwd(cwd: string, repo?: string | null): string {
+  const strip = (x: string) => x.length > 1 ? x.replace(/\/+$/, "") : x, c = strip(cwd), r = repo ? strip(repo) : "";
+  if (r && c === r) return ".";
+  if (r && c.startsWith(r + "/")) return "./" + c.slice(r.length + 1);
+  const home = /^(?:\/Users|\/home)\/[^/]+/.exec(c);
+  const rel = home ? "~" + c.slice(home[0].length) : c;
+  const parts = rel.split("/");
+  return parts.length > 4 ? "…/" + parts.slice(-3).join("/") : rel;
+}

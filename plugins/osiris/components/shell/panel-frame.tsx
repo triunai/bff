@@ -31,7 +31,7 @@ export function PanelChrome({layout, slot, panel, registry, dispatch, maximised,
     {slot !== "centre" && <button type="button" className="oi-pc-btn" title="Swap with centre" aria-label={`Swap ${panel.title} with centre`} onClick={() => dispatch({type: "swapWithCentre", panel: panel.id})}>⇄</button>}
     <button type="button" ref={btn} className="oi-pc-btn" aria-haspopup="menu" aria-expanded={open} title="Move panel" aria-label={`Move ${panel.title}`} onClick={() => setOpen(o => !o)}>⋮</button>
     {open && <span className="oi-pc-menu" role="menu" aria-label={`Move ${panel.title}`}>
-      {SLOTS.map(s => <button key={s} type="button" role="menuitem" disabled={s === slot} onClick={() => { setOpen(false); dispatch({type: "moveTo", panel: panel.id, slot: s}); }}>{s === slot ? "✓ " : ""}Move to {SLOT_LABEL[s]}</button>)}
+      {SLOTS.filter(s => s !== "bottom").map(s => <button key={s} type="button" role="menuitem" disabled={s === slot} onClick={() => { setOpen(false); dispatch({type: "moveTo", panel: panel.id, slot: s}); }}>{s === slot ? "✓ " : ""}Move to {SLOT_LABEL[s]}</button>)}
       {panel.id !== TERMINAL_ID && <><span className="oi-pc-sep" role="separator"/><button type="button" role="menuitem" onClick={() => { setOpen(false); dispatch({type: "close", panel: panel.id}); }}>Close</button></>}
     </span>}
   </span>;

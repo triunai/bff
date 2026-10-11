@@ -38,6 +38,23 @@ const COLUMNS: { key: SortKey; label: string; num?: boolean; hint?: string }[] =
   { key: "lastAt", label: "Last active", num: true }, { key: "misses", label: "Misses", num: true, hint: "Calls that had to rewrite most of the cache (the first start-up is not counted)." },
 ];
 
+type CostCardList = ReturnType<typeof costCacheView>["cards"];
+/** The header cards (spend, cache reuse, fresh input, cache writes, prompt-start breaks): ONE rendering, used by the Cost & cache tab and the Overview. */
+function CostCards(p: { cards: CostCardList }) {
+  return <div className="oi-cc-cards">{p.cards.map(c => <div key={c.title} className="oi-ov-card" title={c.hint}><span className="oi-ov-title">{c.title}</span><span className="oi-ov-num">{c.value}</span><span className="oi-ov-sub" title={c.sub}>{c.sub}</span></div>)}</div>;
+}
+/** The cost cards at the top of the Overview: the same numbers as the Cost & cache tab (costCacheView), with the stale or still-reading line
+ *  and a link to the deep view. Needs no tracker; before the first answer it says so in words, never zeros. */
+export function CostSummary(p: { telemetry: WorkTelemetry | null; note: string | null; range: RangeId; now: number; onOpen?: () => void }) {
+  const v = useMemo(() => (p.telemetry ? costCacheView(p.telemetry, rangeLabel(p.range)) : null), [p.telemetry, p.range]);
+  const open = p.onOpen && <button type="button" className="oi-cc-link" onClick={p.onOpen}>Open Cost &amp; cache</button>;
+  if (!v) return <section className="oi-cc" aria-label="Cost summary"><p className="oi-note">{p.note ? redactReason(p.note) : "Reading cost data…"} {open}</p></section>;
+  return <section className="oi-cc" aria-label="Cost summary">
+    <CostCards cards={v.cards} />
+    {v.readNote && <p className="oi-note oi-cc-bad" role="status">{v.readNote}</p>}
+    <p className="oi-note">{v.unpricedNote ? `${v.unpricedNote} · ` : ""}{open}</p>
+  </section>;
+}
 /** The Calls panel's "Cost & cache" tab: the workTelemetry answer as header cards, a sortable per-agent table and the dated cache-miss list. */
 export function CostCacheTab(p: CostCacheViewProps) {
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "cost", dir: "desc" });
@@ -50,7 +67,7 @@ export function CostCacheTab(p: CostCacheViewProps) {
   if (!v) return <section className="oi-cc" aria-label="Cost and cache"><RangeBar range={p.range} onRange={p.onRange} polledAt={null} now={p.now} />{p.note ? <p className="oi-note">{redactReason(p.note)}</p> : <p className="oi-note">{p.onChooseTracker ? <button type="button" className="oi-cc-link" onClick={p.onChooseTracker}>Choose a tracker in Work</button> : "Choose a tracker in Work"} to see cost and cache numbers.</p>}</section>;
   return <section className="oi-cc" aria-label="Cost and cache">
     <RangeBar range={p.range} onRange={p.onRange} polledAt={p.telemetry?.freshness.polledAt} stale={p.telemetry?.freshness.stale} now={p.now} />
-    <div className="oi-cc-cards">{v.cards.map(c => <div key={c.title} className="oi-ov-card" title={c.hint}><span className="oi-ov-title">{c.title}</span><span className="oi-ov-num">{c.value}</span><span className="oi-ov-sub" title={c.sub}>{c.sub}</span></div>)}</div>
+    <CostCards cards={v.cards} />
     <div className="oi-cc-cards"><TokenEfficiencyTile eff={p.telemetry?.efficiency} /><PlanWindowsTiles reply={p.planFeed ?? null} now={p.now} /></div>
     {fleet && <div className="oi-cc-cards">
       {fleet.quests.map(q => <div key={q.state} className="oi-ov-card" title="Where every work item stands: running, waiting on you, ready to start, or something wrong."><span className="oi-ov-title">{q.label}</span><span className={`oi-ov-num${q.state === "error" && q.count ? " oi-cc-bad" : ""}`}>{q.count}</span></div>)}

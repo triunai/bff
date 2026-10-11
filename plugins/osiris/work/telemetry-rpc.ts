@@ -95,6 +95,8 @@ function within<T>(run: Promise<T>, ms: number, late: () => T): Promise<T> {
   });
 }
 
+/** The repo argument that asks for the transcript-only read (no tracker, no bead join). */
+export const NO_TRACKER = "";
 export interface TelemetryDeps {
   readSnapshot(repo: string): Promise<SnapshotResult>;
   root?: string; fs?: FeedFs; /** An async transcript fs (tests spy on reads with it); wins over `fs`. */ asyncFs?: AsyncFeedFs; codex?: CodexFeed; codexUsage?: CodexUsageFeed; codexRoot?: string; gemini?: GeminiFeed; geminiRoot?: string; /** Installed-CLI probe (tests inject one; production checks the trusted install dirs). */ installed?: () => Record<string, boolean>; mtimeOf?: (path: string) => number | null; now?: () => number; limits?: Partial<TelemetryLimits>;
@@ -153,7 +155,8 @@ export function createTelemetryService(d: TelemetryDeps) {
     try { return await computeInner(repo, windowMs); } catch (e) { return { ok: false, reason: redactReason((e as Error)?.message ?? "telemetry failed") }; }
   }
   async function computeInner(repo: string, windowMs: number): Promise<TelemetryResult> {
-    const snap = await d.readSnapshot(repo);
+    // No tracker chosen (repo ""): cost per call, agent, model and day come from the transcripts alone; only the bead join needs a tracker.
+    const snap: SnapshotResult = repo === NO_TRACKER ? { ok: true, value: { issues: [], deps: [] } as unknown as WorkSurfaceSnapshot } : await d.readSnapshot(repo);
     if (!snap.ok) return { ok: false, reason: redactReason(snap.reason) };
     const t = now();
     await poll(t);
@@ -195,6 +198,12 @@ export function createTelemetryService(d: TelemetryDeps) {
   const staleTelemetry = (hit: { at: number; value: WorkTelemetry }, reason: string): TelemetryResult => ({ ok: true, value: { ...hit.value, freshness: { ...hit.value.freshness, stale: { since: hit.at, reason: redactReason(reason) } } } });
   const staleFleet = (hit: { at: number; value: FleetSnapshot }, reason: string): FleetResult => ({ ok: true, value: { ...hit.value, stale: { since: hit.at, reason: redactReason(reason) } as Stale } });
   return {
+    /** The newest transcript mtime the last listing of `root` saw (a lower bound on the real newest), or null before the first listing /
+     *  when nothing is inside maxAgeMs. The transcript-sources seam guard answers from it instead of walking the tree again. */
+    newestTranscript(): { root: string; mtimeMs: number } | null {
+      let m: number | null = null; for (const v of listedMtime.values()) if (m === null || v > m) m = v;
+      return m === null ? null : { root, mtimeMs: m };
+    },
     /** `windowMs` = how far back the totals reach (the Calls range control); the default is the 7-day window. Each (repo, window) is cached on its own.
      *  Concurrent and back-to-back calls share one computation; with a last good answer, a slow or failed recompute answers with it, marked stale. */
     read(repo: string, windowMs: number = WINDOW_MS): Promise<TelemetryResult> {
