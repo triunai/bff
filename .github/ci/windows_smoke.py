@@ -7,6 +7,7 @@ every install goes to an explicit --prefix and the fake `gh` lives in its own di
 for a single step only.
 """
 import argparse
+import tempfile
 import json
 import os
 from pathlib import Path
@@ -175,13 +176,31 @@ def cmd_negative(args):
         cmd.write_bytes(good)
 
 
+def cmd_tui(args):
+    """prune (dry run) and factory --once against a fixture git repo, through the installed bff.cmd and the checkout's Osiris plugin."""
+    cmd = bff_command(args.prefix)
+    repo = Path(tempfile.mkdtemp(prefix="bff-fixture-")) / "repo"
+    repo.mkdir()
+    git_env = dict(os.environ, GIT_AUTHOR_NAME="ci", GIT_AUTHOR_EMAIL="ci@example.invalid", GIT_COMMITTER_NAME="ci", GIT_COMMITTER_EMAIL="ci@example.invalid")
+    for step in (["init", "-q"], ["commit", "-q", "--allow-empty", "-m", "fixture"]):
+        run("tui-fixture-git", ["git", "-C", repo] + step, env=git_env)
+    env = dict(os.environ, OSIRIS_PLUGIN_DIR=str(Path(args.plugin).resolve()))
+    code, out = run("tui-prune", ["cmd", "/c", cmd, "osiris", "prune", "--repo", repo], env=env)
+    if "Traceback" in out:
+        raise SystemExit("prune crashed: " + out)
+    if shutil.which("node"):
+        code, out = run("tui-factory", ["cmd", "/c", cmd, "osiris", "factory", "--repo", repo, "--once", "--no-color"], env=env)
+        if not out.strip() or "Traceback" in out:
+            raise SystemExit("factory printed nothing useful: " + out)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="step", required=True)
     for name, fn, opts in (
         ("build", cmd_build, ("out",)), ("fake-gh", cmd_fake_gh, ("bindir",)),
         ("install-py", cmd_install_py, ("dist", "prefix", "work")), ("activate", cmd_activate, ("prefix", "work")),
-        ("verify", cmd_verify, ("prefix",)), ("negative", cmd_negative, ("prefix",)),
+        ("verify", cmd_verify, ("prefix",)), ("tui", cmd_tui, ("prefix", "plugin")), ("negative", cmd_negative, ("prefix",)),
     ):
         p = sub.add_parser(name)
         for o in opts:

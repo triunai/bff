@@ -8,10 +8,7 @@ permissions:
 jobs:
   python:
     runs-on: ${{ matrix.os }}
-    # Windows is a preview until slice S7 (native Windows support) lands.
-    # windows-latest becomes blocking by setting the repository variable BFF_WINDOWS_BLOCKING=true (no edit needed)
-    # once the windows workflow is green; until then a Windows failure is reported but does not fail the run.
-    continue-on-error: ${{ matrix.os == 'windows-latest' && vars.BFF_WINDOWS_BLOCKING != 'true' }}
+    # Windows is blocking (proven green on real windows-latest, td-h1w.11).
     strategy:
       fail-fast: false
       matrix:

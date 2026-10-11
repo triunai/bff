@@ -10,7 +10,7 @@ on:
     inputs:
       install_ref:
         description: "Ref of the public triunai/bff-install repo whose install.ps1 is exercised"
-        default: main
+        default: win/W3
       inject_failure:
         description: "Break bff.cmd on purpose at the end; the job must go RED (proves the smoke test can fail)"
         type: boolean
@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: triunai/bff-install
-          ref: ${{ inputs.install_ref || 'main' }}
+          ref: ${{ inputs.install_ref || 'win/W3' }}
           path: bff-install
       - name: Parse every install.ps1
         shell: ${{ matrix.engine }}
@@ -91,7 +91,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: triunai/bff-install
-          ref: ${{ inputs.install_ref || 'main' }}
+          ref: ${{ inputs.install_ref || 'win/W3' }}
           path: bff-install
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -118,6 +118,9 @@ jobs:
       - name: Activation path (--activate, --disable, --activate again)
         shell: cmd
         run: python .github/ci/windows_smoke.py activate --prefix "%RUNNER_TEMP%\prefix-py" --work "%WORK%"
+      - name: Osiris terminal apps (prune dry run, factory --once) from the installed bff.cmd
+        shell: cmd
+        run: python .github/ci/windows_smoke.py tui --prefix "%RUNNER_TEMP%\prefix-py" --plugin plugins\osiris
       - name: Negative test (a broken bff.cmd must be rejected by the checks)
         shell: cmd
         run: python .github/ci/windows_smoke.py negative --prefix "%RUNNER_TEMP%\prefix-py"
