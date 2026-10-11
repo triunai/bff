@@ -10,6 +10,8 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import winskip  # noqa: E402
 from bff import cli, herdr
 from bff.herdr_observer import FIELDS, record
 
@@ -64,6 +66,7 @@ class HerdrCaptureTests(unittest.TestCase):
             self.assertEqual(call["parentCallId"], prefix + "p")
             self.assertEqual(call["turnId"], prefix + "t")
 
+    @winskip.posix_only('asserts POSIX permission bits (0600/0700); NTFS has no such bits')
     def test_atomic_0600_write_and_failure_preserves_old_feed(self):
         data, _ = herdr.feed([self.call], self.coverage)
         herdr.write_atomic(self.output, data)

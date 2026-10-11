@@ -10,6 +10,8 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import winskip  # noqa: E402
 from bff import cli, launch, trusted_bin
 
 
@@ -39,6 +41,7 @@ class StartTests(unittest.TestCase):
             observer.assert_not_called()
             run.assert_not_called()
 
+    @winskip.posix_only('asserts POSIX permission bits (0600/0700); NTFS has no such bits')
     def test_mac_terminal_argv_owned_0700_launcher_and_quoted_executable(self):
         with mock.patch("bff.launch.Path.home", return_value=self.home), \
                 mock.patch("bff.launch.sys.platform", "darwin"), \
@@ -71,6 +74,7 @@ class StartTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             launch.write_launcher(parent / "launch.command", ["/fake/herdr"])
 
+    @winskip.posix_only('asserts the macOS/Linux herdr message; the Windows message is pinned in test_launch_windows')
     def test_bb_missing_report_and_missing_herdr(self):
         with mock.patch("bff.cli.launch_osiris", side_effect=ConnectionRefusedError("not running")), \
                 mock.patch("bff.launch.trusted_bin.which", return_value=None):

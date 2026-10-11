@@ -316,6 +316,7 @@ class PluginStep(Fixture):
         self.assertEqual((outcome, calls), ("skipped", []))
         self.assertEqual(lines, ["Osiris plugin: skipped (BB not found)"])
 
+    @winskip.posix_only('builds bin/bff as a symlink; Windows activates bin/bff.cmd, pinned by test_windows_install and the real-Windows smoke')
     def test_exit_codes_map_to_outcomes_and_argv_is_the_new_bff(self):
         for code, expected in ((0, "ok"), (3, "waiting"), (1, "failed"), (7, "failed")):
             with self.subTest(code):
@@ -495,6 +496,10 @@ class Engine(unittest.TestCase):
         self.addCleanup(shutil.rmtree, str(prefix.parent))
         package = prefix / "share" / "bff" / "releases" / ("0.2.0-" + "a" * 12) / "bff"
         package.mkdir(parents=True)
+        with mock.patch("bff.paths.platform.system", return_value="Linux"):  # the fixture is the POSIX layout; the Windows layout is in test_update_windows
+            self._active_state_path_follows(package, prefix)
+
+    def _active_state_path_follows(self, package, prefix):
         self.assertEqual(paths.active_state_path(str(package / "__init__.py")),
                          paths.state_path(prefix=prefix))
         dev = paths.active_state_path(str(SDK / "bff" / "__init__.py"), env={"BFF_PREFIX": str(prefix)})
@@ -559,6 +564,7 @@ class Commands(Fixture):
         self.assertEqual((check["current"], check["latest"], check["available"]), (OLD, NEW, True))
         self.assertRegex(check["checked_at"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d")
 
+    @winskip.posix_only('builds bin/bff as a symlink; Windows activates bin/bff.cmd, pinned by test_windows_install and the real-Windows smoke')
     def test_update_prompt_eof_is_not_consent(self):
         class Tty(io.StringIO):
             def isatty(self):
@@ -581,6 +587,7 @@ class Commands(Fixture):
         self.assertEqual(code, 0)
         self.assertIn("latest release unknown (offline?)", out)
 
+    @winskip.posix_only('builds bin/bff as a symlink; Windows activates bin/bff.cmd, pinned by test_windows_install and the real-Windows smoke')
     def test_update_yes_switches_and_prints_undo(self):
         code, out, err = self.run_cli(["update", "--yes"], {"BFF_RELEASE_BASE": self.base})
         self.assertEqual((code, err), (0, ""))
@@ -589,6 +596,7 @@ class Commands(Fixture):
         self.assertIn("Synthetic change line.", out)
         self.assertEqual(self.version(), "bff " + NEW)
 
+    @winskip.posix_only('builds bin/bff as a symlink; Windows activates bin/bff.cmd, pinned by test_windows_install and the real-Windows smoke')
     def test_update_without_tty_or_yes_only_prints_the_plan(self):
         before = self.snapshot()
         code, out, _ = self.run_cli(["update"], {"BFF_RELEASE_BASE": self.base})
@@ -596,6 +604,7 @@ class Commands(Fixture):
         self.assertIn(OLD + " -> " + NEW, out)
         self.assertEqual(self.snapshot(), before)
 
+    @winskip.posix_only('builds bin/bff as a symlink; Windows activates bin/bff.cmd, pinned by test_windows_install and the real-Windows smoke')
     def test_update_failure_exits_2_and_changes_nothing(self):
         before = self.snapshot()
         data = bytearray(self.tarball().read_bytes())
@@ -631,6 +640,7 @@ class Commands(Fixture):
             code = cli.main(["update"])
         self.assertEqual(code, 1)
 
+    @winskip.posix_only('builds bin/bff as a symlink; Windows activates bin/bff.cmd, pinned by test_windows_install and the real-Windows smoke')
     def test_rollback_command(self):
         self.run_cli(["update", "--yes"], {"BFF_RELEASE_BASE": self.base})
         code, out, err = self.run_cli(["rollback", "--yes"])
@@ -701,6 +711,7 @@ class Commands(Fixture):
         code, _, _, order = self.rollback_run(["rollback", "--self", "--yes"], prefix=False)
         self.assertEqual((code, order), (1, []))
 
+    @winskip.posix_only('builds bin/bff as a symlink; Windows activates bin/bff.cmd, pinned by test_windows_install and the real-Windows smoke')
     def test_update_exit_1_when_the_plugin_failed_but_bff_is_updated(self):
         real = update.plugin_step
         step = mock.patch.object(update, "plugin_step", side_effect=lambda prefix, out=None: real(
@@ -711,6 +722,7 @@ class Commands(Fixture):
         self.assertIn("bff itself is updated", out)
         self.assertEqual(self.version(), "bff " + NEW)
 
+    @winskip.posix_only('builds bin/bff as a symlink; Windows activates bin/bff.cmd, pinned by test_windows_install and the real-Windows smoke')
     def test_update_exit_0_when_the_plugin_is_waiting(self):
         step = mock.patch.object(update, "plugin_step", return_value="waiting")
         code, _, _ = self.run_with(["update", "--yes"], [step], env={"BFF_RELEASE_BASE": self.base})

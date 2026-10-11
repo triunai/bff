@@ -505,7 +505,7 @@ class ReleaseTests(Fake):
         shutil.copytree(str(SDK / "plugins"), str(source / "plugins"), ignore=shutil.ignore_patterns("node_modules"))
         (source / "README.md").write_text("scratch\n", encoding="utf-8")
         result = installer.install(self.root / "prefix2", source=source)
-        release = paths.releases_dir(prefix=self.root / "prefix2") / result["release"]
+        release = Path(str(paths.releases_dir(prefix=self.root / "prefix2"))) / result["release"]
         self.assertTrue((release / "compat.json").is_file())
         self.assertTrue((release / "bff" / "osiris.py").is_file())
         self.assertFalse((release / "plugins").exists())
@@ -520,7 +520,7 @@ class ReleaseTests(Fake):
         for name in ("bff", "templates"):
             shutil.copytree(str(SDK / name), str(source / name), ignore=shutil.ignore_patterns("__pycache__"))
         result = installer.install(self.root / "prefix3", source=source)
-        release = paths.releases_dir(prefix=self.root / "prefix3") / result["release"]
+        release = Path(str(paths.releases_dir(prefix=self.root / "prefix3"))) / result["release"]
         installer.verify_release(release)
         # Forge an old 0.1.x release: add the bundled plugin, then re-seal the manifest under its new identity.
         (release / "plugins" / "osiris" / "dist").mkdir(parents=True)
