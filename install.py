@@ -16,7 +16,7 @@ import time
 import uuid
 
 # Keep startup stdlib-only: release verification precedes any packaged module import.
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 SOURCE = Path(__file__).resolve().parent
 RELEASE_NAME = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+-[a-f0-9]{12}")

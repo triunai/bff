@@ -12,7 +12,7 @@ param(
     [switch]$NoModifyPath
 )
 $ErrorActionPreference = 'Stop'
-$BffVersion = '0.3.1'
+$BffVersion = '0.3.2'
 $BffRepo = 'triunai/bff'
 if (-not $Prefix -and $env:BFF_PREFIX) { $Prefix = $env:BFF_PREFIX }   # same as -Prefix
 
