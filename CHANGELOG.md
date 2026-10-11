@@ -6,8 +6,20 @@ Versioning policy: [Semantic Versioning](https://semver.org/). While BFF is 0.x,
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-11
+
+Osiris now ships inside the bff release, so one install gets bff and the Osiris workbench for BB.
+
 ### Added
 - Osiris 0.3.0 is bundled in the release archive (`plugins/osiris`, covered by `SHA256SUMS` and the release manifest) and `compat.json` is `published: true`, source `bundled`. `bff osiris setup` copies it to `<bff data dir>/osiris/osiris-<version>-<id>`, verifies every file against the release manifest, then runs `bb plugin install` on that copy, so a bff update or prune never strands BB on a deleted release path. An existing dev-channel path install is left alone unless `--switch-to-release`.
+
+### Fixed (bundled Osiris 0.3.0)
+- The Day tab no longer spins forever on "Loading commits…" when the BB host is overloaded: the commit load gives up after 20 seconds with a clear "host is busy, press Refresh" error, and the repo allowlist build has deadlines and runs once at a time.
+- A busy host is reported as "could not check" in the seam report, never as "not allowed" (no more false red seams under load); a timeout never admits a repo.
+- Model prices: Sonnet 5.5 cache reads are $0.10 per million tokens (they were counted at $0.20), and Haiku 5.5 is priced, including its higher rate for prompts over 100,000 tokens.
+
+### Changed
+- macOS and Ubuntu CI run the tests with a private, trusted Python interpreter, so the trusted-binary rules pass on GitHub's runners without being loosened.
 
 ## [0.2.1] - 2026-10-11
 
