@@ -13,7 +13,9 @@ export const TRANSCRIPT_STALE_MS = 24 * 3_600_000;
 export const trackerIdentityGuard: SeamGuard = { id: "tracker-identity", seam: "Work board tracker == the repo its bd snapshot was read at", async run(ctx) {
   const { trackerRepo, snapshotRepo } = ctx.view;
   if (!trackerRepo) return ok;
-  if (!(await ctx.isRepoAllowed(trackerRepo))) return bad("crit", `The Work board's tracker ${trackerRepo} is not an allowed repository`, "Osiris would be reading a tracker you have not opened or pinned.", "Open it as a BB project or pin it from the repo picker, or pick a different tracker.");
+  const allowed = await ctx.isRepoAllowed(trackerRepo);
+  if (allowed === "busy") return bad("warn", `Could not check whether the Work board's tracker ${trackerRepo} is allowed: the host is busy`, "BB or a dependency did not answer in time, so this seam is unknown, not broken.", "Wait a moment and refresh; if it stays, check the machine's load and the BB log.");
+  if (!allowed) return bad("crit", `The Work board's tracker ${trackerRepo} is not an allowed repository`, "Osiris would be reading a tracker you have not opened or pinned.", "Open it as a BB project or pin it from the repo picker, or pick a different tracker.");
   if (snapshotRepo && snapshotRepo !== trackerRepo) return bad("crit", `The board's tracker is ${trackerRepo} but its bd snapshot came from ${snapshotRepo}`, "Every card on the board describes a different tracker than the one you selected.", "Refresh the Work board; if it persists, re-pick the tracker from the repo picker.");
   return ok;
 } };

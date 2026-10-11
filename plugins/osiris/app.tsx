@@ -130,6 +130,7 @@ import {CallsFullscreen,callsFullscreenStyles} from "./components/calls/calls-fu
 import {FactoryFullscreen} from "./components/work/factory-fullscreen.tsx";
 import {escLayer,isFullscreenKey} from "./shell/factory-fullscreen.ts";
 import {DEFAULT_PRESET_MS,type CallsTab} from "./work/calls-fullscreen-model.ts";
+import {DAY_LOAD_MS,DAY_LOAD_TIMEOUT_MESSAGE,withDeadline} from "./work/deadline.ts";
 const date=(n:number|null)=>n===null?"Unknown":new Date(n).toLocaleString();
 const percent=(n:number|null)=>n===null?"Unknown":`${(n*100).toFixed(1)}%`;
 type NativeDiff=Awaited<ReturnType<PluginBrowserBbSdk["environments"]["diffFiles"]>>;
@@ -336,7 +337,7 @@ function Observer({scope,callsOnly=false}: {scope?:string;callsOnly?:boolean}){
   useEffect(()=>{setDayCounts(null);setDayCountsErr(null);if(!gitEnabled||!gitRepo)return;let off=false;rpc.call("gitDayCounts",{repo:gitRepo}).then(r=>{if(off)return;const res=r as GitResult<DayCounts>;if(res.ok)setDayCounts(res.value);else setDayCountsErr(res.reason);},e=>{if(!off)setDayCountsErr(String((e as Error)?.message??e));});return()=>{off=true;};},[rpc,gitEnabled,gitRepo,gitNonce]);
   const [calDay,setCalDay]=useState<string|null>(null),dayFor=selectedDay??calDay; // the Calendar's last picked day (kept when a row pick clears the day detail) loads the same day commits the strip used
   useEffect(()=>{if(canvas==="calendar"&&spineSel?.kind==="day")setCalDay(spineSel.date);},[canvas,spineSel]);
-  useEffect(()=>{setDayData(null);setDayErr(null);if(!dayFor||!gitRepo)return;let off=false;setDayBusy(true);rpc.call("gitDayCommits",{repo:gitRepo,date:dayFor}).then(r=>{if(off)return;const res=r as GitResult<DayCommits>;if(res.ok)setDayData(res.value);else setDayErr(res.reason);},e=>{if(!off)setDayErr(String((e as Error)?.message??e));}).finally(()=>{if(!off)setDayBusy(false);});return()=>{off=true;};},[rpc,gitRepo,dayFor,gitNonce]);
+  useEffect(()=>{setDayData(null);setDayErr(null);if(!dayFor||!gitRepo)return;let off=false;setDayBusy(true);withDeadline(rpc.call("gitDayCommits",{repo:gitRepo,date:dayFor}) as Promise<unknown>,DAY_LOAD_MS,DAY_LOAD_TIMEOUT_MESSAGE).then(r=>{if(off)return;const res=r as GitResult<DayCommits>;if(res.ok)setDayData(res.value);else setDayErr(res.reason);},e=>{if(!off)setDayErr(String((e as Error)?.message??e));}).finally(()=>{if(!off)setDayBusy(false);});return()=>{off=true;};},[rpc,gitRepo,dayFor,gitNonce]);
   const dayGraph=useMemo(()=>selectedDay&&dayData&&graph?{...graph,commits:dayData.commits,truncated:dayData.truncated}:null,[selectedDay,dayData,graph]);
   // The Day tab (right panel): the SAME Commits graph, scoped to the Calendar's day by its own local-day boundaries.
   const calDayGraph=useMemo(()=>calDay&&dayData&&graph?{...graph,commits:commitsOnDay(dayData.commits,calDay),truncated:dayData.truncated}:null,[calDay,dayData,graph]);
