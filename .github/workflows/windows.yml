@@ -11,6 +11,10 @@ on:
       install_ref:
         description: "Ref of the public triunai/bff-install repo whose install.ps1 is exercised"
         default: main
+      published:
+        description: "Also run the real one-liner (irm | iex) against the PUBLISHED release"
+        type: boolean
+        default: false
       inject_failure:
         description: "Break bff.cmd on purpose at the end; the job must go RED (proves the smoke test can fail)"
         type: boolean
@@ -269,3 +273,46 @@ jobs:
           name: smoke-logs-py${{ matrix.python-version }}-${{ matrix.engine }}
           path: smoke-logs
           if-no-files-found: warn
+
+  published:
+    # The exact one-liner a user pastes, against the published release. Temp prefix, so nothing outside the runner temp dir is touched.
+    if: ${{ inputs.published }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [powershell, pwsh]
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - if: matrix.engine == 'powershell'
+        name: irm | iex under powershell (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSVersionTable.PSVersion.ToString()
+          $env:BFF_PREFIX = Join-Path $env:RUNNER_TEMP 'one-liner-ps51'
+          $env:BFF_YES = '1'; $env:BFF_NO_SETUP = '1'; $env:BFF_NO_MODIFY_PATH = '1'
+          irm https://raw.githubusercontent.com/triunai/bff-install/main/install.ps1 | iex
+          $cmd = Join-Path $env:BFF_PREFIX 'bin\bff.cmd'
+          & $cmd --version; if ($LASTEXITCODE -ne 0) { exit 1 }
+          & $cmd osiris --help | Select-String factory; if ($LASTEXITCODE -ne 0) { exit 1 }
+          & $cmd doctor --offline --no-upgrade; Write-Host "doctor exit $LASTEXITCODE (0 or 1 is fine on a bare runner)"
+          $repo = Join-Path $env:RUNNER_TEMP 'fixture-ps51'; git init -q $repo; git -C $repo -c user.name=ci -c user.email=ci@example.invalid commit -q --allow-empty -m x
+          & $cmd osiris prune --repo $repo; Write-Host "prune exit $LASTEXITCODE"
+      - if: matrix.engine == 'pwsh'
+        name: irm | iex under pwsh (PowerShell 7)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSVersionTable.PSVersion.ToString()
+          $env:BFF_PREFIX = Join-Path $env:RUNNER_TEMP 'one-liner-ps7'
+          $env:BFF_YES = '1'; $env:BFF_NO_SETUP = '1'; $env:BFF_NO_MODIFY_PATH = '1'
+          irm https://raw.githubusercontent.com/triunai/bff-install/main/install.ps1 | iex
+          $cmd = Join-Path $env:BFF_PREFIX 'bin\bff.cmd'
+          & $cmd --version; if ($LASTEXITCODE -ne 0) { exit 1 }
+          & $cmd osiris --help | Select-String factory; if ($LASTEXITCODE -ne 0) { exit 1 }
+          & $cmd doctor --offline --no-upgrade; Write-Host "doctor exit $LASTEXITCODE (0 or 1 is fine on a bare runner)"
+          $repo = Join-Path $env:RUNNER_TEMP 'fixture-ps7'; git init -q $repo; git -C $repo -c user.name=ci -c user.email=ci@example.invalid commit -q --allow-empty -m x
+          & $cmd osiris prune --repo $repo; Write-Host "prune exit $LASTEXITCODE"
