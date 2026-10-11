@@ -6,3 +6,4 @@ plugins/osiris/work/sanitize.ts email documentation placeholder credential URL i
 tests/test_launch_windows.py home-path-windows invented fixture profile (a fake user named Mei) used to test path logic on any OS
 tests/test_osiris_windows.py home-path-windows invented fixture profile (a fake user named me) used to test path logic on any OS
 tests/test_trusted_bin_windows.py home-path-windows invented fixture profile (a fake user named me) used to test path logic on any OS
+.github/workflows/windows.yml email throwaway git identity on the reserved example.invalid domain for the CI fixture repo, not a real address
