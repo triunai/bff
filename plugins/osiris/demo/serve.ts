@@ -53,6 +53,7 @@ export function demoHandlers(now: () => number): Record<string, { kind: "read" |
     herdrClis: read(() => ({ clis: [] })),
     herdrDispatch: write(refuse(reason => ({ ok: false, reason, fallback: false }))),
     spineIndex: read(() => { const p = parseSpineIndex(demoSpineIndexJson(now())); return p.ok ? { state: "ok", path: `${DEMO_REPO}/.bff/spine-index.json`, mtimeMs: now(), index: p.index, dropped: p.dropped } : { state: "invalid", path: "", reason: p.reason }; }),
+    modFeed: read(() => ({ rows: [], windows: { fiveHour: null, sevenDay: null }, lastTs: null, gap: false, lanes: [], stats: { bytesRead: 0, size: 0, truncated: false, rows: 0, malformed: 0, oversized: 0 } })),
     projectSpines: read(() => ({ state: "ok", dir: "/demo/projects", projects: demoProjectsJson(now()).map(j => parseSpineV2(j)).flatMap(r => (r.ok ? [r.spine] : [])), invalid: [] })),
     gitRepos: read(() => demoRepos()),
     gitGraph: read(r => ({ ok: true, value: demoGraph(now(), r.scope, r.limit) })),

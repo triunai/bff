@@ -378,7 +378,7 @@ class InstallShTests(unittest.TestCase):
         run = self.run_sh("--setup", "--prefix", str(self.prefix), "--no-modify-path")
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         stable = self.prefix / "share" / "bff" / "osiris"
-        self.assertRegex(run.stdout, r"Plan: bb plugin install \S*share[/\\]bff[/\\]osiris[/\\]osiris-0\.3\.0-[0-9a-f]{12} --yes")
+        self.assertRegex(run.stdout, r"Plan: bb plugin install \S*share[/\\]bff[/\\]osiris[/\\]osiris-0\.3\.1-[0-9a-f]{12} --yes")
         self.assertIn("Re-run with --yes to install.", run.stdout)
         self.assertNotIn("not publicly released yet", run.stdout + run.stderr)
         self.assertFalse(stable.exists())  # nothing is copied before consent

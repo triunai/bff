@@ -56,9 +56,27 @@ const KEYED = /([\w-]{0,30}(?:secret|token|passw(?:or)?d|api[_-]?key)[\w-]{0,30}
 // query/assignment boundary. As unanchored substrings they ate ordinary tail text ("Author: …", "Unauthorized: 401",
 // "signal: SIGTERM", "keyboard: ok"), which the owner needs to read.
 const KEYED_QUERY = /((?:^|[?&#;\s])(?:key|sig|signature|auth|credential|session(?:_?id)?|access_key)=)[^\s&#]+/gi;
+// Memoised for short strings (pure: same input, same output). The fleet / telemetry builds re-redact the same lane names, labels and
+// summaries on every 5 s poll; redactSecrets was 1.8 s self-time of a 39 s steady-state profile on the real ~/.claude (2026-10-11).
+// Only CLEAN strings are kept (nothing to redact: output === input), so the memo never holds a secret-bearing input alive; a string that
+// had something masked is redacted afresh each time. This file is bundled for the browser too, so no node:crypto hash key. Bounded:
+// at most REDACT_MEMO_MAX x REDACT_MEMO_LEN chars (~10 MB), cleared whole when full.
+const REDACT_MEMO = new Set<string>(), REDACT_MEMO_MAX = 10_000, REDACT_MEMO_LEN = 512;
+/** Test hook: how many strings the redaction memo holds (a pin proves secret-bearing inputs never enter it). */
+export const redactMemoSize = (): number => REDACT_MEMO.size;
 /** Mask token-shaped strings, private-key blocks, key=value secrets and the user name in home paths. */
 export function redactSecrets(s: string): string {
-  let o = String(s ?? "");
+  const key = String(s ?? "");
+  if (key.length > REDACT_MEMO_LEN) return redactSecretsUncached(key);
+  if (REDACT_MEMO.has(key)) return key;
+  const out = redactSecretsUncached(key);
+  if (out !== key) return out;
+  if (REDACT_MEMO.size >= REDACT_MEMO_MAX) REDACT_MEMO.clear();
+  REDACT_MEMO.add(key);
+  return out;
+}
+function redactSecretsUncached(s: string): string {
+  let o = s;
   o = o.replace(CRED_URL, credUrl).replace(BARE_CRED, `$1$2:${REDACTED}@`);
   for (const re of SECRETS) o = o.replace(re, REDACTED);
   return o.replace(KEYED, `$1${REDACTED}`).replace(KEYED_QUERY, `$1${REDACTED}`).replace(/\/(Users|home)\/[^/\s]+(?=\/|\s|$)/g, "/$1/~");

@@ -30,7 +30,7 @@ export async function runFactory(a: TuiArgs, o: { load?: () => Promise<FactoryDa
   const load = o.load ?? (async (): Promise<FactoryData> => {
     const now = Date.now(), r = await readWorkSnapshot(a.repo, { now });
     if (!r.ok) { if (last) return { ...last, error: r.reason }; throw new Error(r.reason); }
-    const t = await svc.read(a.repo), tel = t.ok ? t.value : null, f = svc.fleet();
+    const t = await svc.read(a.repo), tel = t.ok ? t.value : null, f = await svc.fleet();
     // The worktrees view is read only while its tab is open (it runs git per worktree); the diff the owner opened rides along.
     const wt = tab === "worktrees" ? await loadWtView(a.repo, false, want).catch(() => null) : null;
     return (last = { snap: r.value, fleet: tel?.fleet ?? (f.ok ? f.value : null), maps: telemetryMaps(tel), now, error: undefined, wt });

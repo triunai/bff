@@ -144,7 +144,7 @@ export function ToolDashboard(p: ToolDashboardProps) {
       {TABS.map(x => <button key={x.id} type="button" role="tab" aria-selected={tab === x.id} className="oi-td-tab" title={x.hint} onClick={() => setTab(x.id)}>{x.label}{x.id === "incidents" && rows.length ? ` ${rows.length}` : ""}</button>)}
     </div>
     {tab === "overview" && <div role="tabpanel">
-      <RangeBar range={p.range} onRange={p.onRange} polledAt={p.telemetry?.freshness.polledAt} now={p.now} />
+      <RangeBar range={p.range} onRange={p.onRange} polledAt={p.telemetry?.freshness.polledAt} stale={p.telemetry?.freshness.stale} now={p.now} />
       <div className="oi-td-kpis">
         <Kpi title="Live agents" value={k.liveAgents === null ? "—" : String(k.liveAgents)} sub={k.liveAgents === null ? "no agent list from this server" : "wrote in the last 5 min"} hint="Agents that wrote to their log in the last 5 minutes (a guess from activity, not a heartbeat)." />
         <Kpi title="Calls / min" value={rateText(k.callsPerMin)} sub={`${k.calls} calls`} hint="Tool calls per minute over the chosen time." />
@@ -176,7 +176,7 @@ export function ToolDashboard(p: ToolDashboardProps) {
       <div className="oi-td-sorts" role="group" aria-label="Sort incidents">{SORTS.map(s => <button key={s.id} type="button" className="oi-td-chip" aria-pressed={sort === s.id} onClick={() => setSort(s.id)}>{s.label}</button>)}</div>
       <IncidentList rows={rows} onOpen={p.onOpenIncident} />
     </div>}
-    {tab === "latency" && <div role="tabpanel"><RangeBar range={p.range} onRange={p.onRange} polledAt={p.telemetry?.freshness.polledAt} now={p.now} /><LatencyTable rows={tools} /></div>}
+    {tab === "latency" && <div role="tabpanel"><RangeBar range={p.range} onRange={p.onRange} polledAt={p.telemetry?.freshness.polledAt} stale={p.telemetry?.freshness.stale} now={p.now} /><LatencyTable rows={tools} /></div>}
   </section>;
 }
 

@@ -7,6 +7,8 @@ import type { WorkSurfaceSnapshot } from "../../work/surface-types.ts";
 import { rangeLabel, rangeWords } from "../../work/calls-range.ts";
 import type { RangeId } from "../../work/calls-range.ts";
 import { RangeBar } from "./range-bar.tsx";
+import { PlanWindowsTiles } from "./plan-windows-view.tsx";
+import type { PlanReply } from "../../work/plan-windows.ts";
 import { TokenEfficiencySection, TokenEfficiencyTile } from "./token-efficiency-view.tsx";
 
 export type CostCacheViewProps = {
@@ -21,6 +23,8 @@ export type CostCacheViewProps = {
   onRange: (r: RangeId) => void;
   /** Opens the tracker picker (Work). Without a tracker the tab offers it as a button. */
   onChooseTracker?: () => void;
+  /** The osiris-bridge feed answer (modFeed RPC), for the plan-window tiles. Null = no feed. */
+  planFeed?: PlanReply | null;
 };
 
 const BEAD_ROWS = 15;
@@ -45,9 +49,9 @@ export function CostCacheTab(p: CostCacheViewProps) {
   const rows = useMemo(() => (v ? sortRows(v.rows, sort.key, sort.dir) : []), [v, sort]);
   if (!v) return <section className="oi-cc" aria-label="Cost and cache"><RangeBar range={p.range} onRange={p.onRange} polledAt={null} now={p.now} />{p.note ? <p className="oi-note">{redactReason(p.note)}</p> : <p className="oi-note">{p.onChooseTracker ? <button type="button" className="oi-cc-link" onClick={p.onChooseTracker}>Choose a tracker in Work</button> : "Choose a tracker in Work"} to see cost and cache numbers.</p>}</section>;
   return <section className="oi-cc" aria-label="Cost and cache">
-    <RangeBar range={p.range} onRange={p.onRange} polledAt={p.telemetry?.freshness.polledAt} now={p.now} />
+    <RangeBar range={p.range} onRange={p.onRange} polledAt={p.telemetry?.freshness.polledAt} stale={p.telemetry?.freshness.stale} now={p.now} />
     <div className="oi-cc-cards">{v.cards.map(c => <div key={c.title} className="oi-ov-card" title={c.hint}><span className="oi-ov-title">{c.title}</span><span className="oi-ov-num">{c.value}</span><span className="oi-ov-sub" title={c.sub}>{c.sub}</span></div>)}</div>
-    <div className="oi-cc-cards"><TokenEfficiencyTile eff={p.telemetry?.efficiency} /></div>
+    <div className="oi-cc-cards"><TokenEfficiencyTile eff={p.telemetry?.efficiency} /><PlanWindowsTiles reply={p.planFeed ?? null} now={p.now} /></div>
     {fleet && <div className="oi-cc-cards">
       {fleet.quests.map(q => <div key={q.state} className="oi-ov-card" title="Where every work item stands: running, waiting on you, ready to start, or something wrong."><span className="oi-ov-title">{q.label}</span><span className={`oi-ov-num${q.state === "error" && q.count ? " oi-cc-bad" : ""}`}>{q.count}</span></div>)}
       <div className="oi-ov-card" title="Critical path = the longest chain of dependent work in any one epic. Total work = all the time spent. If they are close, the work ran one task after another."><span className="oi-ov-title">Critical path</span>

@@ -9,10 +9,11 @@
  * Message content is never stored, returned or logged.
  */
 import { lstatSync, openSync, readSync, closeSync, readFileSync, readdirSync } from "node:fs";
+import { lstat, open, readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { dedupeRows, parseUsageLines, sourceFromPath, tailFrom } from "./cache-economics.ts";
-import type { ReadChunk, UsageRow } from "./cache-economics.ts";
+import type { ReadChunk, UsageRow, UsageSource } from "./cache-economics.ts";
 import type { TelemetryUnit } from "./telemetry-join.ts";
 import { messageEventsFromLine } from "./work/message-flow.ts";
 import { FLEET_OPEN_MAX } from "./work/fleet-types.ts";
@@ -181,67 +182,194 @@ export interface FeedState { offsets: Record<string, number>; files: Record<stri
 export const createFeedState = (): FeedState => ({ offsets: {}, files: {} });
 export interface PollResult { state: FeedState; newRows: number; filesSeen: number; resets: string[]; malformed: number; /** Records stepped over because one record was longer than a read. */ oversized: number }
 
-/** One poll: read every file's new complete lines. The input state is not mutated. */
-export function pollTranscripts(prev: FeedState, root: string = TRANSCRIPT_ROOT, fs: FeedFs = nodeFeedFs): PollResult {
-    let offsets = { ...prev.offsets };
-    const files: Record<string, FileState> = { ...prev.files }, resets: string[] = [];
-    let newRows = 0, malformed = 0, filesSeen = 0, oversized = 0;
-    const listed = fs.listJsonl(root);
-    for (const file of listed) {
-        const src = sourceFromPath(file);
-        if (!src)
-            continue;
-        filesSeen++;
-        let tail, readFrom = 0, readLen = 0, readSize = 0;
-        // Remember the last read's window so the poll can tell reaching the end of the file apart from catching up (td-osi.37 / Codex M3).
-        const probe: ReadChunk = (f, from) => { const c = fs.readChunk(f, from); readFrom = from; readLen = c.bytes.length; readSize = c.size; return c; };
-        try { tail = tailFrom(offsets, file, probe, fs.chunkLimit); } catch { continue; }
-        offsets = tail.offsets;
-        if (tail.oversized) oversized++;
-        let st: FileState = files[file] ?? { atTail: false, messages: [], calls: new Map(), open: [], lastTurn: null, lastTool: null, rows: [], toolReq: new Map(), meta: parseLaneMeta(src.agentId ? fs.readText(file.replace(/\.jsonl$/, ".meta.json")) : null), beadTag: null, sawUser: false, sessionId: src.sessionId, agentId: src.agentId, cwd: null, gitBranch: null, firstAt: null, lastAt: null };
-        if (tail.reset) {
-            resets.push(file);
-            st = { ...st, tools: [], toolPending: new Map(), rows: [], toolReq: new Map(), messages: [], calls: new Map(), open: [], lastTurn: null, lastTool: null, beadTag: null, sawUser: false, cwd: null, gitBranch: null, firstAt: null, lastAt: null };
-        }
-        // Meta can appear a moment after the transcript: retry until a name is known.
-        if (src.agentId && !st.meta.name && !st.meta.description)
-            st = { ...st, meta: parseLaneMeta(fs.readText(file.replace(/\.jsonl$/, ".meta.json"))) };
-        let { beadTag, sawUser } = st;
-        if (!sawUser)
-            for (const l of tail.lines) {
-                const b = beadTagFromLine(l);
-                if (b.seen) { sawUser = true; beadTag = b.tag; break; }
-            }
-        const parsed = parseUsageLines(tail.lines, src);
-        malformed += parsed.malformed;
-        newRows += parsed.rows.length;
-        // Message events: a substring prefilter inside messageEventsFromLine keeps JSON.parse off nearly every line. The pending-call map is copied so the input state stays unmutated.
-        const calls = new Map(st.calls), lane = st.meta.name ?? laneFromAgentId(st.agentId) ?? (st.agentId ? null : "main"), found: MessageEvent[] = [];
-        for (const l of tail.lines) found.push(...messageEventsFromLine(l, st.agentId ?? st.sessionId, lane, calls));
-        const messages = found.length ? [...st.messages, ...found].slice(-MAX_FILE_MESSAGES) : st.messages;
-        const tf = toolOutputFacts(st.toolPending ?? new Map(), tail.lines), tools = tf.events.length ? [...(st.tools ?? []), ...tf.events].slice(-MAX_TOOL_EVENTS) : st.tools;
-        // An empty read (a spent byte budget reports size = from) proves nothing, so the earlier verdict stands.
-        const atTail = readLen > 0 ? readFrom + readLen >= readSize : tail.reset ? false : st.atTail;
-        // Call -> request ids (no content): a copy, so the input state stays unmutated; capped per file, oldest dropped first.
-        let toolReq = st.toolReq;
-        for (const l of tail.lines) {
-            const t = claudeToolUses(l);
-            if (!t) continue;
-            if (toolReq === st.toolReq) toolReq = new Map(st.toolReq);
-            for (const id of t.ids) toolReq.set(id, t.key);
-        }
-        if (toolReq.size > INDEX_MAX_CALLS) toolReq = new Map([...toolReq].slice(-INDEX_MAX_CALLS));
-        files[file] = { ...st, atTail, messages, calls, toolReq, tools, toolPending: tf.pending, ...turnFacts(st, tail.lines), ...chunkFacts(st, tail.lines), rows: parsed.rows.length ? dedupeRows([...st.rows, ...parsed.rows]) : st.rows, beadTag, sawUser };
+interface PollAcc { newRows: number; malformed: number; filesSeen: number; oversized: number; resets: string[] }
+const metaPathOf = (file: string) => file.replace(/\.jsonl$/, ".meta.json");
+/** One file's share of a poll, shared by the sync and the async poll so both build the SAME state. `files` / `offsets` are the poll's own
+ *  copies (mutated here, never the caller's input). `metaText` reads the lane's meta.json (called only for a subagent file). */
+function stepFile(files: Record<string, FileState>, offsets: Record<string, number>, file: string, src: UsageSource, read: ReadChunk, chunkLimit: number | undefined, metaText: () => string | null, acc: PollAcc): void {
+    let tail, readFrom = 0, readLen = 0, readSize = 0;
+    // Remember the last read's window so the poll can tell reaching the end of the file apart from catching up (td-osi.37 / Codex M3).
+    const probe: ReadChunk = (f, from) => { const c = read(f, from); readFrom = from; readLen = c.bytes.length; readSize = c.size; return c; };
+    // tailFrom returns a COPY of the offsets it is given: hand it this file's entry only (copying all ~1000 per file was O(files^2) per poll).
+    try { tail = tailFrom(Object.hasOwn(offsets, file) ? { [file]: offsets[file] } : {}, file, probe, chunkLimit); } catch { return; }
+    offsets[file] = tail.offsets[file];
+    if (tail.oversized) acc.oversized++;
+    let st: FileState = files[file] ?? { atTail: false, messages: [], calls: new Map(), open: [], lastTurn: null, lastTool: null, rows: [], toolReq: new Map(), meta: parseLaneMeta(src.agentId ? metaText() : null), beadTag: null, sawUser: false, sessionId: src.sessionId, agentId: src.agentId, cwd: null, gitBranch: null, firstAt: null, lastAt: null };
+    if (tail.reset) {
+        acc.resets.push(file);
+        st = { ...st, tools: [], toolPending: new Map(), rows: [], toolReq: new Map(), messages: [], calls: new Map(), open: [], lastTurn: null, lastTool: null, beadTag: null, sawUser: false, cwd: null, gitBranch: null, firstAt: null, lastAt: null };
     }
-    // A file that left the listing (aged out of the read window, or past the file bound) leaves the state too, so memory and the
-    // fleet's counts stay bounded by the listing (review MED-3). A listed file the byte budget skipped this poll is kept.
-    // An EMPTY listing over a populated state is a failed read of the root (nodeFeedFs swallows readdir errors), not "every agent left".
+    // Meta can appear a moment after the transcript: retry until a name is known.
+    if (src.agentId && !st.meta.name && !st.meta.description)
+        st = { ...st, meta: parseLaneMeta(metaText()) };
+    let { beadTag, sawUser } = st;
+    if (!sawUser)
+        for (const l of tail.lines) {
+            const b = beadTagFromLine(l);
+            if (b.seen) { sawUser = true; beadTag = b.tag; break; }
+        }
+    const parsed = parseUsageLines(tail.lines, src);
+    acc.malformed += parsed.malformed;
+    acc.newRows += parsed.rows.length;
+    // Message events: a substring prefilter inside messageEventsFromLine keeps JSON.parse off nearly every line. The pending-call map is copied so the input state stays unmutated.
+    const calls = new Map(st.calls), lane = st.meta.name ?? laneFromAgentId(st.agentId) ?? (st.agentId ? null : "main"), found: MessageEvent[] = [];
+    for (const l of tail.lines) found.push(...messageEventsFromLine(l, st.agentId ?? st.sessionId, lane, calls));
+    const messages = found.length ? [...st.messages, ...found].slice(-MAX_FILE_MESSAGES) : st.messages;
+    const tf = toolOutputFacts(st.toolPending ?? new Map(), tail.lines), tools = tf.events.length ? [...(st.tools ?? []), ...tf.events].slice(-MAX_TOOL_EVENTS) : st.tools;
+    // An empty read (a spent byte budget reports size = from) proves nothing, so the earlier verdict stands.
+    const atTail = readLen > 0 ? readFrom + readLen >= readSize : tail.reset ? false : st.atTail;
+    // Call -> request ids (no content): a copy, so the input state stays unmutated; capped per file, oldest dropped first.
+    let toolReq = st.toolReq;
+    for (const l of tail.lines) {
+        const t = claudeToolUses(l);
+        if (!t) continue;
+        if (toolReq === st.toolReq) toolReq = new Map(st.toolReq);
+        for (const id of t.ids) toolReq.set(id, t.key);
+    }
+    if (toolReq.size > INDEX_MAX_CALLS) toolReq = new Map([...toolReq].slice(-INDEX_MAX_CALLS));
+    files[file] = { ...st, atTail, messages, calls, toolReq, tools, toolPending: tf.pending, ...turnFacts(st, tail.lines), ...chunkFacts(st, tail.lines), rows: parsed.rows.length ? dedupeRows([...st.rows, ...parsed.rows]) : st.rows, beadTag, sawUser };
+}
+/** A file that left the listing (aged out of the read window, or past the file bound) leaves the state too, so memory and the fleet's
+ *  counts stay bounded by the listing (review MED-3). A listed file the byte budget skipped this poll is kept. An EMPTY listing over a
+ *  populated state is a failed read of the root (the fs swallows readdir errors), not "every agent left". */
+function pruneUnlisted(files: Record<string, FileState>, offsets: Record<string, number>, listed: readonly string[]): void {
     const keep = new Set(listed);
     if (listed.length || !Object.keys(files).length) {
         for (const f of Object.keys(files)) if (!keep.has(f)) delete files[f];
         for (const f of Object.keys(offsets)) if (!keep.has(f)) delete offsets[f];
     }
-    return { state: { offsets, files }, newRows, filesSeen, resets, malformed, oversized };
+}
+/** One poll: read every file's new complete lines. The input state is not mutated. */
+export function pollTranscripts(prev: FeedState, root: string = TRANSCRIPT_ROOT, fs: FeedFs = nodeFeedFs): PollResult {
+    const offsets = { ...prev.offsets }, files: Record<string, FileState> = { ...prev.files };
+    const acc: PollAcc = { newRows: 0, malformed: 0, filesSeen: 0, oversized: 0, resets: [] };
+    const listed = fs.listJsonl(root);
+    for (const file of listed) {
+        const src = sourceFromPath(file);
+        if (!src)
+            continue;
+        acc.filesSeen++;
+        stepFile(files, offsets, file, src, (f, from) => fs.readChunk(f, from), fs.chunkLimit, () => fs.readText(metaPathOf(file)), acc);
+    }
+    pruneUnlisted(files, offsets, listed);
+    return { state: { offsets, files }, newRows: acc.newRows, filesSeen: acc.filesSeen, resets: acc.resets, malformed: acc.malformed, oversized: acc.oversized };
+}
+
+// ---- the async poll (2026-10-11): the server's path. Same state as pollTranscripts, but fs/promises only and it yields the loop. ----
+/** One listed transcript with the stat the listing already took (no second stat): mtime for the age bound, size + inode for "unchanged". */
+export interface ListedFile { path: string; mtimeMs: number | null; size: number | null; ino: number | null }
+export interface AsyncFeedFs {
+    listJsonl(root: string): Promise<ListedFile[]>;
+    readChunk(file: string, from: number, max?: number): Promise<{ bytes: Uint8Array; size: number }>;
+    readText(path: string): Promise<string | null>;
+}
+export const nodeAsyncFeedFs: AsyncFeedFs = {
+    async listJsonl(root) {
+        const out: ListedFile[] = [];
+        const walk = async (dir: string, depth: number): Promise<void> => {
+            let names: string[];
+            try { names = await readdir(dir); } catch { return; }
+            const subs: Promise<void>[] = [];
+            await Promise.all(names.map(async n => {
+                const p = join(dir, n);
+                let st;
+                try { st = await lstat(p); } catch { return; }
+                if (st.isSymbolicLink())
+                    return;
+                if (st.isDirectory() && depth < 5)
+                    subs.push(walk(p, depth + 1));
+                else if (st.isFile() && n.endsWith(".jsonl"))
+                    out.push({ path: p, mtimeMs: st.mtimeMs, size: st.size, ino: st.ino });
+            }));
+            await Promise.all(subs);
+        };
+        await walk(root, 0);
+        return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    },
+    async readChunk(file, from, max) {
+        const fh = await open(file, "r");
+        try {
+            const size = (await lstat(file)).size;
+            if (size <= from)
+                return { bytes: new Uint8Array(0), size };
+            const len = Math.min(size - from, MAX_CHUNK, Math.max(0, max ?? MAX_CHUNK)), buf = Buffer.alloc(len), { bytesRead } = await fh.read(buf, 0, len, from);
+            return { bytes: buf.subarray(0, bytesRead), size };
+        } finally { await fh.close(); }
+    },
+    async readText(path) {
+        try { return await readFile(path, "utf8"); } catch { return null; }
+    },
+};
+/** An injected sync FeedFs (tests, fixtures) as an AsyncFeedFs. Size / inode are unknown, so nothing is ever skipped as unchanged. */
+export const asyncFromSync = (fs: FeedFs, mtimeOf: (path: string) => number | null): AsyncFeedFs => ({
+    listJsonl: async root => fs.listJsonl(root).map(path => ({ path, mtimeMs: mtimeOf(path), size: null, ino: null })),
+    readChunk: async (file, from, max) => fs.readChunk(file, from, max),
+    readText: async path => fs.readText(path),
+});
+export interface AsyncPollOptions {
+    /** Bytes one file may read this poll (the per-file window; also tailFrom's oversized-record limit). */
+    chunkBytes: number;
+    /** Bytes the whole poll may read. Spent => every later file gets the empty read a spent budget gives (state kept, `capped`). */
+    budgetBytes: number;
+    /** Clock (ms) for the time budget and the yield cadence. */
+    clock: () => number;
+    /** No new read starts after this clock time: the rest wait for the next poll (`capped`). */
+    deadline: number;
+    /** Give the event loop a turn after this much uninterrupted work (ms). */
+    sliceMs: number;
+    /** Per-file stat memo from the previous poll: path -> "size:mtime:ino" of the last poll that read it to its end. Never mutated: the
+     *  updated memo is returned with the state, so a poll that throws half way leaves both untouched (the caller swaps them together). */
+    seen: ReadonlyMap<string, string>;
+}
+export interface AsyncPollResult extends PollResult { /** The stat memo to pass to the next poll, together with `state`. */ seen: Map<string, string>; /** The byte or time budget ran out before every file was read to its end. */ capped: boolean; /** Files skipped as unchanged (no read). */ skipped: number; bytesRead: number }
+const yieldLoop = () => new Promise<void>(r => setImmediate(r));
+/** The async poll: the SAME per-file step and order as pollTranscripts (identical state for the same bytes), over fs/promises. It never
+ *  re-reads a file whose (size, mtime, inode) match the last poll that read it to its end (an unchanged file's empty read changes no state),
+ *  bounds bytes and time per poll, and yields the event loop every `sliceMs` of work. One file's step (<= chunkBytes) is the largest slice. */
+export async function pollTranscriptsAsync(prev: FeedState, listed: readonly ListedFile[], fs: AsyncFeedFs, o: AsyncPollOptions): Promise<AsyncPollResult> {
+    const offsets = { ...prev.offsets }, files: Record<string, FileState> = { ...prev.files };
+    const acc: PollAcc = { newRows: 0, malformed: 0, filesSeen: 0, oversized: 0, resets: [] };
+    const seen = new Map(o.seen);
+    let budget = o.budgetBytes, capped = false, skipped = 0, bytesRead = 0, slice = o.clock();
+    const EMPTY = new Uint8Array(0);
+    for (const f of listed) {
+        const file = f.path, src = sourceFromPath(file);
+        if (!src)
+            continue;
+        acc.filesSeen++;
+        const stamp = f.size === null || f.ino === null || f.mtimeMs === null ? null : `${f.size}:${f.mtimeMs}:${f.ino}`, st = files[file];
+        // Unchanged since it was last read to its end, and its lane meta settled: the sync poll's empty read would leave its state as is.
+        if (stamp !== null && st && seen.get(file) === stamp && !(src.agentId && !st.meta.name && !st.meta.description)) { skipped++; continue; }
+        const from0 = Object.hasOwn(offsets, file) ? offsets[file] : 0, spent = budget <= 0 || o.clock() >= o.deadline;
+        let first: { bytes: Uint8Array; size: number }, again: { bytes: Uint8Array; size: number } | null = null;
+        if (spent) { capped = true; first = { bytes: EMPTY, size: from0 }; } // no reset: the file just waits for the next poll
+        else {
+            // Byte accounting exactly as boundedFeedFs: each read is allowed min(chunkBytes, what is left), and a spent budget answers empty.
+            const take = async (from: number) => {
+                if (budget <= 0) { capped = true; return { bytes: EMPTY, size: from }; }
+                const allow = Math.min(o.chunkBytes, budget), r = await fs.readChunk(file, from, allow), n = Math.min(r.bytes.length, allow);
+                if (n < r.bytes.length || from + n < r.size) capped = true;
+                budget -= n; bytesRead += n;
+                return { bytes: r.bytes.subarray(0, n), size: r.size };
+            };
+            try {
+                first = await take(from0);
+                if (first.size < from0) again = await take(0); // truncated / rotated: tailFrom restarts from 0
+            } catch { continue; } // vanished between listing and read: the sync poll's tailFrom throw skips it the same way
+        }
+        let meta: string | null = null;
+        if (src.agentId && (!st || (!st.meta.name && !st.meta.description))) meta = await fs.readText(metaPathOf(file));
+        const replay: ReadChunk = (_f, from) => (again && from === 0 ? again : from === from0 ? first : { bytes: EMPTY, size: from });
+        stepFile(files, offsets, file, src, replay, o.chunkBytes, () => meta, acc);
+        const done = again ?? first, doneAt = again ? 0 : from0;
+        if (!spent && stamp !== null && done.size === f.size && doneAt + done.bytes.length >= done.size) seen.set(file, stamp);
+        else seen.delete(file);
+        if (o.clock() - slice >= o.sliceMs) { await yieldLoop(); slice = o.clock(); }
+    }
+    const paths = listed.map(f => f.path);
+    pruneUnlisted(files, offsets, paths);
+    for (const p of [...seen.keys()]) if (!Object.hasOwn(files, p)) seen.delete(p);
+    return { state: { offsets, files }, seen, newRows: acc.newRows, filesSeen: acc.filesSeen, resets: acc.resets, malformed: acc.malformed, oversized: acc.oversized, capped, skipped, bytesRead };
 }
 
 /** Join-ready units, one per transcript file. Files with no usage rows are dropped. */

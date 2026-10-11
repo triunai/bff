@@ -8,6 +8,8 @@ import { joinUnitsToWork } from "../telemetry-join.ts";
 import type { TelemetryUnit } from "../telemetry-join.ts";
 import { criticalSteps } from "./critical-steps.ts";
 import { cleanText, redactForDisplay } from "./sanitize.ts";
+import { runSteps } from "./yield-steps.ts";
+import type { Steps } from "./yield-steps.ts";
 import { activityFromUnits, transcriptLiveByBead } from "./transcript-liveness.ts";
 import type { MissCause, MissEvent } from "../cache-misses.ts";
 import type { UsageRow } from "../cache-economics.ts";
@@ -15,9 +17,9 @@ import type { WorkDep, WorkIssue } from "./types.ts";
 import { buildFleet } from "./fleet-model.ts";
 import type { FleetInput } from "./fleet-model.ts";
 import type { FleetSnapshot } from "./fleet-types.ts";
-import { buildTokenEfficiency } from "./token-efficiency-model.ts";
+import { buildTokenEfficiencySteps } from "./token-efficiency-model.ts";
 import type { EffToolUnit, TokenEfficiency } from "./token-efficiency-model.ts";
-import { buildSpendDays } from "./spend-days.ts";
+import { buildSpendDaysSteps } from "./spend-days.ts";
 import type { DaySpend } from "./spend-days.ts";
 
 export interface BeadCostRow {
@@ -83,6 +85,8 @@ export interface TelemetryFreshness {
   catchingUp: boolean;
   /** Records stepped over because one record was longer than a read. Optional: an older answer has none. */
   oversizedSkipped?: number;
+  /** Set by the server when this is the LAST GOOD answer served while a slow or failed recompute runs (D-138: said, not hidden). */
+  stale?: { since: number; reason: string };
 }
 export interface TelemetryCoverage { units: number; joined: number; unjoined: number; laneNamed: number; unmatched: { lane: string; reason: string }[] }
 export interface WorkTelemetry {
@@ -159,14 +163,24 @@ export function dedupeUnits(units: readonly TelemetryUnit[]): TelemetryUnit[] {
 
 /** Units + beads -> everything the Factory, the Board and the observer show. `units` come from unitsFromState. */
 export function buildWorkTelemetry(rawUnits: readonly TelemetryUnit[], issues: readonly WorkIssue[], deps: readonly WorkDep[], now: number, poll: PollInfo, fleetIn?: Omit<FleetInput, "beadByKey">, windowMs: number = WINDOW_MS, toolUnits: readonly EffToolUnit[] = []): WorkTelemetry {
+  return runSteps(buildWorkTelemetrySteps(rawUnits, issues, deps, now, poll, fleetIn, windowMs, toolUnits));
+}
+/** buildWorkTelemetry as cooperative steps (work/yield-steps.ts): the server drives it with runStepsAsync so one build never holds BB's
+ *  event loop for its whole length (~200 ms on the real 7-day history, 2026-10-11). Each `yield` sits between two heavy parts; nothing else differs. */
+export function* buildWorkTelemetrySteps(rawUnits: readonly TelemetryUnit[], issues: readonly WorkIssue[], deps: readonly WorkDep[], now: number, poll: PollInfo, fleetIn?: Omit<FleetInput, "beadByKey">, windowMs: number = WINDOW_MS, toolUnits: readonly EffToolUnit[] = []): Steps<WorkTelemetry> {
   const units = dedupeUnits(rawUnits);
+  yield;
   const inWindow = (r: UsageRow) => r.timestamp === null || !Number.isFinite(r.timestamp) || now - r.timestamp <= windowMs;
   // Totals, cost and the lane list use only the window. Miss CLASSIFICATION uses the full history (a cut at the window edge would restart the
   // warm-up and turn a real prefix break into a "cold start"), and only the events it reports are then limited to the window.
   const idx: number[] = [], us: TelemetryUnit[] = [];
   units.forEach((u, i) => { const rows = u.rows.filter(inWindow); if (rows.length) { idx.push(i); us.push({ ...u, rows }); } });
   const refs = issues.map(i => ({ id: i.id, assignee: i.assignee }));
-  const join = joinUnitsToWork(us, refs, []), full = joinUnitsToWork([...units], refs, []);
+  yield;
+  const join = joinUnitsToWork(us, refs, []);
+  yield;
+  const full = joinUnitsToWork([...units], refs, []);
+  yield;
   const inWinEvent = <E extends { timestamp: number | null }>(e: E) => e.timestamp === null || !Number.isFinite(e.timestamp) || now - e.timestamp <= windowMs;
   // A bead's misses are the sum of its units' own classified events. full.byBead classifies the merged rows, which lets a fresh lane's
   // cold start borrow an older lane's warm-up and read as a prefix break.
@@ -193,14 +207,17 @@ export function buildWorkTelemetry(rawUnits: readonly TelemetryUnit[], issues: r
   });
   const costs: Record<string, number> = {};
   for (const b of beads) if (b.costUsd !== null) costs[b.beadId] = b.costUsd;
+  yield;
 
   const all = aggregate(us.flatMap(u => u.rows), () => "all")[0];
+  yield;
   const joinedCostUsd = beads.reduce((s, b) => s + b.pricedUsd, 0);
   const allMiss = us.flatMap((_, i) => laneMissOf(i));
   const totals: TelemetryTotals = all
     ? { requests: all.requests, input: all.input, output: all.output, cacheWrite: all.cacheWrite5m + all.cacheWrite1h, cacheRead: all.cacheRead, hitRate: all.hitRate, costUsd: all.pricedCost, costComplete: all.cost !== null, unpricedModels: all.unpricedModels.map(m => name(m, 40)), misses: allMiss.filter(e => e.cause !== "cold-start").length, prefixBreaks: prefixBreaks(allMiss), joinedCostUsd }
     : { requests: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0, hitRate: null, costUsd: 0, costComplete: true, unpricedModels: [], misses: 0, prefixBreaks: 0, joinedCostUsd: 0 };
 
+  yield;
   const live: WorkTelemetry["transcriptLive"] = {};
   for (const [id, v] of transcriptLiveByBead(join.byLane, activityFromUnits(us), now)) live[name(id)] = { lane: name(v.lane), lastAt: v.lastAt };
 
@@ -212,6 +229,7 @@ export function buildWorkTelemetry(rawUnits: readonly TelemetryUnit[], issues: r
     costUsd: l.cost, pricedUsd: l.pricedCost, unpricedModels: laneModels(i).filter(m => m.costUsd === null).map(m => m.model), models: laneModels(i),
     lastAt: lastOfUnit[i], misses: laneMissOf(i).filter(e => e.cause !== "cold-start").length, prefixBreaks: prefixBreaks(laneMissOf(i)),
   })).sort((a, b) => b.pricedUsd - a.pricedUsd || (a.lane < b.lane ? -1 : 1)).slice(0, MAX_LANES);
+  yield;
   const allMissEvents: LaneMissEvent[] = join.byLane.flatMap((l, i) => laneMissOf(i).flatMap(e => !isMiss(e) ? [] : [{
     at: e.timestamp, lane: laneName(l.lane), beadId: l.beadId ? name(l.beadId) : null,
     cause: e.cause, write: e.write, missShare: e.missShare, gapMs: e.gapMs,
@@ -221,13 +239,21 @@ export function buildWorkTelemetry(rawUnits: readonly TelemetryUnit[], issues: r
   // Lane key (what a tool call carries as sessionId) -> bead: a subagent is keyed by its agentId, a main session by its session id.
   const beadByKey = new Map<string, string>();
   for (const l of join.byLane) if (l.beadId) beadByKey.set(l.agentId ?? l.sessionId, l.beadId);
+  yield;
   const fleet = fleetIn ? buildFleet({ ...fleetIn, beadByKey }, now) : undefined;
+  yield;
+  const efficiency = yield* buildTokenEfficiencySteps(us, toolUnits, now, windowMs);
+  yield;
+  const byDay = yield* buildSpendDaysSteps(units, now, WINDOW_MS, u => (u.lane ? name(u.lane) : "main session"));
+  yield;
+  const byModel = modelUse(us.flatMap(u => u.rows)).sort((a, b) => b.pricedUsd - a.pricedUsd || (a.model < b.model ? -1 : 1));
+  yield;
 
   return {
     ...(fleet ? { fleet } : {}),
-    efficiency: buildTokenEfficiency(us, toolUnits, now, windowMs),
-    byDay: buildSpendDays(units, now, WINDOW_MS, u => (u.lane ? name(u.lane) : "main session")),
-    lanes: laneRows, missEvents, missEventsTotal: allMissEvents.length, byModel: modelUse(us.flatMap(u => u.rows)).sort((a, b) => b.pricedUsd - a.pricedUsd || (a.model < b.model ? -1 : 1)),
+    efficiency,
+    byDay,
+    lanes: laneRows, missEvents, missEventsTotal: allMissEvents.length, byModel,
     beads, costs, transcriptLive: live, critical: criticalIds(issues, deps, now), totals,
     freshness: { polledAt: poll.polledAt, filesSeen: poll.filesSeen, newRows: poll.newRows, catchingUp: poll.catchingUp, oversizedSkipped: poll.oversizedSkipped ?? 0 },
     coverage: {
@@ -267,6 +293,6 @@ export function telemetryCards(t: WorkTelemetry, now: number): TelemetryCards {
     cost: { value: `${a.costComplete ? "" : "at least "}${usd(a.costUsd)}`, sub: a.costComplete ? `estimate at list price · ${usd(a.joinedCostUsd)} matched to beads` : `estimate at list price · no price for ${a.unpricedModels.join(", ") || "a model"}` },
     cache: { value: pctText(a.hitRate), sub: "share of input read from cache; higher is cheaper" },
     misses: { value: `${a.misses}`, sub: `${a.prefixBreaks} because the cached start of the prompt changed` },
-    freshness: { value: f.polledAt ? `read ${ageText(Math.max(0, now - f.polledAt))}` : "not read yet", sub: `${f.filesSeen} transcript files · ${c.joined} of ${c.units} agents matched to a bead${f.catchingUp ? " · still reading older history" : ""}` },
+    freshness: { value: f.polledAt ? `read ${ageText(Math.max(0, now - f.polledAt))}` : "not read yet", sub: `${f.filesSeen} transcript files · ${c.joined} of ${c.units} agents matched to a bead${f.catchingUp ? " · still reading older history" : ""}${f.stale ? ` · showing the answer from ${ageText(Math.max(0, now - f.stale.since))} while it refreshes (${f.stale.reason})` : ""}` },
   };
 }

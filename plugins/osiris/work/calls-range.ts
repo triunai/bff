@@ -31,7 +31,14 @@ export const rangeWords = (id: RangeId): string => (id === "today" ? "today" : i
 export interface FreshnessView { state: "fresh" | "stale" | "unread"; text: string }
 /** Fresh while the last read is younger than 2 minutes (the tab re-reads every 10 s, so older means the reads stopped). */
 export const STALE_MS = 120_000;
-export function freshnessOf(polledAt: number | null | undefined, now: number): FreshnessView {
+/** The server's stale marker (telemetry-rpc.ts): set when this is the LAST GOOD answer served while a slow or failed recompute runs. */
+export type StaleMark = { since: number; reason: string };
+const hhmmss = (ms: number) => { const d = new Date(ms), p = (n: number) => String(n).padStart(2, "0"); return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; };
+/** "Stale since 22:30:05: recomputing" (D-138: a served-stale answer is said, never shown as fresh). */
+export const staleSinceText = (s: StaleMark): string => `Stale since ${hhmmss(s.since)}: ${String(s.reason ?? "").slice(0, 120) || "recomputing"}`;
+/** `stale` (optional): the server's marker wins over the age rule, so a last-good answer never reads "Fresh". */
+export function freshnessOf(polledAt: number | null | undefined, now: number, stale?: StaleMark | null): FreshnessView {
+  if (stale) return { state: "stale", text: staleSinceText(stale) };
   if (!polledAt) return { state: "unread", text: "Not read yet" };
   const age = Math.max(0, now - polledAt);
   const words = age < 1000 ? "just now" : age < 60_000 ? `${Math.round(age / 1000)}s ago` : age < 3_600_000 ? `${Math.round(age / 60_000)} min ago` : `${Math.round(age / 3_600_000)} h ago`;
