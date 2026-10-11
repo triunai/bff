@@ -83,7 +83,8 @@ def write_atomic(output, data):
     descriptor, name = tempfile.mkstemp(prefix=".bff-herdr-", dir=str(output.parent))
     temporary = Path(name)
     try:
-        os.fchmod(descriptor, 0o600)
+        if hasattr(os, "fchmod"):  # absent on Windows, where mkstemp files are already private to the user profile
+            os.fchmod(descriptor, 0o600)
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(data)
             stream.flush()

@@ -10,6 +10,8 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import winskip  # noqa: E402
 from bff import cli, launch, trusted_bin
 
 
@@ -39,6 +41,7 @@ class StartTests(unittest.TestCase):
             observer.assert_not_called()
             run.assert_not_called()
 
+    @winskip.posix_only('asserts POSIX permission bits (0600/0700); NTFS has no such bits')
     def test_mac_terminal_argv_owned_0700_launcher_and_quoted_executable(self):
         with mock.patch("bff.launch.Path.home", return_value=self.home), \
                 mock.patch("bff.launch.sys.platform", "darwin"), \
@@ -49,8 +52,8 @@ class StartTests(unittest.TestCase):
             self.assertEqual(result, 0, stderr)
             path = self.home / ".local/share/bff/launchers/osiris-herdr.command"
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o700)
-            self.assertTrue(path.read_text().endswith("exec '/fake path/herdr'\n"))
-            self.assertNotIn("--session", path.read_text())
+            self.assertTrue(path.read_text(encoding="utf-8").endswith("exec '/fake path/herdr'\n"))
+            self.assertNotIn("--session", path.read_text(encoding="utf-8"))
             observer.assert_called_once_with(cli.OSIRIS_URL, False)
             run.assert_called_once_with(["/usr/bin/open", "-a", "Terminal", str(path)], timeout=10, inherit=trusted_bin.TOOL_INHERIT)
             self.assertIn("startup is unverified", stdout)
@@ -58,10 +61,10 @@ class StartTests(unittest.TestCase):
 
     def test_unrelated_launcher_and_symlinks_refused(self):
         path = self.home / "launch.command"
-        path.write_text("user-owned")
+        path.write_text("user-owned", encoding="utf-8")
         with self.assertRaises(ValueError):
             launch.write_launcher(path, ["/fake/herdr"])
-        self.assertEqual(path.read_text(), "user-owned")
+        self.assertEqual(path.read_text(encoding="utf-8"), "user-owned")
         path.unlink()
         path.symlink_to(self.home / "missing")
         with self.assertRaises(ValueError):
@@ -71,6 +74,7 @@ class StartTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             launch.write_launcher(parent / "launch.command", ["/fake/herdr"])
 
+    @winskip.posix_only('asserts the macOS/Linux herdr message; the Windows message is pinned in test_launch_windows')
     def test_bb_missing_report_and_missing_herdr(self):
         with mock.patch("bff.cli.launch_osiris", side_effect=ConnectionRefusedError("not running")), \
                 mock.patch("bff.launch.trusted_bin.which", return_value=None):
@@ -86,7 +90,7 @@ class StartTests(unittest.TestCase):
                 mock.patch("bff.launch.trusted_bin.popen") as popen:
             self.assertEqual(self.command(["start"])[0], 0)
             popen.assert_called_once_with(["/fake/terminal", "-e", "/fake/herdr"], start_new_session=True, inherit=trusted_bin.TOOL_INHERIT)
-        with mock.patch("bff.launch.sys.platform", "win32"), \
+        with mock.patch("bff.launch.sys.platform", "linux"), \
                 mock.patch("bff.cli.launch_osiris", return_value=0), \
                 mock.patch("bff.launch.trusted_bin.which", side_effect=["/fake/herdr", None]):
             result, stdout, stderr = self.command(["start"])

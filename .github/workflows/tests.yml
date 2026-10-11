@@ -8,8 +8,7 @@ permissions:
 jobs:
   python:
     runs-on: ${{ matrix.os }}
-    # Windows is a preview until slice S7 (native Windows support) lands.
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    # Windows is blocking (proven green on real windows-latest, td-h1w.11).
     strategy:
       fail-fast: false
       matrix:

@@ -56,7 +56,7 @@ def contained(repo, name):
 
 
 def load_profile(repo):
-    profile = json.loads(contained(repo, ".bff.json").read_text())
+    profile = json.loads(contained(repo, ".bff.json").read_text(encoding="utf-8"))
     if not isinstance(profile, dict) or profile.get("schema_version") != 1:
         raise ValueError("Unsupported BFF profile schema")
     spine = profile.get("spine")
@@ -151,7 +151,7 @@ def blocks(text):
 
 
 def inspect_spine(paths):
-    texts = {key: path.read_text() for key, path in paths.items()}
+    texts = {key: path.read_text(encoding="utf-8") for key, path in paths.items()}
     errors, workstreams, done, journal_claims = [], [], set(), set()
     entries = blocks(texts["board"])
     for heading, body in entries:
@@ -206,7 +206,7 @@ def run_checks(profile, repo):
         try:
             # A bare program name is found in the fixed trusted directories (never PATH); a path must itself be absolute and trusted.
             # An absolute path is the user's explicit choice in their own profile (location is theirs; ownership, mode and directory-chain checks still apply).
-            absolute = "/" in argv[0]
+            absolute = os.path.isabs(argv[0])  # a "/" test alone misses C:\\... on Windows
             program = argv[0] if absolute else trusted_bin.which(argv[0])
             if program is None:
                 raise FileNotFoundError("no trusted program named " + argv[0])

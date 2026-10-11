@@ -10,6 +10,8 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import winskip  # noqa: E402
 from bff import launch, trusted_bin  # noqa: E402
 from bff.trusted_bin import Policy  # noqa: E402
 
@@ -24,7 +26,7 @@ def sandbox(test):
 
 def script(directory, name, body, mode=0o755):
     path = Path(directory) / name
-    path.write_text("#!/bin/sh\n" + body + "\n")
+    path.write_text("#!/bin/sh\n" + body + "\n", encoding="utf-8")
     path.chmod(mode)
     return str(path)
 
@@ -50,6 +52,7 @@ def dirs(*paths):
     return {p: (0, 0o755, "dir") for p in paths}
 
 
+@winskip.posix_only('asserts POSIX modes, owners and symlinks; the Windows allowlist rules are pinned in test_trusted_bin_windows')
 class Resolution(unittest.TestCase):
     def test_a_path_planted_program_is_never_found(self):
         plant = sandbox(self)
@@ -143,6 +146,7 @@ class Environment(unittest.TestCase):
         self.assertEqual(env["SECRET_TOKEN"], "s3cret", "a name the caller lists is passed; nothing else is")
         self.assertNotIn("/tmp/evil", repr(env))
 
+    @winskip.posix_only('asserts the POSIX minimal environment; the Windows environment is pinned in test_trusted_bin_windows')
     def test_nothing_is_inherited_by_default(self):
         with mock.patch.dict(os.environ, {"SOME_AMBIENT": "x", "ANTHROPIC_API_KEY": "k"}):
             self.assertEqual(sorted(trusted_bin.child_env()), ["HOME", "LANG", "PATH"])
@@ -158,6 +162,7 @@ class Environment(unittest.TestCase):
             trusted_bin.child_env(extra={"X": "a\0b"})
 
 
+@winskip.posix_only('asserts POSIX modes, owners and symlinks; the Windows allowlist rules are pinned in test_trusted_bin_windows')
 class Spawning(unittest.TestCase):
     def policy(self, directory):
         return Policy(dirs=(str(directory),))
@@ -177,7 +182,7 @@ class Spawning(unittest.TestCase):
         program = script(directory, "dumpenv", "/usr/bin/env > '%s'" % out)
         with mock.patch.dict(os.environ, self.HOSTILE if hasattr(self, "HOSTILE") else Environment.HOSTILE):
             trusted_bin.run([program], policy=self.policy(directory), inherit=("HOME",), env={"EXPLICIT": "1"})
-        seen = sorted(line.split("=")[0] for line in out.read_text().splitlines() if line and line.split("=")[0] not in ("PWD", "SHLVL", "_", "OLDPWD"))
+        seen = sorted(line.split("=")[0] for line in out.read_text(encoding="utf-8").splitlines() if line and line.split("=")[0] not in ("PWD", "SHLVL", "_", "OLDPWD"))
         self.assertEqual(seen, ["EXPLICIT", "HOME", "LANG", "PATH"])
 
     def test_an_untrusted_program_is_refused_at_spawn_time_and_never_runs(self):

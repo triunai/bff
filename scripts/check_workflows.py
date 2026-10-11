@@ -59,8 +59,8 @@ def check(workflow):
         problems.append("python job matrix.os must be ubuntu, macos, windows")
     if matrix.get("python-version") != ["3.9", "3.12"]:
         problems.append("python job matrix.python-version must be 3.9 and 3.12")
-    if "windows-latest" not in str(jobs.get("python", {}).get("continue-on-error", "")):
-        problems.append("windows must be continue-on-error")
+    if "continue-on-error" in jobs.get("python", {}):
+        problems.append("the python job is blocking on every OS: windows is proven on real windows-latest, so no continue-on-error")
     privacy = jobs.get("privacy", {})
     if privacy.get("continue-on-error") is not True:
         problems.append("privacy job must exist with continue-on-error: true")

@@ -13,9 +13,21 @@ Twin of Osiris `work/trusted-bin.ts`: same rules, one module. tests/test_trusted
 Only the winning candidate may be remembered; trust is never cached (this module caches nothing at all: every call re-validates).
 Differences from the Osiris twin, on purpose: bff finds user-installed tools (npm globals, cargo, fnm/nvm/volta node installs), so the default
 symlink rule is "the TARGET passes every check" instead of "a same-named Homebrew Cellar program", and a few user tool directories are in the list.
-Windows is a preview: file mode and ownership are not evaluated there.
+
+WINDOWS (td-h1w.11, rules written down; every one is exercised by tests/test_trusted_bin_windows.py with a simulated platform):
+  W1 The directory list is FIXED from SystemRoot / ProgramFiles / ProgramFiles(x86) / ProgramW6432 / LOCALAPPDATA / APPDATA / USERPROFILE. PATH and PATHEXT are never read.
+  W2 Directories compare as ntpath.normcase(normpath()) (case, slash direction and trailing separators do not matter). Absolute means drive-letter rooted; UNC is refused.
+  W3 A program is name + one of .exe .com .cmd .bat in a FIXED extension order (not the environment's PATHEXT). Names with ':' (alternate data streams), wildcards or
+     trailing dots/spaces are refused.
+  W4 File mode and owner are not evaluated (NTFS ACLs are not visible to stat). Instead the real path and its directory must not sit under a user-writable temp root
+     (TEMP, TMP, LOCALAPPDATA\\Temp, SystemRoot\\Temp).
+  W5 .cmd/.bat never runs directly: only through the vetted SystemRoot\\System32\\cmd.exe /d /s /c, and only when no argument (or the program path) contains
+     & | < > ^ % ! " or a newline. Every argument is then quoted.
+  W6 The child environment is minimal: PATH (fixed dirs, ';'), SystemRoot, ComSpec (FIXED to System32\\cmd.exe), USERPROFILE, LOCALAPPDATA, APPDATA, TEMP, TMP, a CONSTANT PATHEXT.
+  W7 exec_replace runs the child, waits, and exits with its return code (Windows has no exec-replace).
 """
 import glob
+import ntpath
 import os
 import re
 import stat
@@ -43,10 +55,11 @@ TOOL_INHERIT = ("TERM", "USER", "LOGNAME", "TMPDIR", "SSH_AUTH_SOCK", "XDG_CONFI
 
 Vet = namedtuple("Vet", "ok path via reason detail")
 Fs = namedtuple("Fs", "realpath stat exec_ok uid")
-Policy = namedtuple("Policy", "dirs extra_dirs alias_targets root_only home fs",
-                    defaults=(None, (), "trusted", False, None, None))
+Policy = namedtuple("Policy", "dirs extra_dirs alias_targets root_only home fs platform",
+                    defaults=(None, (), "trusted", False, None, None, None))
 Policy.__doc__ = """dirs: search these INSTEAD of the default list (absolute). extra_dirs: searched after. alias_targets: "trusted" (the target must pass every check),
-"none" (no symlink) or a compiled regex the real path must match. root_only: the file must be owned by root (implies no symlink). fs: test seam."""
+"none" (no symlink) or a compiled regex the real path must match. root_only: the file must be owned by root (implies no symlink). fs: test seam.
+platform: test seam, a sys.platform value (default: the running one)."""
 
 
 class TrustRefused(OSError):
@@ -72,23 +85,103 @@ def _real_fs():
     return Fs(realpath=os.path.realpath, stat=os.stat, exec_ok=exec_ok, uid=os.getuid() if POSIX else None)
 
 
-def system_dirs(home=None, platform=None):
-    """The fixed per-OS list. Never derived from PATH or the environment."""
+WIN_EXTS = (".exe", ".com", ".cmd", ".bat")
+WIN_BATCH = (".cmd", ".bat")
+WIN_PATHEXT = ".COM;.EXE;.BAT;.CMD"
+WIN_METACHARS = frozenset('&|<>^%!"\r\n')
+WIN_BAD_NAME = frozenset('<>"|?*:\0')
+
+
+def _is_win(platform=None):
+    return (platform or sys.platform).startswith("win")
+
+
+def _is_abs(path, win):
+    if not win:
+        return os.path.isabs(path)
+    drive, rest = ntpath.splitdrive(path)
+    return bool(drive) and not drive.startswith(("\\\\", "//")) and rest[:1] in ("\\", "/")
+
+
+def _norm(path):
+    return ntpath.normcase(ntpath.normpath(path))
+
+
+def _in_dirs(directory, dirs, win):
+    if not win:
+        return directory in dirs
+    return _norm(directory) in {_norm(d) for d in dirs}
+
+
+def _win_env_dir(env, name):
+    """An absolute drive-rooted directory from the environment, or None. Read each call; never from PATH."""
+    value = env.get(name)
+    return value if value and _is_abs(value, True) else None
+
+
+def _win_root(env):
+    return _win_env_dir(env, "SystemRoot") or "C:\\Windows"
+
+
+def _win_temp_roots(env):
+    roots = [_win_env_dir(env, "TEMP"), _win_env_dir(env, "TMP"), _win_root(env) + "\\Temp"]
+    local = _win_env_dir(env, "LOCALAPPDATA")
+    if local:
+        roots.append(local + "\\Temp")
+    return sorted({_norm(r) for r in roots if r})
+
+
+def _win_system_dirs(env):
+    root = _win_root(env)
+    out = [root + "\\System32", root]
+    for var in ("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"):
+        base = _win_env_dir(env, var)
+        if base:
+            out += [base + "\\Git\\cmd", base + "\\Git\\bin", base + "\\GitHub CLI", base + "\\nodejs"]
+    if not any(_win_env_dir(env, v) for v in ("ProgramFiles", "ProgramW6432")):
+        out += ["C:\\Program Files\\Git\\cmd", "C:\\Program Files\\Git\\bin", "C:\\Program Files\\GitHub CLI", "C:\\Program Files\\nodejs"]
+    seen, unique = set(), []
+    for d in out:
+        if _norm(d) not in seen:
+            seen.add(_norm(d))
+            unique.append(d)
+    return unique
+
+
+def _win_tool_dirs(home, env, globber):
+    local = _win_env_dir(env, "LOCALAPPDATA") or home + "\\AppData\\Local"
+    roaming = _win_env_dir(env, "APPDATA") or home + "\\AppData\\Roaming"
+    files = [d for d in (_win_env_dir(env, "ProgramFiles"), _win_env_dir(env, "ProgramW6432")) if d] or ["C:\\Program Files"]
+    fixed = [local + "\\Microsoft\\WinGet\\Links", home + "\\scoop\\shims", roaming + "\\npm", local + "\\Volta\\bin", home + "\\.volta\\bin",
+             home + "\\.cargo\\bin", home + "\\.bun\\bin"]
+    patterns = [local + "\\Programs\\Python\\Python3*", local + "\\Programs\\Python\\Python3*\\Scripts"]
+    for base in files:
+        patterns += [base + "\\Python3*", base + "\\Python3*\\Scripts"]
+    patterns += [local + "\\fnm\\node-versions\\*\\installation", roaming + "\\fnm\\node-versions\\*\\installation", roaming + "\\nvm\\v*"]
+    found = []
+    for pattern in patterns:
+        found.extend(sorted(globber(pattern), reverse=True))
+    return fixed + found
+
+
+def system_dirs(home=None, platform=None, env=None):
+    """The fixed per-OS list. Never derived from PATH or the environment's PATH."""
     home = str(home or Path.home())
     platform = platform or sys.platform
     if platform.startswith("win"):
-        root = os.environ.get("SystemRoot") or "C:\\Windows"
-        return [root + "\\System32", root, "C:\\Program Files\\Git\\cmd", "C:\\Program Files\\GitHub CLI", "C:\\Program Files\\nodejs"]
+        return _win_system_dirs(os.environ if env is None else env)
     common = [home + "/.local/bin"]
     if platform == "darwin":
         return ["/usr/bin", "/bin", "/usr/sbin", "/sbin", "/opt/homebrew/bin", "/usr/local/bin"] + common
     return ["/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/local/bin"] + common
 
 
-def tool_dirs(home=None):
+def tool_dirs(home=None, platform=None, env=None, globber=glob.glob):
     """User-level install locations for the developer tools bff looks for (cargo, volta, fnm/nvm/mise node installs). Glob patterns are expanded at call time;
     every hit still has to pass the file and directory-chain checks, so a directory someone else can write is refused."""
     home = str(home or Path.home())
+    if _is_win(platform):
+        return _win_tool_dirs(home, os.environ if env is None else env, globber)
     fixed = [home + "/.cargo/bin", home + "/.volta/bin", home + "/.bun/bin", home + "/.npm-global/bin"]
     patterns = [home + "/.local/share/fnm/node-versions/*/installation/bin", home + "/.nvm/versions/node/*/bin", home + "/.local/share/mise/installs/node/*/bin"]
     found = []
@@ -98,11 +191,11 @@ def tool_dirs(home=None):
 
 
 def default_dirs(home=None, platform=None):
-    return system_dirs(home, platform) + tool_dirs(home)
+    return system_dirs(home, platform) + tool_dirs(home, platform)
 
 
 def _effective_dirs(policy):
-    base = list(policy.dirs) if policy.dirs is not None else default_dirs(policy.home)
+    base = list(policy.dirs) if policy.dirs is not None else default_dirs(policy.home, policy.platform)
     return base + list(policy.extra_dirs or ())
 
 
@@ -114,10 +207,54 @@ def _bad(reason, detail):
     return Vet(False, None, None, reason, detail)
 
 
+def _vet_windows(candidate, policy):
+    """Rules W1-W4. File mode and owner are not evaluated; the real path must not live under a user-writable temp root."""
+    if not candidate or "\0" in candidate or not _is_abs(candidate, True):
+        return _bad("not-absolute", "the program path must be absolute and drive-rooted (a bare name would be found through PATH)")
+    base = ntpath.basename(candidate)
+    if any(c in WIN_BAD_NAME or ord(c) < 32 for c in candidate[2:]) or not base or base != base.rstrip(". "):
+        return _bad("bad-name", "the program path contains characters Windows treats specially")
+    fs = policy.fs or _real_fs()
+    directory = ntpath.dirname(candidate)
+    target = "none" if policy.root_only else policy.alias_targets
+    resolved_alias = hasattr(target, "match") and bool(target.match(candidate))
+    dirs = _effective_dirs(policy)
+    if not _in_dirs(directory, dirs, True) and not resolved_alias:
+        return _bad("location", directory + " is not one of the fixed program directories")
+    try:
+        real = fs.realpath(candidate)
+        if real.startswith("\\\\?\\") and not real.startswith("\\\\?\\UNC"):
+            real = real[4:]
+        st = fs.stat(real)
+    except OSError:
+        return _bad("not-found", candidate + " does not exist")
+    aliased = _norm(real) != _norm(candidate)
+    if aliased and not _in_dirs(directory, dirs, True):
+        return _bad("location", candidate + " is a symlink outside the fixed program directories")
+    if aliased:
+        if target == "none":
+            return _bad("symlink-refused", candidate + " is a symlink and this program must be a plain file")
+        if hasattr(target, "match") and not target.match(real):
+            return _bad("symlink-refused", candidate + " leads to " + real + ", which is not an allowed target")
+    if not _is_abs(real, True) or ntpath.splitext(real)[1].lower() not in WIN_EXTS:
+        return _bad("not-executable", real + " is not a drive-rooted program with an executable extension")
+    if not stat.S_ISREG(st.st_mode):
+        return _bad("not-regular-file", real + " is not a regular file")
+    if not fs.exec_ok(real):
+        return _bad("not-executable", real + " is not executable")
+    for probe in (_norm(real), _norm(directory)):
+        for temp in _win_temp_roots(os.environ):
+            if probe == temp or probe.startswith(temp + "\\"):
+                return _bad("untrusted-directory", real + " is under the user-writable temp directory " + temp)
+    return Vet(True, real, candidate, None, None)
+
+
 def vet_path(candidate, policy=None):
     """Validate ONE absolute candidate and return Vet(ok, real_path, candidate, reason, detail)."""
     policy = policy or Policy()
     candidate = str(candidate)
+    if _is_win(policy.platform):
+        return _vet_windows(candidate, policy)
     if not candidate or "\0" in candidate or not os.path.isabs(candidate):
         return _bad("not-absolute", "the program path must be absolute (a bare name would be found through PATH)")
     fs = policy.fs or _real_fs()
@@ -169,13 +306,17 @@ def resolve(name, policy=None):
     """Find `name` in the fixed directories (first trusted wins), re-validating every time. `name` may be a plain file name or an absolute path whose
     directory is in the list. Returns the Vet of the winner, or the most informative refusal."""
     policy = policy or Policy()
-    if os.path.isabs(name):
+    win = _is_win(policy.platform)
+    if _is_abs(name, win):
         candidates = [name]
-    elif not name or "/" in name or "\\" in name or "\0" in name or name in (".", "..") or name.startswith("-"):
+    elif not name or "/" in name or "\\" in name or "\0" in name or name in (".", "..") or name.startswith("-") or (
+            win and (any(c in WIN_BAD_NAME for c in name) or name != name.rstrip(". "))):
         return _bad("bad-name", "a program name must be a plain file name")
+    elif win:
+        suffixes = ("",) if ntpath.splitext(name)[1].lower() in WIN_EXTS else WIN_EXTS
+        candidates = [ntpath.join(d, name + s) for d in _effective_dirs(policy) for s in suffixes]
     else:
-        suffixes = ("", ".exe", ".cmd", ".bat") if not POSIX else ("",)
-        candidates = [os.path.join(d, name + s) for d in _effective_dirs(policy) for s in suffixes]
+        candidates = [os.path.join(d, name) for d in _effective_dirs(policy)]
     worst = None
     for candidate in candidates:
         verdict = vet_path(candidate, policy)
@@ -211,13 +352,27 @@ def own_policy(program):
     return Policy(dirs=(os.path.dirname(str(program)),))
 
 
-def child_env(extra=None, inherit=(), path_extra=(), home=None, source=None):
+def _win_child_env(source, path_extra, home, platform):
+    root = _win_root(source)
+    out = {"PATH": ";".join(list(path_extra) + system_dirs(home, platform, source)), "SystemRoot": root, "ComSpec": root + "\\System32\\cmd.exe", "PATHEXT": WIN_PATHEXT,
+           "USERPROFILE": source.get("USERPROFILE") or home, "HOME": home}
+    for name in ("LOCALAPPDATA", "APPDATA", "TEMP", "TMP"):
+        if source.get(name):
+            out[name] = source[name]
+    return out
+
+
+def child_env(extra=None, inherit=(), path_extra=(), home=None, source=None, platform=None):
     """A minimal explicit environment: PATH (fixed dirs + path_extra), HOME, LANG, then the names in `inherit`, then `extra` (None removes). Loader variables raise."""
     source = os.environ if source is None else source
-    home = home or source.get("HOME") or str(Path.home())
-    lang = source.get("LANG", "")
-    path = os.pathsep.join(list(path_extra) + system_dirs(home))
-    out = {"PATH": path, "HOME": home, "LANG": lang if re.match(r"^[A-Za-z0-9_.@-]{1,32}$", lang) else "en_US.UTF-8"}
+    if _is_win(platform):
+        home = home or source.get("USERPROFILE") or str(Path.home())
+        out = _win_child_env(source, path_extra, home, platform)
+    else:
+        home = home or source.get("HOME") or str(Path.home())
+        lang = source.get("LANG", "")
+        path = os.pathsep.join(list(path_extra) + system_dirs(home))
+        out = {"PATH": path, "HOME": home, "LANG": lang if re.match(r"^[A-Za-z0-9_.@-]{1,32}$", lang) else "en_US.UTF-8"}
     for name in inherit:
         if LOADER_ENV.match(name):
             raise ValueError("refusing to inherit " + name + " into a child process")
@@ -245,12 +400,34 @@ def _vet_argv(argv, policy):
     if not verdict.ok:
         error = TrustNotFound if verdict.reason == "not-found" else TrustRefused
         raise error(verdict.reason, os.path.basename(items[0]) + " is not a trusted program (" + verdict.reason + "): " + verdict.detail)
+    platform = policy.platform if policy else None
+    if _is_win(platform) and ntpath.splitext(verdict.path)[1].lower() in WIN_BATCH:
+        return _batch_via_cmd(items, verdict, policy)
     return items, verdict
 
 
-def _spawn_kwargs(verdict, env, inherit):
+def _batch_via_cmd(items, verdict, policy):
+    """Rule W5: a .cmd/.bat runs only through the vetted System32 cmd.exe, and only when nothing in the line can be reinterpreted by cmd."""
+    policy = policy or Policy()  # the default-policy callers (doctor, update) pass None; real Windows crashed on policy.platform
+    for item in [verdict.path] + items:
+        if WIN_METACHARS & set(item):
+            raise TrustRefused("bad-argv", "refusing a cmd.exe metacharacter (& | < > ^ % ! \" or a newline) in " + repr(item))
+    cmd = vet_path(_win_root(os.environ) + "\\System32\\cmd.exe", Policy(dirs=(_win_root(os.environ) + "\\System32",), platform=policy.platform, fs=policy.fs))
+    if not cmd.ok:
+        raise TrustRefused(cmd.reason, "cmd.exe is not a trusted program (" + cmd.reason + "): " + cmd.detail)
+    line = '"' + cmd.path + '" /d /s /c ""' + verdict.path + '"' + "".join(' "' + a + '"' for a in items[1:]) + '"'
+    # cmd.exe is the executable; `via` stays the batch file's candidate so its directory joins the child's PATH.
+    return line, Vet(True, cmd.path, verdict.via, None, None)
+
+
+def _spawn_kwargs(verdict, env, inherit, policy=None):
+    platform = policy.platform if policy else None
     return {"executable": verdict.path, "shell": False,
-            "env": child_env(extra=env, inherit=inherit, path_extra=[os.path.dirname(verdict.via)])}
+            "env": child_env(extra=env, inherit=inherit, path_extra=[_dirname(verdict.via, platform)], platform=platform)}
+
+
+def _dirname(path, platform):
+    return ntpath.dirname(path) if _is_win(platform) else os.path.dirname(path)
 
 
 def run(argv, policy=None, env=None, inherit=(), **kwargs):
@@ -260,7 +437,7 @@ def run(argv, policy=None, env=None, inherit=(), **kwargs):
         if forbidden in kwargs:
             raise TypeError("trusted_bin.run does not accept " + forbidden)
     items, verdict = _vet_argv(argv, policy)
-    return subprocess.run(items, **dict(kwargs, **_spawn_kwargs(verdict, env, inherit)))
+    return subprocess.run(items, **dict(kwargs, **_spawn_kwargs(verdict, env, inherit, policy)))
 
 
 def popen(argv, policy=None, env=None, inherit=(), **kwargs):
@@ -269,7 +446,7 @@ def popen(argv, policy=None, env=None, inherit=(), **kwargs):
         if forbidden in kwargs:
             raise TypeError("trusted_bin.popen does not accept " + forbidden)
     items, verdict = _vet_argv(argv, policy)
-    return subprocess.Popen(items, **dict(kwargs, **_spawn_kwargs(verdict, env, inherit)))
+    return subprocess.Popen(items, **dict(kwargs, **_spawn_kwargs(verdict, env, inherit, policy)))
 
 
 def exec_replace(target, argv, env, policy=None):
@@ -279,4 +456,8 @@ def exec_replace(target, argv, env, policy=None):
     if not verdict.ok:
         raise TrustRefused(verdict.reason, "cannot restart into " + str(target) + " (" + verdict.reason + "): " + verdict.detail)
     clean = {k: v for k, v in env.items() if not LOADER_ENV.match(k)}
+    if _is_win(policy.platform):
+        # Rule W7: Windows has no exec-replace; run, wait, exit with the child's code.
+        done = run([verdict.path] + [str(a) for a in argv][1:], policy=policy, env=clean)
+        sys.exit(done.returncode)
     os.execve(verdict.path, [str(a) for a in argv], clean)

@@ -1,2 +1,9 @@
 # <path-glob> <pattern-name> <reason>
 tests/test_privacy_gate.py email per-command git identity on the reserved example domain, not a real address
+.github/ci/windows_smoke.py email throwaway git identity on the reserved example.invalid domain for the CI fixture repo, not a real address
+plugins/osiris/git-lane-identity.ts email the public Co-Authored-By noreply attribution address quoted in a doc comment, not a person
+plugins/osiris/work/sanitize.ts email documentation placeholder credential URL in a comment about masking
+tests/test_launch_windows.py home-path-windows invented fixture profile (a fake user named Mei) used to test path logic on any OS
+tests/test_osiris_windows.py home-path-windows invented fixture profile (a fake user named me) used to test path logic on any OS
+tests/test_trusted_bin_windows.py home-path-windows invented fixture profile (a fake user named me) used to test path logic on any OS
+.github/workflows/windows.yml email throwaway git identity on the reserved example.invalid domain for the CI fixture repo, not a real address

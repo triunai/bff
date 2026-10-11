@@ -33,7 +33,7 @@ class InstallShCopyTests(unittest.TestCase):
         fake = self.tmp / "bin"
         fake.mkdir()
         python = fake / "python3"
-        python.write_text("#!/bin/sh\nexit 1\n")
+        python.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
         python.chmod(python.stat().st_mode | stat.S_IEXEC)
         run = self.run_sh(path=str(fake) + os.pathsep + os.environ["PATH"])
         self.assertEqual(run.returncode, 1)
@@ -47,10 +47,10 @@ class InstallShCopyTests(unittest.TestCase):
         self.assertIn("run this installer again", run.stderr)
 
     def test_missing_curl_names_the_action(self):
-        self.assertIn("Install curl", (ROOT / "install.sh").read_text())
+        self.assertIn("Install curl", (ROOT / "install.sh").read_text(encoding="utf-8"))
 
     def test_setup_exit_messages_are_distinct(self):
-        text = (ROOT / "install.sh").read_text()
+        text = (ROOT / "install.sh").read_text(encoding="utf-8")
         self.assertIn('"$BFF_RC" = 3', text)
         self.assertIn('"$BFF_RC" = 4', text)
         self.assertIn("not publicly released yet", text)
@@ -59,8 +59,8 @@ class InstallShCopyTests(unittest.TestCase):
         self.assertNotIn("activates bff", text)
 
     def test_extraction_errors_end_with_an_action_in_both_installers(self):
-        sh = (ROOT / "install.sh").read_text()
-        ps = (ROOT / "install.ps1").read_text()
+        sh = (ROOT / "install.sh").read_text(encoding="utf-8")
+        ps = (ROOT / "install.ps1").read_text(encoding="utf-8")
         for text in (sh, ps):
             self.assertIn("github.com/triunai/bff/releases", text.split("checksum mismatch", 1)[1].split("\n", 1)[0])
             self.assertIn("This should not happen with an official release", text)
@@ -77,11 +77,11 @@ class InstallShCopyTests(unittest.TestCase):
 
 class WindowsPreviewTests(unittest.TestCase):
     def setUp(self):
-        self.ps1 = (ROOT / "install.ps1").read_text()
+        self.ps1 = (ROOT / "install.ps1").read_text(encoding="utf-8")
 
     def test_python_version_failure_has_the_windows_guidance(self):
-        self.assertIn("winget install Python.Python.3.12",
-                      self.ps1.split("sys.exit(0 if sys.version_info", 1)[1].split("$releases", 1)[0])
+        self.assertIn("winget install Python.Python.3.12", self.ps1.split("function ConvertTo-ArgString", 1)[0])
+        self.assertIn("throw $pythonHelp", self.ps1.split("function Find-Python", 1)[1])
 
     def test_generic_failures_name_the_next_step(self):
         self.assertNotIn("throw 'BFF install failed.'", self.ps1)

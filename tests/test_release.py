@@ -21,17 +21,17 @@ class ReleaseBoundaryTests(unittest.TestCase):
             (root / "scripts").mkdir(exist_ok=True)
             shutil.copy2(BUILDER, root / "scripts" / "build-bff-release.py")
             command = [sys.executable, str(root / "scripts" / "build-bff-release.py"), "--output", str(Path(temporary) / "artifacts")]
-            original = (root / "README.md").read_text()
+            original = (root / "README.md").read_text(encoding="utf-8")
             control = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(control.returncode, 0, control.stderr)
             self.assertGreater(json.loads(control.stdout)["files"], 20)
             canaries = ["/Users/" + "canary/private/file", "-----BEGIN " + "PRIVATE KEY-----", "ghp_" + "X" * 36]
             for canary in canaries:
-                (root / "README.md").write_text(original + "\n" + canary)
+                (root / "README.md").write_text(original + "\n" + canary, encoding="utf-8")
                 broken = subprocess.run(command, capture_output=True, text=True)
                 self.assertNotEqual(broken.returncode, 0)
                 self.assertIn("README.md", broken.stderr)
                 self.assertNotIn(canary, broken.stderr)
-            (root / "README.md").write_text(original)
+            (root / "README.md").write_text(original, encoding="utf-8")
             restored = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(restored.returncode, 0, restored.stderr)

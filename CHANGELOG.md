@@ -6,6 +6,22 @@ Versioning policy: [Semantic Versioning](https://semver.org/). While BFF is 0.x,
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-11
+
+Native Windows is now proven on real `windows-latest` runners (Windows PowerShell 5.1 and PowerShell 7, Python 3.9 and 3.12): install, activation, `bff doctor`, `bff osiris prune` and `bff osiris factory`. The one-line installers need no login.
+
+### Fixed
+- Windows: every text read and write names UTF-8 (the locale codec crashed the release build and `bff update` on non-ASCII); checksums, manifests and version pins are written byte-exact so Windows never turns LF into CRLF inside a hashed file.
+- Windows: `bff doctor` and `bff update` crashed when they ran a `.cmd` tool such as `npm.cmd` (the default trust policy was never built for the cmd.exe wrapper).
+- Windows: `bff check --run` refused an absolute program path such as `C:\Python\python.exe` (it only recognised `/`).
+- Windows: `bff herdr` and the launcher writer called `os.fchmod`, which does not exist there.
+- The privacy gate no longer flags invented Windows fixture profiles or documentation placeholders; the one recorded real hit is still reported.
+
+### Changed
+- `install.sh` and `install.ps1` in `triunai/bff-install` download the public release over HTTPS (no `gh`, no login); `gh` is used only when installed and signed in. Checksum verification is unchanged and mandatory.
+- The `windows` workflow is blocking and installs through the real scripts; the `tests` workflow no longer tolerates a Windows failure.
+- Tests whose fixture only exists on POSIX (shell-script fakes, symlink and permission-bit assertions, `execve`) are skipped on Windows with a stated reason (`tests/winskip.py`); the Windows rule for each has its own test.
+
 ## [0.2.0] - 2026-10-07
 
 Highlights: a one-line installer through `gh`, native Windows install (untested on real Windows), trusted binaries, the Osiris terminal commands, `bff osiris prune --apply`, and a launcher that attaches your default herdr session.

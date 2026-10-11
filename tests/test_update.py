@@ -15,6 +15,8 @@ from unittest import mock
 
 SDK = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SDK))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import winskip  # noqa: E402
 sys.path.insert(0, str(SDK / "scripts"))
 from bff import __version__, cli, paths, state, update
 import versioning
@@ -51,8 +53,8 @@ class Fixture(unittest.TestCase):
         copy_repo(newer)
         versioning.apply_version(newer, NEW)
         changelog = newer / "CHANGELOG.md"
-        changelog.write_text(changelog.read_text().replace(
-            "## [Unreleased]", "## [Unreleased]\n\n## [" + NEW + "] - 2026-10-06\n\n### Added\n- Synthetic change line.\n", 1))
+        changelog.write_text(changelog.read_text(encoding="utf-8").replace(
+            "## [Unreleased]", "## [Unreleased]\n\n## [" + NEW + "] - 2026-10-06\n\n### Added\n- Synthetic change line.\n", 1), encoding="utf-8")
         built = root / "built"
         subprocess.run([sys.executable, str(newer / "scripts" / "build-bff-release.py"), "--output", str(built)],
                        check=True, stdout=subprocess.PIPE)
@@ -75,7 +77,7 @@ class Fixture(unittest.TestCase):
         installer.install(self.prefix, source=self.current_src)
         self.srv = self.root / "srv"
         shutil.copytree(str(self.template_srv), str(self.srv))
-        self.base = "file://" + str(self.srv)
+        self.base = Path(self.srv).resolve().as_uri()
         self.bin = self.root / "fakebin"
         self.bin.mkdir()
         self.state_file = Path(str(paths.state_path(prefix=self.prefix)))
@@ -83,7 +85,7 @@ class Fixture(unittest.TestCase):
     def fake_gh(self, ok):
         record = self.root / ("gh-ok.argv" if ok else "gh-bad.argv")
         script = self.bin / ("gh-ok" if ok else "gh-bad")
-        script.write_text((GH_OK if ok else GH_BAD).format(rec=str(record)))
+        script.write_text((GH_OK if ok else GH_BAD).format(rec=str(record)), encoding="utf-8")
         script.chmod(0o755)
         return script, record
 
@@ -111,9 +113,10 @@ class Fixture(unittest.TestCase):
 
     def rewrite_sums(self):
         sums = self.srv / "download" / ("v" + NEW) / "SHA256SUMS"
-        sums.write_text(sha(self.tarball()) + "  " + self.tarball().name + "\n")
+        sums.write_text(sha(self.tarball()) + "  " + self.tarball().name + "\n", encoding="utf-8")
 
 
+@winskip.posix_only('builds bin/bff as a symlink and reads it with os.readlink; the Windows launcher is pinned in test_update_windows and test_windows_install')
 class UpdateFlow(Fixture):
     def test_happy_path_without_gh(self):
         lines = []
@@ -137,7 +140,7 @@ class UpdateFlow(Fixture):
         gh, record = self.fake_gh(True)
         result = self.update(gh=str(gh))
         self.assertTrue(result["attested"])
-        argv = record.read_text().split("\n")[:-1]
+        argv = record.read_text(encoding="utf-8").split("\n")[:-1]
         self.assertTrue(argv[2].endswith("bff-" + NEW + ".tar.gz"))
         self.assertEqual(argv[:2] + argv[3:], [
             "attestation", "verify", "-R", "triunai/bff",
@@ -269,7 +272,7 @@ class UpdateFlow(Fixture):
         before = self.snapshot()
         extracted = self.root / "tamper"
         update.safe_extract(self.tarball(), extracted, "bff-" + NEW)
-        (extracted / ("bff-" + NEW) / "bff" / "cli.py").write_text("# changed\n")
+        (extracted / ("bff-" + NEW) / "bff" / "cli.py").write_text("# changed\n", encoding="utf-8")
         with tarfile.open(str(self.tarball()), "w:gz") as tf:
             tf.add(str(extracted / ("bff-" + NEW)), arcname="bff-" + NEW)
         self.rewrite_sums()
@@ -313,6 +316,7 @@ class PluginStep(Fixture):
         self.assertEqual((outcome, calls), ("skipped", []))
         self.assertEqual(lines, ["Osiris plugin: skipped (BB not found)"])
 
+    @winskip.posix_only('builds bin/bff as a symlink; Windows activates bin/bff.cmd, pinned by test_windows_install and the real-Windows smoke')
     def test_exit_codes_map_to_outcomes_and_argv_is_the_new_bff(self):
         for code, expected in ((0, "ok"), (3, "waiting"), (1, "failed"), (7, "failed")):
             with self.subTest(code):
@@ -343,6 +347,7 @@ class PluginStep(Fixture):
             self.assertEqual(update.plugin_step(self.prefix, out=lambda line: None), "skipped")
 
 
+@winskip.posix_only('builds bin/bff as a symlink and reads it with os.readlink; the Windows launcher is pinned in test_update_windows and test_windows_install')
 class ApplyWithPlugin(Fixture):
     def test_plugin_step_runs_after_the_flip_with_the_new_binary_path(self):
         order = []
@@ -385,6 +390,7 @@ class ApplyWithPlugin(Fixture):
         self.assertUnchanged(before)
 
 
+@winskip.posix_only('builds bin/bff as a symlink and reads it with os.readlink; the Windows launcher is pinned in test_update_windows and test_windows_install')
 class Rollback(Fixture):
     def test_rollback_toggles(self):
         result = self.update()
@@ -449,8 +455,8 @@ class Engine(unittest.TestCase):
         directory = Path(temporary.name) / "latest" / "download"
         directory.mkdir(parents=True)
         if text is not None:
-            (directory / "SHA256SUMS").write_text(text)
-        return "file://" + temporary.name
+            (directory / "SHA256SUMS").write_text(text, encoding="utf-8")
+        return Path(temporary.name).resolve().as_uri()
 
     def test_latest_version(self):
         line = "a" * 64 + "  bff-1.2.3.tar.gz\n"
@@ -480,8 +486,8 @@ class Engine(unittest.TestCase):
         self.addCleanup(shutil.rmtree, str(prefix))
         package = prefix / "share" / "bff" / "releases" / "1.2.3-0123456789ab" / "bff"
         package.mkdir(parents=True)
-        self.assertEqual(paths.install_prefix(str(package / "__init__.py")), prefix)
-        self.assertIsNone(paths.install_prefix(str(prefix / "share" / "bff" / "releases" / "not-a-release" / "bff" / "x.py")))
+        self.assertEqual(paths.install_prefix(str(package / "__init__.py"), system="Linux"), prefix)
+        self.assertIsNone(paths.install_prefix(str(prefix / "share" / "bff" / "releases" / "not-a-release" / "bff" / "x.py"), system="Linux"))
         self.assertIsNone(paths.install_prefix(str(SDK / "bff" / "__init__.py")))
 
     def test_active_state_path_follows_the_running_install(self):
@@ -490,6 +496,10 @@ class Engine(unittest.TestCase):
         self.addCleanup(shutil.rmtree, str(prefix.parent))
         package = prefix / "share" / "bff" / "releases" / ("0.2.0-" + "a" * 12) / "bff"
         package.mkdir(parents=True)
+        with mock.patch("bff.paths.platform.system", return_value="Linux"):  # the fixture is the POSIX layout; the Windows layout is in test_update_windows
+            self._active_state_path_follows(package, prefix)
+
+    def _active_state_path_follows(self, package, prefix):
         self.assertEqual(paths.active_state_path(str(package / "__init__.py")),
                          paths.state_path(prefix=prefix))
         dev = paths.active_state_path(str(SDK / "bff" / "__init__.py"), env={"BFF_PREFIX": str(prefix)})
@@ -554,6 +564,7 @@ class Commands(Fixture):
         self.assertEqual((check["current"], check["latest"], check["available"]), (OLD, NEW, True))
         self.assertRegex(check["checked_at"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d")
 
+    @winskip.posix_only('builds bin/bff as a symlink; Windows activates bin/bff.cmd, pinned by test_windows_install and the real-Windows smoke')
     def test_update_prompt_eof_is_not_consent(self):
         class Tty(io.StringIO):
             def isatty(self):
@@ -568,7 +579,7 @@ class Commands(Fixture):
         self.assertEqual(os.readlink(str(self.prefix / "bin" / "bff")), before)
 
     def test_check_up_to_date_and_unknown(self):
-        (self.srv / "latest" / "download" / "SHA256SUMS").write_text("a" * 64 + "  bff-" + OLD + ".tar.gz\n")
+        (self.srv / "latest" / "download" / "SHA256SUMS").write_text("a" * 64 + "  bff-" + OLD + ".tar.gz\n", encoding="utf-8")
         code, out, _ = self.run_cli(["update", "--check"], {"BFF_RELEASE_BASE": self.base})
         self.assertIn("bff " + OLD + " is up to date", out)
         shutil.rmtree(str(self.srv / "latest"))
@@ -576,6 +587,7 @@ class Commands(Fixture):
         self.assertEqual(code, 0)
         self.assertIn("latest release unknown (offline?)", out)
 
+    @winskip.posix_only('builds bin/bff as a symlink; Windows activates bin/bff.cmd, pinned by test_windows_install and the real-Windows smoke')
     def test_update_yes_switches_and_prints_undo(self):
         code, out, err = self.run_cli(["update", "--yes"], {"BFF_RELEASE_BASE": self.base})
         self.assertEqual((code, err), (0, ""))
@@ -584,6 +596,7 @@ class Commands(Fixture):
         self.assertIn("Synthetic change line.", out)
         self.assertEqual(self.version(), "bff " + NEW)
 
+    @winskip.posix_only('builds bin/bff as a symlink; Windows activates bin/bff.cmd, pinned by test_windows_install and the real-Windows smoke')
     def test_update_without_tty_or_yes_only_prints_the_plan(self):
         before = self.snapshot()
         code, out, _ = self.run_cli(["update"], {"BFF_RELEASE_BASE": self.base})
@@ -591,6 +604,7 @@ class Commands(Fixture):
         self.assertIn(OLD + " -> " + NEW, out)
         self.assertEqual(self.snapshot(), before)
 
+    @winskip.posix_only('builds bin/bff as a symlink; Windows activates bin/bff.cmd, pinned by test_windows_install and the real-Windows smoke')
     def test_update_failure_exits_2_and_changes_nothing(self):
         before = self.snapshot()
         data = bytearray(self.tarball().read_bytes())
@@ -626,6 +640,7 @@ class Commands(Fixture):
             code = cli.main(["update"])
         self.assertEqual(code, 1)
 
+    @winskip.posix_only('builds bin/bff as a symlink; Windows activates bin/bff.cmd, pinned by test_windows_install and the real-Windows smoke')
     def test_rollback_command(self):
         self.run_cli(["update", "--yes"], {"BFF_RELEASE_BASE": self.base})
         code, out, err = self.run_cli(["rollback", "--yes"])
@@ -642,7 +657,7 @@ class Commands(Fixture):
         order = []
         data = {"plugin": {"previous_source": "path:/x"}} if previous else {}
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
-        self.state_file.write_text(json.dumps(data))
+        self.state_file.write_text(json.dumps(data), encoding="utf-8")
 
         def self_side(**kwargs):
             order.append("self")
@@ -696,6 +711,7 @@ class Commands(Fixture):
         code, _, _, order = self.rollback_run(["rollback", "--self", "--yes"], prefix=False)
         self.assertEqual((code, order), (1, []))
 
+    @winskip.posix_only('builds bin/bff as a symlink; Windows activates bin/bff.cmd, pinned by test_windows_install and the real-Windows smoke')
     def test_update_exit_1_when_the_plugin_failed_but_bff_is_updated(self):
         real = update.plugin_step
         step = mock.patch.object(update, "plugin_step", side_effect=lambda prefix, out=None: real(
@@ -706,6 +722,7 @@ class Commands(Fixture):
         self.assertIn("bff itself is updated", out)
         self.assertEqual(self.version(), "bff " + NEW)
 
+    @winskip.posix_only('builds bin/bff as a symlink; Windows activates bin/bff.cmd, pinned by test_windows_install and the real-Windows smoke')
     def test_update_exit_0_when_the_plugin_is_waiting(self):
         step = mock.patch.object(update, "plugin_step", return_value="waiting")
         code, _, _ = self.run_with(["update", "--yes"], [step], env={"BFF_RELEASE_BASE": self.base})

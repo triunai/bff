@@ -31,7 +31,7 @@ class PruneApplyTests(unittest.TestCase):
         (self.plugin / "bin").mkdir(parents=True)
         git(base, "init", "--bare", "-b", "main", str(self.remote))
         git(base, "init", "-b", "main", str(self.repo))
-        (self.repo / "a.txt").write_text("a\n")
+        (self.repo / "a.txt").write_text("a\n", encoding="utf-8")
         git(self.repo, "add", "a.txt")
         git(self.repo, "commit", "-m", "init")
         git(self.repo, "remote", "add", "origin", str(self.remote))
@@ -42,13 +42,13 @@ class PruneApplyTests(unittest.TestCase):
             path = base / ("wt-" + name)
             git(self.repo, "worktree", "add", "-b", "b-" + name, str(path))
             self.trees[name] = path
-        (self.trees["unpushed"] / "b.txt").write_text("b\n")
+        (self.trees["unpushed"] / "b.txt").write_text("b\n", encoding="utf-8")
         git(self.trees["unpushed"], "add", "b.txt")
         git(self.trees["unpushed"], "commit", "-m", "local only")
         git(self.repo, "worktree", "lock", str(self.trees["locked"]))
         self.plan = {"opts": {}, "review": [], "keep": [],
                      "safe": [{"path": str(p), "name": n, "branch": "b-" + n, "bucket": "SAFE", "reason": "stub"} for n, p in self.trees.items()]}
-        (self.trees["dirty"] / "scratch.txt").write_text("became dirty after the plan\n")
+        (self.trees["dirty"] / "scratch.txt").write_text("became dirty after the plan\n", encoding="utf-8")
 
     def args(self, **kw):
         values = dict(repo=self.repo, yes=True, min_idle_days=None, json=False, apply=True)
@@ -111,7 +111,7 @@ class PruneApplyTests(unittest.TestCase):
         self.assertFalse(self.trees["safe"].exists())
 
     def test_the_default_is_a_dry_run_that_never_reaches_apply(self):
-        (self.plugin / "bin" / "osiris-tui.mjs").write_text("// stub\n")
+        (self.plugin / "bin" / "osiris-tui.mjs").write_text("// stub\n", encoding="utf-8")
         with mock.patch.dict(os.environ, {"OSIRIS_PLUGIN_DIR": str(self.plugin)}), mock.patch("bff.osiris_tui.trusted_bin.which", return_value="/fake/node"), \
                 mock.patch("bff.osiris_tui.trusted_bin.run", return_value=subprocess.CompletedProcess([], 0)) as run, \
                 mock.patch("bff.osiris_prune.apply_prune") as apply:

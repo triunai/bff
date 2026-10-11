@@ -25,14 +25,14 @@ LOCK = "package-lock.json"  # root `version` and `packages[""].version` track pa
 
 def read_version(root):
     """The authoritative version, parsed (not imported) from bff/__init__.py."""
-    match = SOURCE_PATTERN.search((Path(root) / SOURCE_FILE).read_text())
+    match = SOURCE_PATTERN.search((Path(root) / SOURCE_FILE).read_text(encoding="utf-8"))
     if not match:
         raise ValueError("No __version__ = \"X.Y.Z\" line in " + SOURCE_FILE)
     return match.group(1)
 
 
 def _read(root, name):
-    return (Path(root) / name).read_text()
+    return (Path(root) / name).read_text(encoding="utf-8")
 
 
 def pins(root):
@@ -67,7 +67,7 @@ def apply_version(root, version):
 
     def rewrite(name, text):
         if text != _read(root, name):
-            (root / name).write_text(text)
+            (root / name).write_bytes(text.encode("utf-8"))
             changed.append(name)
 
     rewrite(SOURCE_FILE, SOURCE_PATTERN.sub('__version__ = "' + version + '"', _read(root, SOURCE_FILE)))

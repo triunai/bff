@@ -18,12 +18,12 @@ class OsirisTuiTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.plugin = Path(self.temporary.name).resolve() / "plugin dir"
         (self.plugin / "bin").mkdir(parents=True)
-        (self.plugin / "bin" / "osiris-tui.mjs").write_text("// stub\n")
+        (self.plugin / "bin" / "osiris-tui.mjs").write_text("// stub\n", encoding="utf-8")
 
     def run_cli(self, argv, env=None):
         stdout, stderr = io.StringIO(), io.StringIO()
         with mock.patch.dict(os.environ, {"OSIRIS_PLUGIN_DIR": str(self.plugin), **(env or {})}), \
-                mock.patch("bff.osiris_tui.trusted_bin.which", side_effect=lambda name: "/fake/" + name), \
+                mock.patch("bff.osiris_tui.trusted_bin.which", side_effect=lambda name, policy=None: "/fake/" + name), \
                 mock.patch("bff.osiris_tui.trusted_bin.run", return_value=subprocess.CompletedProcess([], 0)) as run, \
                 contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             code = cli.main(argv)

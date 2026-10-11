@@ -11,9 +11,11 @@ from pathlib import Path
 
 SDK = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SDK))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import winskip  # noqa: E402
 from unittest import mock
 
-from bff import cli, state, update_notice
+from bff import cli, paths, state, update_notice
 
 NOW = datetime(2026, 10, 6, 12, 0, 0, tzinfo=timezone.utc)
 STAMP = "%Y-%m-%dT%H:%M:%SZ"
@@ -159,7 +161,7 @@ class CheckOutcomeTests(NoticeCase):
         self.assertEqual(text.count("\n"), 1)
 
     def test_corrupt_state_does_not_raise(self):
-        self.state_file.write_text("{not json")
+        self.state_file.write_text("{not json", encoding="utf-8")
         outcome, text = self.notice()
         self.assertEqual(outcome, "unknown")
         self.assertTrue(text.startswith("update check failed: "))
@@ -312,7 +314,7 @@ class CliTests(unittest.TestCase):
                 mock.patch("bff.cli.launch_osiris", return_value=0):
             self.assertEqual(self.run_cli(["osiris"])[0], 0)
         fake.latest_version.assert_not_called()
-        self.assertFalse((Path(self.temporary.name) / "share" / "bff" / "state.json").exists())
+        self.assertFalse(Path(str(paths.state_path(prefix=Path(self.temporary.name)))).exists())
 
     def test_config_set_get_list(self):
         self.assertEqual(self.run_cli(["config", "get", "update.auto"])[1], "false\n")
@@ -321,7 +323,7 @@ class CliTests(unittest.TestCase):
         code, text, _ = self.run_cli(["config", "list"])
         self.assertEqual(code, 0)
         self.assertEqual(text.splitlines(), ["update.auto = true", "update.check = true (default)"])
-        self.assertTrue((Path(self.temporary.name) / "share" / "bff" / "state.json").is_file())
+        self.assertTrue(Path(str(paths.state_path(prefix=Path(self.temporary.name)))).is_file())
 
     def test_config_bad_key_and_bad_value_exit_2(self):
         for args in (["config", "get", "nope"], ["config", "set", "nope", "1"], ["config", "set", "update.auto", "maybe"]):
@@ -353,7 +355,7 @@ class RelaunchTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.prefix = Path(self.temporary.name)
         (self.prefix / "bin").mkdir()
-        (self.prefix / "bin" / "bff").write_text("#!/bin/sh\n")
+        (self.prefix / "bin" / "bff").write_text("#!/bin/sh\n", encoding="utf-8")
         (self.prefix / "bin" / "bff").chmod(0o755)  # the real launcher is executable, and the primitive refuses to exec a file that is not
 
     def relaunch(self, prefix):
@@ -366,6 +368,7 @@ class RelaunchTests(unittest.TestCase):
             update_notice.relaunch_default()
         return execve, out.getvalue()
 
+    @winskip.posix_only('asserts os.execve; Windows runs, waits and exits (rule W7), pinned in test_trusted_bin_windows')
     def test_execs_this_installs_own_command(self):
         execve, _ = self.relaunch(self.prefix)
         target = str(self.prefix / "bin" / "bff")

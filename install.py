@@ -12,10 +12,11 @@ import shlex
 import shutil
 import sys
 import tempfile
+import time
 import uuid
 
 # Keep startup stdlib-only: release verification precedes any packaged module import.
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 SOURCE = Path(__file__).resolve().parent
 RELEASE_NAME = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+-[a-f0-9]{12}")
@@ -92,7 +93,7 @@ def verify_source_manifest(source):
         return  # A development tree need not carry an archive manifest.
     if path.is_symlink() or not path.is_file():
         raise ValueError("Release archive manifest must be a regular file")
-    manifest = json.loads(path.read_text())
+    manifest = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(manifest, dict) or manifest.get("version") != __version__:
         raise ValueError("Archive manifest version mismatch")
     expected = manifest.get("files")
@@ -148,13 +149,32 @@ def _cmd_quote(value):
 
 
 def windows_launcher(interpreter, release_dir=None, release_name=None):
-    """Bytes of a bff.cmd. Inside a release (release_dir None) it locates itself with %~dp0 so the release stays
-    relocatable and its digest cannot depend on its own id; the command shim in <prefix>/bin names the release
-    explicitly and carries the ownership marker that activation, disable and bff update read."""
+    """Bytes of a bff.cmd (CRLF). Inside a release (release_dir None) it locates itself with %~dp0 so the release
+    stays relocatable and its digest cannot depend on its own id; the command shim in <prefix>/bin names the
+    release explicitly and carries the ownership marker that activation, disable and bff update read.
+    ASCII paths give a pure-ASCII file. A non-ASCII path switches the console to UTF-8 (chcp 65001) first, because
+    cmd.exe would otherwise read the bytes in the OEM code page and not find the interpreter."""
     marker = "REM bff-owned release=" + release_name + "\r\n" if release_name else ""
     root = '"%~dp0.."' if release_dir is None else _cmd_quote(release_dir)
     line = _cmd_quote(interpreter) + " -c " + '"' + WINDOWS_CODE + '" ' + root + " %* & exit /b\r\n"
-    return ("@echo off\r\n" + marker + line).encode("utf-8")
+    text = "@echo off\r\n" + marker + line
+    if not text.isascii():
+        text = "@echo off\r\nchcp 65001 >nul\r\n" + text[len("@echo off\r\n"):]
+    return text.encode("utf-8")
+
+
+def replace_with_retry(source, destination, attempts=10, delay=0.2, replace=os.replace, sleep=time.sleep):
+    """os.replace that waits out a transient PermissionError. On Windows the destination can be briefly held open
+    (cmd.exe keeps a running .cmd open, antivirus scans a fresh file); a short retry turns that into a success
+    instead of a failed activation. The last error is raised unchanged so the message stays truthful."""
+    for attempt in range(attempts):
+        try:
+            replace(str(source), str(destination))
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            sleep(delay * (attempt + 1))
 
 
 def shim_release(text):
@@ -204,7 +224,7 @@ def verify_release(release, system=None):
     manifest_path = release / "manifest.json"
     if manifest_path.is_symlink():
         raise ValueError("Symlink manifest refused")
-    manifest = json.loads(manifest_path.read_text())
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("schema_version") != 1 or release_id(manifest) != release.name:
         raise ValueError("Release identity mismatch")
     expected = manifest["files"]
@@ -246,7 +266,7 @@ def activate(release, prefix, system=None):
         previous = shim_release(command.read_text(encoding="utf-8", errors="replace")) if command.is_file() else None
         try:
             temporary.write_bytes(windows_launcher(manifest["python"], release, release.name))
-            os.replace(str(temporary), str(command))
+            replace_with_retry(temporary, command)
         finally:
             if temporary.exists():
                 temporary.unlink()
@@ -310,7 +330,7 @@ def offer_path(bin_dir, *, env, stdin, out, home, system, yes=False, no_modify=F
     if not interactive:
         _say(out, hint)
         return {"path_modified": False, "path_hint": hint}
-    existing = rc.read_text() if rc.is_file() else ""
+    existing = rc.read_text(encoding="utf-8") if rc.is_file() else ""
     if PATH_MARKER in existing:
         return {"path_modified": False, "path_hint": "Already added to " + str(rc)}
     out.write("Add " + str(bin_dir) + " to PATH in " + str(rc) + "? [Y/n] ")
@@ -320,7 +340,7 @@ def offer_path(bin_dir, *, env, stdin, out, home, system, yes=False, no_modify=F
         return {"path_modified": False, "path_hint": hint}
     rc.parent.mkdir(parents=True, exist_ok=True)
     separator = "" if not existing or existing.endswith("\n") else "\n"
-    with open(str(rc), "a") as handle:
+    with open(str(rc), "a", encoding="utf-8") as handle:
         handle.write(separator + PATH_MARKER + "\n" + line + "\n")
     _say(out, "Added to " + str(rc) + ". Open a new terminal to pick it up.")
     return {"path_modified": True, "path_hint": "Added to " + str(rc)}
@@ -364,7 +384,7 @@ def stage(prefix, source=SOURCE, interpreter=None, system=None):
                     raise ValueError("Release input changed during installation")
                 destination.write_bytes(data)
             (staging / "bin" / "bff").chmod(0o755)
-            (staging / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+            (staging / "manifest.json").write_bytes((json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8"))
             os.rename(str(staging), str(release))
         finally:
             if staging.exists():

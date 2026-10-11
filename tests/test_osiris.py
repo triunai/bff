@@ -13,6 +13,8 @@ from unittest import mock
 
 SDK = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SDK))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import winskip  # noqa: E402
 from bff import cli, osiris, paths, state, trusted_bin
 
 FAKE_BB = """#!%s
@@ -63,7 +65,7 @@ class Fake(unittest.TestCase):
         self.bin = self.root / "bin"
         self.bin.mkdir()
         self.bb = str(self.bin / "bb")
-        Path(self.bb).write_text(FAKE_BB % sys.executable)
+        Path(self.bb).write_text(FAKE_BB % sys.executable, encoding="utf-8")
         os.chmod(self.bb, 0o755)
         self.log = self.root / "log.jsonl"
         self.state_file = self.root / "state.json"
@@ -96,12 +98,12 @@ class Fake(unittest.TestCase):
         self.set_plugins()
 
     def set_plugins(self, *plugins, raw=None):
-        self.fake_state.write_text(raw if raw is not None else json.dumps({"plugins": list(plugins)}))
+        self.fake_state.write_text(raw if raw is not None else json.dumps({"plugins": list(plugins)}), encoding="utf-8")
 
     def calls(self):
         if not self.log.exists():
             return []
-        return [json.loads(line) for line in self.log.read_text().splitlines()]
+        return [json.loads(line) for line in self.log.read_text(encoding="utf-8").splitlines()]
 
     def installs(self):
         return [c["argv"] for c in self.calls() if c["argv"][:2] == ["plugin", "install"]]
@@ -129,7 +131,7 @@ class Fake(unittest.TestCase):
     def plugin(self, name, version="0.2.1", xterm=True, symlink=False):
         directory = self.staging / name
         (directory / "node_modules" / "@xterm" / ("xterm" if xterm else "other")).mkdir(parents=True)
-        (directory / "package.json").write_text(json.dumps({"version": version}))
+        (directory / "package.json").write_text(json.dumps({"version": version}), encoding="utf-8")
         if symlink:
             os.symlink(str(directory / "package.json"), str(directory / "link"))
         return directory
@@ -147,13 +149,14 @@ class CompatTests(Fake):
         self.assertIs(data["osiris"]["published"], False)
 
     def test_bad_shape_is_refused(self):
-        (self.root / "compat.json").write_text('{"schema_version": 1}')
+        (self.root / "compat.json").write_text('{"schema_version": 1}', encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "shape"):
             osiris.load_compat(self.root)
         with self.assertRaisesRegex(ValueError, "unreadable"):
             osiris.load_compat(self.root / "absent")
 
 
+@winskip.posix_only('the fake bb/herdr is a #! script; trusted_bin refuses scripts on Windows by design (BB and Osiris-in-BB are unsupported there; test_osiris_windows pins the Windows rules)')
 class PluginStatusTests(Fake):
     def status(self):
         return osiris.plugin_status(self.bb)
@@ -189,8 +192,8 @@ class PluginStatusTests(Fake):
         release = self.root / "releases" / "0.1.1-abcdef012345" / "plugins" / "osiris"
         tree = self.root / "checkout"
         (tree / "bff").mkdir(parents=True)
-        (tree / "bff" / "cli.py").write_text("")
-        (tree / "install.py").write_text("")
+        (tree / "bff" / "cli.py").write_text("", encoding="utf-8")
+        (tree / "install.py").write_text("", encoding="utf-8")
         for directory, stale in ((release, True), (tree / "plugins" / "osiris", True), (self.root / "staged" / "install-0.2.9", False),
                                  (self.root / "elsewhere" / "plugins" / "osiris", False)):
             self.set_plugins(entry("path:" + str(directory)))
@@ -215,6 +218,7 @@ class PrerequisiteTests(Fake):
         self.assertFalse(next(r for r in rows if r["name"] == "Node")["required"])
 
 
+@winskip.posix_only('the fake bb/herdr is a #! script; trusted_bin refuses scripts on Windows by design (BB and Osiris-in-BB are unsupported there; test_osiris_windows pins the Windows rules)')
 class SetupTests(Fake):
     def test_path_dev_source_with_yes_never_replaced(self):
         self.set_plugins(entry("path:" + HOME + "/dev/plugin"))
@@ -312,6 +316,7 @@ class SetupTests(Fake):
         self.assertEqual(self.installs(), [])
 
 
+@winskip.posix_only('the fake bb/herdr is a #! script; trusted_bin refuses scripts on Windows by design (BB and Osiris-in-BB are unsupported there; test_osiris_windows pins the Windows rules)')
 class UpdateTests(Fake):
     def update(self, **kw):
         kw.setdefault("staging_root", str(self.staging))
@@ -399,6 +404,7 @@ class UpdateTests(Fake):
         self.assertEqual(self.installs(), [])
 
 
+@winskip.posix_only('the fake bb/herdr is a #! script; trusted_bin refuses scripts on Windows by design (BB and Osiris-in-BB are unsupported there; test_osiris_windows pins the Windows rules)')
 class RollbackTests(Fake):
     def test_swaps_and_swaps_back(self):
         a, b = "path:" + str(self.root / "a"), "path:" + str(self.root / "b")
@@ -427,6 +433,7 @@ class RollbackTests(Fake):
         self.assertEqual(state.load(self.state_file)["plugin"], original["plugin"])
 
 
+@winskip.posix_only('the fake bb/herdr is a #! script; trusted_bin refuses scripts on Windows by design (BB and Osiris-in-BB are unsupported there; test_osiris_windows pins the Windows rules)')
 class CliTests(Fake):
     def command(self, args):
         stdout, stderr = io.StringIO(), io.StringIO()
@@ -496,9 +503,9 @@ class ReleaseTests(Fake):
             shutil.copytree(str(SDK / name), str(source / name), ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copy(str(SDK / "compat.json"), str(source / "compat.json"))
         shutil.copytree(str(SDK / "plugins"), str(source / "plugins"), ignore=shutil.ignore_patterns("node_modules"))
-        (source / "README.md").write_text("scratch\n")
+        (source / "README.md").write_text("scratch\n", encoding="utf-8")
         result = installer.install(self.root / "prefix2", source=source)
-        release = self.root / "prefix2" / "share" / "bff" / "releases" / result["release"]
+        release = Path(str(paths.releases_dir(prefix=self.root / "prefix2"))) / result["release"]
         self.assertTrue((release / "compat.json").is_file())
         self.assertTrue((release / "bff" / "osiris.py").is_file())
         self.assertFalse((release / "plugins").exists())
@@ -513,26 +520,26 @@ class ReleaseTests(Fake):
         for name in ("bff", "templates"):
             shutil.copytree(str(SDK / name), str(source / name), ignore=shutil.ignore_patterns("__pycache__"))
         result = installer.install(self.root / "prefix3", source=source)
-        release = self.root / "prefix3" / "share" / "bff" / "releases" / result["release"]
+        release = Path(str(paths.releases_dir(prefix=self.root / "prefix3"))) / result["release"]
         installer.verify_release(release)
         # Forge an old 0.1.x release: add the bundled plugin, then re-seal the manifest under its new identity.
         (release / "plugins" / "osiris" / "dist").mkdir(parents=True)
-        (release / "plugins" / "osiris" / "package.json").write_text("{}")
-        (release / "plugins" / "osiris" / "dist" / "app.js").write_text("// prebuilt")
-        manifest = json.loads((release / "manifest.json").read_text())
+        (release / "plugins" / "osiris" / "package.json").write_text("{}", encoding="utf-8")
+        (release / "plugins" / "osiris" / "dist" / "app.js").write_text("// prebuilt", encoding="utf-8")
+        manifest = json.loads((release / "manifest.json").read_text(encoding="utf-8"))
         manifest["files"] = installer.inventory(release)
         manifest["files"].pop("manifest.json")
         old = release.parent / installer.release_id(manifest)
-        (release / "manifest.json").write_text(json.dumps(manifest))
+        (release / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         release.rename(old)
         self.assertIn("plugins/osiris/package.json", installer.verify_release(old)["files"])
-        (old / "plugins" / "osiris" / "dist" / "app.js.map").write_text("map")
+        (old / "plugins" / "osiris" / "dist" / "app.js.map").write_text("map", encoding="utf-8")
         with self.assertRaises(ValueError):
             installer.verify_release(old)
 
     def test_no_code_path_installs_the_bundled_plugin(self):
         for module in (SDK / "bff").glob("*.py"):
-            text = module.read_text()
+            text = module.read_text(encoding="utf-8")
             self.assertNotIn("plugins/osiris", text, module.name)
             self.assertNotIn('"plugins" / "osiris"', text, module.name)
 

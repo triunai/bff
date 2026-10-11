@@ -10,6 +10,8 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import winskip  # noqa: E402
 from bff import cli, herdr
 from bff.herdr_observer import FIELDS, record
 
@@ -64,6 +66,7 @@ class HerdrCaptureTests(unittest.TestCase):
             self.assertEqual(call["parentCallId"], prefix + "p")
             self.assertEqual(call["turnId"], prefix + "t")
 
+    @winskip.posix_only('asserts POSIX permission bits (0600/0700); NTFS has no such bits')
     def test_atomic_0600_write_and_failure_preserves_old_feed(self):
         data, _ = herdr.feed([self.call], self.coverage)
         herdr.write_atomic(self.output, data)
@@ -87,7 +90,7 @@ class HerdrCaptureTests(unittest.TestCase):
 
     def test_output_and_parent_symlinks_and_traversal_refused(self):
         target = self.root / "target"
-        target.write_text("preserve")
+        target.write_text("preserve", encoding="utf-8")
         link = self.root / "link.json"
         link.symlink_to(target)
         with self.assertRaises(ValueError):
@@ -98,7 +101,7 @@ class HerdrCaptureTests(unittest.TestCase):
             herdr.write_atomic(linked_parent / "feed.json", b'{}')
         with self.assertRaises(ValueError):
             herdr.output_path(self.root / "missing" / ".." / "feed.json")
-        self.assertEqual(target.read_text(), "preserve")
+        self.assertEqual(target.read_text(encoding="utf-8"), "preserve")
 
     def test_cli_once_exact_session_and_short_output(self):
         with mock.patch("bff.herdr.NativeCollector") as collector:
@@ -110,7 +113,7 @@ class HerdrCaptureTests(unittest.TestCase):
             self.assertIn("Captured 1 local provider calls", stdout)
             self.assertIn("not a heartbeat", stdout)
             self.assertLess(len(stdout), 200)
-            parsed = json.loads(self.output.read_text())
+            parsed = json.loads(self.output.read_text(encoding="utf-8"))
             self.assertEqual(parsed["kind"], "herdr-provider-capture")
             self.assertEqual(len(parsed["calls"]), 1)
             self.assertGreater(parsed["capturedAt"], 100000)

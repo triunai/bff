@@ -12,6 +12,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import winskip  # noqa: E402
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import install as installer  # noqa: E402
@@ -66,22 +68,22 @@ class PathStepTests(unittest.TestCase):
         rc = self.home / ".zprofile"
         self.assertTrue(result["path_modified"])
         self.assertIn("[Y/n]", out)
-        self.assertEqual(rc.read_text(), installer.PATH_MARKER + '\nexport PATH="/opt/example/bin:$PATH"\n')
+        self.assertEqual(rc.read_text(encoding="utf-8"), installer.PATH_MARKER + '\nexport PATH="/opt/example/bin:$PATH"\n')
         again, prompt = self.offer()
         self.assertFalse(again["path_modified"])
         self.assertNotIn("[Y/n]", prompt)
-        self.assertEqual(rc.read_text().count(installer.PATH_MARKER), 1)
+        self.assertEqual(rc.read_text(encoding="utf-8").count(installer.PATH_MARKER), 1)
 
     def test_append_keeps_existing_content_and_adds_newline(self):
         rc = self.home / ".zprofile"
-        rc.write_text("alias a=b")
+        rc.write_text("alias a=b", encoding="utf-8")
         self.offer()
-        self.assertTrue(rc.read_text().startswith("alias a=b\n" + installer.PATH_MARKER))
+        self.assertTrue(rc.read_text(encoding="utf-8").startswith("alias a=b\n" + installer.PATH_MARKER))
 
     def test_fish_creates_conf_d(self):
         result, _ = self.offer(shell="/usr/bin/fish")
         self.assertTrue(result["path_modified"])
-        self.assertIn("fish_add_path /opt/example/bin", (self.home / ".config" / "fish" / "conf.d" / "bff.fish").read_text())
+        self.assertIn("fish_add_path /opt/example/bin", (self.home / ".config" / "fish" / "conf.d" / "bff.fish").read_text(encoding="utf-8"))
 
     def test_tty_no_does_not_edit(self):
         result, out = self.offer(answer="n\n")
@@ -102,8 +104,8 @@ class WindowsInstallerTests(unittest.TestCase):
     """install.ps1 cannot run here (no PowerShell); pin what can be checked as text."""
 
     def setUp(self):
-        self.ps1 = (ROOT / "install.ps1").read_text()
-        self.sh = (ROOT / "install.sh").read_text()
+        self.ps1 = (ROOT / "install.ps1").read_text(encoding="utf-8")
+        self.sh = (ROOT / "install.sh").read_text(encoding="utf-8")
 
     def test_version_pin_is_found_and_agrees(self):
         import versioning
@@ -116,17 +118,36 @@ class WindowsInstallerTests(unittest.TestCase):
         self.assertEqual(sh.strip(), ps.strip())
 
     def test_verifies_sums_and_refuses_store_stub(self):
-        for needle in ("Get-FileHash -Algorithm SHA256", "SHA256SUMS", "checksum mismatch", "\\WindowsApps\\",
+        for needle in ("Get-FileHash -Algorithm SHA256", "SHA256SUMS", "checksum mismatch",
                        "winget install --id=astral-sh.uv -e", "winget install Python.Python.3.12",
                        "-NoModifyPath", "SetEnvironmentVariable('Path'"):
             self.assertIn(needle, self.ps1)
 
     def test_gh_source_and_fix_messages_are_present(self):
-        for needle in ("gh release download", "gh auth status", "gh auth login", "winget install --id GitHub.cli", "BFF_RELEASE_BASE",
-                       "[scriptblock]::Create"):
+        for needle in ("'release', 'download'", "'auth', 'status'", "gh auth login", "winget install --id GitHub.cli", "BFF_RELEASE_BASE",
+                       "BFF_RELEASE_DIR", "[scriptblock]::Create"):
             self.assertIn(needle, self.ps1)
-        self.assertLess(self.ps1.index("gh auth status"), self.ps1.index("New-Item -ItemType Directory"))
+        self.assertLess(self.ps1.index("'auth', 'status'"), self.ps1.index("New-Item -ItemType Directory"))
         self.assertTrue(self.ps1.isascii() and self.sh.isascii())  # PowerShell 5.1 reads BOM-less files as ANSI
+
+    def test_python_discovery_runs_each_candidate_instead_of_judging_the_path(self):
+        # A real Store/winget Python lives under WindowsApps too; only an alias stub fails when it is run.
+        head = self.ps1.split("function Find-Python", 1)[1].split("function Test-Interactive", 1)[0]
+        self.assertNotIn("WindowsApps", head)
+        for needle in ("'py', '-3'", "'python3'", "sys.version_info >= (3, 9)", "Invoke-Captured", "-CommandType Application"):
+            self.assertIn(needle, head)
+
+    def test_native_output_is_captured_without_error_records(self):
+        for needle in ("RedirectStandardOutput = $true", "RedirectStandardError = $true", "ReadToEndAsync", "$run.Out.Trim()"):
+            self.assertIn(needle, self.ps1)
+        self.assertNotIn("2>&1", self.ps1)
+        self.assertNotIn("exit $", self.ps1)  # exit would close a terminal when the script is run inline
+
+    def test_interactivity_check_covers_ci_and_noninteractive(self):
+        body = self.ps1.split("function Test-Interactive", 1)[1].split("\n}\n", 1)[0]
+        for needle in ("$env:CI", "UserInteractive", "IsInputRedirected", "noni"):
+            self.assertIn(needle, body)
+        self.assertIn("catch { $answer = $null }", self.ps1)
 
     def test_blanket_wsl_gate_is_gone_and_untested_notice_is_honest(self):
         self.assertNotIn("PREVIEW: use WSL", self.ps1)
@@ -150,7 +171,58 @@ class WindowsInstallerTests(unittest.TestCase):
         import re
         pattern = re.compile(r"\|\s*(sh|bash|zsh|iex)\b|iex \(|Invoke-Expression")
         for path in [ROOT / "install.sh", ROOT / "install.ps1", ROOT / "install.py"] + sorted((ROOT / "bff").glob("*.py")):
-            self.assertIsNone(pattern.search(path.read_text()), str(path))
+            self.assertIsNone(pattern.search(path.read_text(encoding="utf-8")), str(path))
+
+
+@unittest.skipUnless(shutil.which("pwsh"), "pwsh not installed")
+class PowerShellRunTests(unittest.TestCase):
+    """Runs install.ps1 for real (pwsh) from a local release folder: the pipe-to-Invoke-Expression shape that
+    `irm | iex` produces, a prefix with a space, and a corrupted SHA256SUMS. CI runs this on windows-latest."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.work = Path(cls._tmp.name).resolve()
+        cls.release = cls.work / "release"
+        run = subprocess.run([sys.executable, str(ROOT / "scripts" / "build-bff-release.py"), "--output", str(cls.release)],
+                             capture_output=True, text=True)
+        if run.returncode != 0:
+            raise unittest.SkipTest("release build failed: " + run.stderr[-300:])
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def piped(self, release, prefix, result):
+        env = dict(os.environ, BFF_RELEASE_DIR=str(release), BFF_PREFIX=str(prefix), BFF_YES="1", BFF_NO_SETUP="1",
+                   BFF_RESULT_FILE=str(result), HOME=str(self.work / "home"), USERPROFILE=str(self.work / "home"),
+                   LOCALAPPDATA=str(self.work / "home" / "local"))  # never the real home
+        script = "Get-Content -Raw -LiteralPath '%s' | Invoke-Expression" % (ROOT / "install.ps1")
+        return subprocess.run(["pwsh", "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True, text=True, env=env)
+
+    def test_piped_install_from_local_release_dir(self):
+        prefix, result = self.work / "pre fix", self.work / "result.json"
+        run = self.piped(self.release, prefix, result)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        payload = json.loads(result.read_text(encoding="utf-8"))
+        self.assertTrue(Path(payload["command"]).is_file())
+        Path(payload["command"]).resolve().relative_to(prefix.resolve())  # raises if it landed elsewhere
+        version = subprocess.run([payload["command"], "--version"], capture_output=True, text=True)
+        self.assertEqual(version.returncode, 0, version.stdout + version.stderr)
+        self.assertIn(installer.__version__, version.stdout)
+
+    def test_corrupted_sha256sums_installs_nothing(self):
+        bad = self.work / "bad"
+        shutil.copytree(str(self.release), str(bad))
+        sums = bad / "SHA256SUMS"
+        text = sums.read_text(encoding="utf-8")
+        # Flip the first hex digit to a DIFFERENT one: a fixed "0" is a no-op one run in sixteen (flaky 0 == 0 on windows-latest).
+        sums.write_text(("1" if text[0] == "0" else "0") + text[1:], encoding="utf-8")
+        prefix = self.work / "never"
+        run = self.piped(bad, prefix, self.work / "none.json")
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("checksum mismatch", run.stdout + run.stderr)
+        self.assertFalse(prefix.exists())
 
 
 class ReleaseBuilderTests(unittest.TestCase):
@@ -158,7 +230,7 @@ class ReleaseBuilderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory)
             built = build_release(out)
-            rows = [line.split("  ") for line in (out / "SHA256SUMS").read_text().splitlines()]
+            rows = [line.split("  ") for line in (out / "SHA256SUMS").read_text(encoding="utf-8").splitlines()]
             self.assertEqual([r[1] for r in rows], ["bff-" + installer.__version__ + ".tar.gz", "install.sh", "install.ps1", "compat.json"])
             self.assertEqual([r for r in rows if r[1].startswith("bff-") and r[1].endswith(".tar.gz")], rows[:1])
             self.assertEqual(rows[0][0], built["sha256"])
@@ -184,12 +256,12 @@ class WorkflowCheckTests(unittest.TestCase):
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
 
     def broken(self, old, new):
-        text = (ROOT / ".github/workflows/release.yml").read_text()
+        text = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
         self.assertIn(old, text)
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         path = Path(directory.name) / "release.yml"
-        path.write_text(text.replace(old, new, 1))
+        path.write_text(text.replace(old, new, 1), encoding="utf-8")
         return self.run_check(path)
 
     def test_unpinned_uses_fails(self):
@@ -234,6 +306,7 @@ else:
 """
 
 
+@winskip.posix_only('runs install.sh with sh; the Windows installer is install.ps1 (PowerShellRunTests and the windows workflow)')
 class InstallShTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -267,7 +340,7 @@ class InstallShTests(unittest.TestCase):
         # The installed bff never reads PATH, so the fake bb sits where production looks for a user-installed bb: the fixed ~/.local/bin of the test HOME.
         (self.home / ".local" / "bin").mkdir(parents=True)
         bb = self.home / ".local" / "bin" / "bb"
-        bb.write_text(FAKE_BB % sys.executable)
+        bb.write_text(FAKE_BB % sys.executable, encoding="utf-8")
         bb.chmod(0o755)
 
     def run_sh(self, *args, base=None, env_extra=None):
@@ -346,6 +419,7 @@ sys.exit(3)
 """
 
 
+@winskip.posix_only('runs install.sh with sh; the Windows installer is install.ps1 (PowerShellRunTests and the windows workflow)')
 class InstallShGhSourceTests(InstallShTests):
     """The private-repo one-liner path: no BFF_RELEASE_BASE, downloads through a fake gh on PATH."""
 
@@ -356,7 +430,7 @@ class InstallShGhSourceTests(InstallShTests):
 
     def add_fake_gh(self):
         gh = self.fakebin / "gh"
-        gh.write_text(FAKE_GH % sys.executable)
+        gh.write_text(FAKE_GH % sys.executable, encoding="utf-8")
         gh.chmod(0o755)
         self.gh_log = self.tmp / "gh.log"
 
@@ -377,7 +451,7 @@ class InstallShGhSourceTests(InstallShTests):
         run = self.run_gh("--prefix", str(self.prefix), "--no-modify-path", env_extra={"FAKE_GH_AUTH": "0"})
         self.assertNotEqual(run.returncode, 0)
         self.assertIn("not signed in. Run: gh auth login", run.stderr)
-        self.assertNotIn("release download", self.gh_log.read_text())
+        self.assertNotIn("release download", self.gh_log.read_text(encoding="utf-8"))
         self.assertFalse(self.prefix.exists())
 
     def test_gh_install_runs_new_bff_and_leaves_home_alone(self):
@@ -385,7 +459,7 @@ class InstallShGhSourceTests(InstallShTests):
         run = self.run_gh("--prefix", str(self.prefix), "--no-modify-path")
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertNotIn("release source", run.stderr)
-        self.assertIn("release download v" + self.version + " --repo triunai/bff", self.gh_log.read_text())
+        self.assertIn("release download v" + self.version + " --repo triunai/bff", self.gh_log.read_text(encoding="utf-8"))
         self.assertEqual(list(self.home.iterdir()), [])
         version = subprocess.run([str(self.prefix / "bin" / "bff"), "--version"], capture_output=True, text=True)
         self.assertEqual(version.stdout.strip(), "bff " + self.version)
@@ -425,7 +499,7 @@ class InstallShGhSourceTests(InstallShTests):
     def test_oneliner_form_runs_script_text_via_sh_c(self):
         # The documented one-liner passes the script as a -c string, so stdin stays the terminal for the PATH prompt.
         self.add_fake_gh()
-        text = (ROOT / "install.sh").read_text()
+        text = (ROOT / "install.sh").read_text(encoding="utf-8")
         env = {"HOME": str(self.home), "PATH": str(self.fakebin) + ":/usr/bin:/bin", "TMPDIR": str(self.tmp), "PYTHONDONTWRITEBYTECODE": "1",
                "FAKE_GH_SRC": str(self.srv), "FAKE_GH_LOG": str(self.gh_log)}
         run = subprocess.run(["sh", "-c", text, "bff-install", "--prefix", str(self.prefix), "--no-modify-path"], env=env,

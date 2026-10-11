@@ -37,7 +37,7 @@ class PosixPaths(unittest.TestCase):
         self.assertEqual(posix(paths.cache_dir, env={"XDG_CACHE_HOME": ""}), Path("/h/.cache/bff"))
 
     def test_data_dir_agrees_with_herdr_feed_default(self):
-        source = (Path(cli.__file__)).read_text()
+        source = (Path(cli.__file__)).read_text(encoding="utf-8")
         self.assertIn('Path.home() / ".local" / "share" / "bff" / "herdr-feed.json"', source)
         feed_dir = Path.home() / ".local" / "share" / "bff"
         self.assertEqual(paths.data_dir(system="Linux", home=Path.home(), env={}), feed_dir)
@@ -80,7 +80,7 @@ class InstallMethod(unittest.TestCase):
     def module(self, *parts):
         path = self.root.joinpath(*parts)
         path.parent.mkdir(parents=True)
-        path.write_text("")
+        path.write_text("", encoding="utf-8")
         return path
 
     def method(self, module, **kw):
@@ -110,7 +110,7 @@ class InstallMethod(unittest.TestCase):
     def test_dev(self):
         module = self.module("src", "bff", "bff", "__init__.py")
         (self.root / "src" / "bff" / ".git").mkdir()
-        (self.root / "src" / "bff" / "install.py").write_text("")
+        (self.root / "src" / "bff" / "install.py").write_text("", encoding="utf-8")
         self.assertEqual(self.method(module), "dev")
 
     def test_git_without_install_py_is_unknown(self):

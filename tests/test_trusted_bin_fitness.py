@@ -14,7 +14,7 @@ BANNED_OS = {"system", "popen", "execl", "execle", "execlp", "execlpe", "execv",
 
 def sources():
     files = sorted(ROOT.glob("bff/*.py")) + sorted(ROOT.glob("scripts/*.py")) + [ROOT / "install.py"]
-    return [(str(p.relative_to(ROOT)), p) for p in files if p.is_file()]
+    return [(p.relative_to(ROOT).as_posix(), p) for p in files if p.is_file()]
 
 
 def problems(text):
