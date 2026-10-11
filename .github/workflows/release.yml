@@ -19,6 +19,21 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Hermetic interpreter and temp dir (POSIX)
+        # trusted_bin (ADR D-139) refuses the runner's own Python (group-writable framework build on macOS, foreign/world-writable hostedtoolcache dirs
+        # on Linux) and refuses fixtures under the sticky, world-writable /tmp. The policy is NOT loosened: instead the tests run on a --copies venv
+        # whose python is a real file in a directory this user owns (rules: owner us, no group/other write, every directory above it ours/root and not
+        # world-writable), with TMPDIR pointed at a private 0700 directory the user owns.
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          python -m venv --copies "$RUNNER_TEMP/bff-venv"
+          chmod -R go-w "$RUNNER_TEMP/bff-venv"
+          mkdir -m 700 "$RUNNER_TEMP/bff-tmp"
+          echo "$RUNNER_TEMP/bff-venv/bin" >> "$GITHUB_PATH"
+          echo "TMPDIR=$RUNNER_TEMP/bff-tmp" >> "$GITHUB_ENV"
+          ls -ldL "$RUNNER_TEMP" "$RUNNER_TEMP/bff-venv/bin/python" "$RUNNER_TEMP/bff-tmp"
+          "$RUNNER_TEMP/bff-venv/bin/python" -c "import sys; print(sys.executable, sys.version)"
       - name: Unit tests and release canary (standard library only)
         run: python -m unittest discover -s tests -v
   privacy:
