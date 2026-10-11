@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 // Single entry for the Osiris terminal apps: `osiris-tui.mjs factory|worktrees|prune [--repo <path>] [--all] [--no-color] [--once] [--cols <n>]`.
 // Runs from the repo checkout or from the INSTALLED plugin dir (everything it imports ships in the stage). argv only; reads, never writes.
+// Windows only: a piped stdout/stderr is asynchronous there, so `process.exit()` can cut off the last write (a truncated `prune --json`). Make both blocking.
+// The tty side needs nothing here: libuv enables VT processing on a Windows console, and tui/term.ts only calls setRawMode when stdin.isTTY.
+if (process.platform === "win32") for (const stream of [process.stdout, process.stderr]) { try { stream._handle?.setBlocking?.(true); } catch { /* not a handle that can block: leave it */ } }
 const [mode, ...rest] = process.argv.slice(2);
 const usage = "usage: osiris-tui.mjs prune [--repo <path>] [--apply] [--min-idle-days N] [--installed <dir>] [--json]  (dry run unless --apply)\n       osiris-tui.mjs factory|worktrees [--repo <path>] [--all] [--no-color] [--once] [--cols <n>] [--interval <s>] [--no-mouse]";
 if (mode === "--help" || mode === "-h") { console.log(usage); process.exit(0); }
