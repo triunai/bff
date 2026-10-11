@@ -12,9 +12,13 @@ import tarfile
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import versioning  # noqa: E402  (sibling module; the single version source)
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import install  # noqa: E402  (the one definition of which plugin files may ship)
+
 REPOSITORY = Path(__file__).resolve().parents[1]
 SOURCE = REPOSITORY / "sdk" if (REPOSITORY / "sdk").is_dir() else REPOSITORY
 ROOT_FILES = {"README.md", "LICENSE", "PROVENANCE.md", "ARCHITECTURE.md", "install.py", "install.sh", "install.ps1", "release-files.json"}
+PLUGIN_TREE = "plugins/osiris/"
 LOOSE_ASSETS = ("install.sh", "install.ps1", "compat.json")
 
 
@@ -39,8 +43,13 @@ def main():
     files = {}
     for path in sorted(SOURCE.rglob("*")):
         rel = path.relative_to(SOURCE)
-        if "__pycache__" in rel.parts or "node_modules" in rel.parts or path.suffix in {".pyc", ".map"}:
+        in_plugin = rel.as_posix().startswith(PLUGIN_TREE)  # the bundled Osiris keeps its vendored node_modules
+        if "__pycache__" in rel.parts or ("node_modules" in rel.parts and not in_plugin) or path.suffix in {".pyc", ".map"}:
             continue
+        if in_plugin and path.is_file() and not path.is_symlink():
+            if not install.plugin_file_allowed(rel.as_posix()[len(PLUGIN_TREE):]):
+                raise SystemExit("Unreviewed plugin file: " + str(rel))
+            approved.add(rel.as_posix())
         allowed = rel.as_posix() in approved
         if path.is_symlink():
             raise SystemExit("Refusing a symlink in SDK source: " + str(rel))
@@ -60,6 +69,8 @@ def main():
             if len(data) > 10 * 1024 * 1024:
                 raise SystemExit("Oversize release file: " + str(rel))
             files[rel.as_posix()] = data
+    if not {PLUGIN_TREE + "package.json", PLUGIN_TREE + "server.ts", PLUGIN_TREE + "app.tsx"} <= files.keys():
+        raise SystemExit("Missing the bundled Osiris plugin (plugins/osiris)")
     required = approved | ROOT_FILES | {"bff/__init__.py", "bff/cli.py", "templates/repo/.bff.json"}
     if required - files.keys():
         raise SystemExit("Missing release files: " + ", ".join(sorted(required - files.keys())))

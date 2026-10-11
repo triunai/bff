@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-tool-observer",
-  "version": "0.2.16-dev",
+  "version": "0.3.0",
   "type": "module",
   "engines": {
     "bb": ">=0.45",

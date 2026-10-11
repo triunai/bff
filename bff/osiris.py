@@ -3,6 +3,7 @@
 Every function takes an injectable `bb` executable and `run` (a vetted subprocess runner) so tests use a fake. The pinned plugin
 version comes from `compat.json`; a `path:` install is the developer channel and is never replaced without an explicit flag.
 """
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -10,11 +11,15 @@ import re
 import shutil
 import sys
 import tempfile
+import uuid
 
 from . import osiris_tui, paths, state, trusted_bin
 from .prompt import answer_is_yes
 
 PLUGIN_ID = "tool-observer"
+BUNDLED_SOURCE = "bundled"  # compat.json source for an Osiris that ships inside the bff release archive
+BUNDLE_PREFIX = "plugins/osiris/"
+STABLE_DIRNAME = "osiris"  # <bff data dir>/osiris/<version>-<id>: outside releases/<ver>/, so a bff update or prune never strands BB
 
 
 def _which(name):
@@ -90,6 +95,19 @@ def _stale_bundled(source):
     return False
 
 
+def _data_root():
+    return Path(str(paths.data_dir(prefix=paths.install_prefix())))
+
+
+def _managed_bundle(source):
+    """True for a plugin installed from bff's own stable copy (<data>/osiris/<version>-<id>): the release channel, not a dev path."""
+    if _kind(source) != "path":
+        return False
+    directory = Path(_bare(source))
+    wanted = _data_root() / STABLE_DIRNAME
+    return directory.parent == wanted or directory.parent.resolve() == wanted.resolve()
+
+
 def plugin_status(bb, run=_run, plugin_id=PLUGIN_ID):
     try:
         result = run([bb, "plugin", "list", "--json"], stdout=trusted_bin.PIPE, stderr=trusted_bin.PIPE,
@@ -108,11 +126,11 @@ def plugin_status(bb, run=_run, plugin_id=PLUGIN_ID):
     entry = next((p for p in plugins if isinstance(p, dict) and p.get("id") == plugin_id), None)
     if entry is None:
         return {"present": False, "id": plugin_id, "version": None, "enabled": False, "status": None,
-                "source": None, "kind": None, "stale_bundled": False, "display": None}
+                "source": None, "kind": None, "stale_bundled": False, "managed_bundle": False, "display": None}
     source = str(entry.get("source") or "")
     return {"present": True, "id": plugin_id, "version": entry.get("version"), "enabled": bool(entry.get("enabled")),
             "status": entry.get("status"), "source": source, "kind": _kind(source),
-            "stale_bundled": _stale_bundled(source), "display": entry.get("sourceDisplay") or source}
+            "stale_bundled": _stale_bundled(source), "managed_bundle": _managed_bundle(source), "display": entry.get("sourceDisplay") or source}
 
 
 def _tool_version(argv, run):
@@ -188,6 +206,76 @@ def _target(compat):
     return with_ref(osiris["source"], osiris["commit"]) if osiris["commit"] else osiris["source"]
 
 
+def _release_root():
+    return Path(__file__).resolve().parents[1]
+
+
+def bundled_files(root=None):
+    """{name inside plugins/osiris: sha256} the release manifest promises for the bundled plugin."""
+    root = Path(root) if root is not None else _release_root()
+    try:
+        files = json.loads((root / "manifest.json").read_text(encoding="utf-8"))["files"]
+    except (OSError, ValueError, KeyError, TypeError):
+        raise ValueError("The bundled Osiris cannot be verified: no readable release manifest here. "
+                         "Install bff from a release (install.sh / install.ps1), or use bff osiris update --from <dir> for a dev build.")
+    found = {name[len(BUNDLE_PREFIX):]: digest for name, digest in files.items() if name.startswith(BUNDLE_PREFIX)}
+    if "package.json" not in found:
+        raise ValueError("This bff release carries no bundled Osiris plugin")
+    return found
+
+
+def stable_dir(version, files):
+    """Where the bundled plugin lives for good. The id is a digest of the manifest entries, so changed content never reuses a name."""
+    identity = hashlib.sha256(json.dumps(sorted(files.items())).encode("utf-8")).hexdigest()[:12]
+    return _data_root() / STABLE_DIRNAME / ("osiris-" + version + "-" + identity)
+
+
+def _inventory(directory):
+    found = {}
+    for current, dirs, names in os.walk(str(directory), followlinks=False):
+        for name in dirs + names:
+            if os.path.islink(os.path.join(current, name)):
+                raise ValueError("symlink in the Osiris copy: " + os.path.join(current, name))
+        for name in names:
+            path = os.path.join(current, name)
+            found[os.path.relpath(path, str(directory)).replace(os.sep, "/")] = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return found
+
+
+def materialize_bundled(version, root=None):
+    """Copy the bundled plugin out of the release into its stable directory, byte-verified against the release manifest. Returns the directory."""
+    root = Path(root) if root is not None else _release_root()
+    expected = bundled_files(root)
+    final = stable_dir(version, expected)
+    if final.is_dir() and not final.is_symlink() and _inventory(final) == expected:
+        return final
+    parent = final.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    staging = parent / (".stage-" + uuid.uuid4().hex)
+    try:
+        for name, wanted in expected.items():
+            relative = Path(*name.split("/"))
+            if relative.is_absolute() or ".." in relative.parts:
+                raise ValueError("unsafe path in the release manifest: " + name)
+            source = root / "plugins" / "osiris" / relative
+            if source.is_symlink() or not source.is_file():
+                raise ValueError("the release is missing or has a non-regular bundled file: " + name)
+            data = source.read_bytes()
+            if hashlib.sha256(data).hexdigest() != wanted:
+                raise ValueError("the release's bundled Osiris does not match its manifest (" + name + "); reinstall bff")
+            (staging / relative).parent.mkdir(parents=True, exist_ok=True)
+            (staging / relative).write_bytes(data)
+        if _inventory(staging) != expected:
+            raise ValueError("the copied Osiris does not match the release manifest; nothing was installed")
+        if final.exists():
+            shutil.rmtree(str(final))  # a stale or damaged copy of this exact name, owned by bff
+        os.replace(str(staging), str(final))
+    finally:
+        if staging.exists():
+            shutil.rmtree(str(staging), ignore_errors=True)
+    return final
+
+
 def _install(bb, run, source):
     try:
         return run([bb, "plugin", "install", _bare(source), "--yes"], timeout=600).returncode == 0
@@ -229,10 +317,11 @@ def _install_checked(bb, run, out, state_file, source, version, before):
     return 1, after
 
 
-def _plugin_step(compat, bb, run, out, stdin, state_file, yes, dry_run, switch, target=None, version=None):
+def _plugin_step(compat, bb, run, out, stdin, state_file, yes, dry_run, switch, target=None, version=None, root=None):
     osiris = compat["osiris"]
     status = plugin_status(bb, run, osiris["id"])
-    if status["present"] and status["kind"] == "path" and not status["stale_bundled"] and not switch:
+    if (status["present"] and status["kind"] == "path" and not status["stale_bundled"] and not status["managed_bundle"]
+            and not switch):
         _say(out, "Osiris dev channel: " + status["display"] + " (" + str(status["version"]) + "), left as is. "
              "Use --switch-to-release to replace it.")
         return 0
@@ -241,12 +330,17 @@ def _plugin_step(compat, bb, run, out, stdin, state_file, yes, dry_run, switch, 
     if not osiris["published"]:
         _say(out, UNPUBLISHED)
         return UNPUBLISHED_EXIT
-    target = target or _target(compat)
     version = version or osiris["version"]
+    bundled = osiris["source"] == BUNDLED_SOURCE and target is None
+    if bundled:
+        target = "path:" + str(stable_dir(version, bundled_files(root)))
+    else:
+        target = target or _target(compat)
     if status["present"] and _healthy(status, version) and status["source"] == target:
         _say(out, "Osiris " + version + " is up to date (" + status["display"] + ").")
         return 0
-    plan = "Plan: bb plugin install " + target + " --yes (replaces " + (status["display"] if status["present"] else "nothing") + ")"
+    plan = ("Plan: bb plugin install " + _bare(target) + " --yes (bundled with this bff, copied there and verified first; replaces "
+            if bundled else "Plan: bb plugin install " + target + " --yes (replaces ") + (status["display"] if status["present"] else "nothing") + ")"
     if dry_run:
         _say(out, plan + " [dry run, nothing changed]")
         return 0
@@ -258,6 +352,12 @@ def _plugin_step(compat, bb, run, out, stdin, state_file, yes, dry_run, switch, 
         if not answer:
             _say(out, "Left as is.")
             return 0
+    if bundled:
+        try:
+            materialize_bundled(version, root)
+        except (ValueError, OSError) as error:
+            _say(out, "Could not prepare the bundled Osiris: " + str(error))
+            return 1
     return _install_checked(bb, run, out, state_file, target, version, status)[0]
 
 
@@ -269,7 +369,7 @@ def _resolve_bb(bb, which=_which):
 
 
 def setup(yes=False, dry_run=False, switch_to_release=False, stdin=None, out=None, bb=None, run=_run,
-          state_file=None, which=_which, system=None, compat=None):
+          state_file=None, which=_which, system=None, compat=None, root=None):
     compat = compat or load_compat()
     rows = prerequisites(system, which, run, compat, bb)
     _print_plan(rows, out)
@@ -280,7 +380,7 @@ def setup(yes=False, dry_run=False, switch_to_release=False, stdin=None, out=Non
             if not item["ok"] and (item["required"] or item["name"] in ("Homebrew", "Node")):
                 _say(out, "  " + item["name"] + ": " + item["how"])
         return 3
-    return _plugin_step(compat, bb or which("bb"), run, out, stdin, state_file, yes, dry_run, switch_to_release)
+    return _plugin_step(compat, bb or which("bb"), run, out, stdin, state_file, yes, dry_run, switch_to_release, root=root)
 
 
 def _pick_staged(root, out):
@@ -339,7 +439,7 @@ def _from_dir(compat, directory, bb, run, out, state_file):
 
 
 def update(version=None, from_dir=None, from_latest_staged=False, switch_to_release=False, yes=False, stdin=None,
-           out=None, bb=None, run=_run, state_file=None, staging_root=None, which=_which, compat=None):
+           out=None, bb=None, run=_run, state_file=None, staging_root=None, which=_which, compat=None, root=None):
     if sum(bool(flag) for flag in (version, from_dir, from_latest_staged)) > 1:
         raise ValueError("Choose one of --version, --from or --from-latest-staged")
     compat = compat or load_compat()
@@ -363,10 +463,15 @@ def update(version=None, from_dir=None, from_latest_staged=False, switch_to_rele
         if not compat["osiris"]["published"]:
             _say(out, UNPUBLISHED)
             return UNPUBLISHED_EXIT
+        if compat["osiris"]["source"] == BUNDLED_SOURCE:
+            if version != compat["osiris"]["version"]:
+                _say(out, "This bff bundles Osiris " + compat["osiris"]["version"] + " only; install a different bff to get " + version + ".")
+                return 1
+            return _plugin_step(compat, bb, run, out, stdin, state_file, yes, False, switch_to_release, root=root)
         _say(out, "off pin: compat.json pins " + compat["osiris"]["version"])
         return _plugin_step(compat, bb, run, out, stdin, state_file, yes, False, switch_to_release,
                             with_ref(compat["osiris"]["source"], "v" + version), version)
-    return _plugin_step(compat, bb, run, out, stdin, state_file, yes, False, switch_to_release)
+    return _plugin_step(compat, bb, run, out, stdin, state_file, yes, False, switch_to_release, root=root)
 
 
 def rollback_plugin(bb, run=_run, out=None, state_file=None, yes=False, stdin=None):

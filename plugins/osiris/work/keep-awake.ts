@@ -18,6 +18,13 @@ export interface KeepAwakeDeps {
 }
 export type AwakeOutcome = "unsupported" | "off" | "idle" | "holding" | "renewed" | "untrusted" | "failed";
 
+/** Typed availability so the UI can say so in plain words instead of showing a dead toggle. caffeinate exists on macOS only; the trusted-bin primitive also
+ * refuses to resolve or spawn it on win32 (reason "unavailable-on-os"), so there is no path that reaches a spawn on Windows. */
+export type AwakeAvailability = { available: true } | { available: false; reason: "unavailable-on-os"; text: string };
+export const keepAwakeAvailability = (platform: string): AwakeAvailability =>
+  platform === "darwin" ? { available: true }
+    : { available: false, reason: "unavailable-on-os", text: platform === "win32" ? "Keep-awake is not available on Windows. Change the power settings in Windows if you need the PC to stay awake." : "Keep-awake is only available on macOS." };
+
 export const keepAwakeTooltip = (live: number): string =>
   `Keeping your Mac awake: ${live} agent${live === 1 ? "" : "s"} working · lid-close still sleeps on battery`;
 

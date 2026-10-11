@@ -46,6 +46,7 @@ else:
 """
 
 HOME = "/Users/" + "example"
+GIT_SOURCE = "git:https://github.com/example/bb-plugin-osiris@v0.3.0"
 
 
 def entry(source, version="0.2.0", **extra):
@@ -108,9 +109,10 @@ class Fake(unittest.TestCase):
     def installs(self):
         return [c["argv"] for c in self.calls() if c["argv"][:2] == ["plugin", "install"]]
 
-    def compat(self, published=False, commit=None):
+    def compat(self, published=False, commit=None, source=GIT_SOURCE):
+        """The shipped pin with the generic git channel by default (the bundled channel has its own tests: BundledTests)."""
         data = osiris.load_compat()
-        data["osiris"].update(published=published, commit=commit)
+        data["osiris"].update(published=published, commit=commit, source=source)
         return data
 
     def install_result(self, **results):
@@ -146,7 +148,11 @@ class CompatTests(Fake):
     def test_pin_is_honest_and_valid(self):
         data = osiris.load_compat()
         self.assertEqual(data["osiris"]["id"], "tool-observer")
-        self.assertIs(data["osiris"]["published"], False)
+        self.assertIs(data["osiris"]["published"], True)
+        self.assertEqual((data["osiris"]["source"], data["osiris"]["version"]), (osiris.BUNDLED_SOURCE, "0.3.0"))
+        self.assertRegex(data["osiris"]["commit"], r"^[0-9a-f]{40}$")
+        shipped = json.loads((SDK / "plugins" / "osiris" / "package.json").read_text(encoding="utf-8"))["version"]
+        self.assertEqual(shipped, data["osiris"]["version"])
 
     def test_bad_shape_is_refused(self):
         (self.root / "compat.json").write_text('{"schema_version": 1}', encoding="utf-8")
@@ -198,6 +204,19 @@ class PluginStatusTests(Fake):
                                  (self.root / "elsewhere" / "plugins" / "osiris", False)):
             self.set_plugins(entry("path:" + str(directory)))
             self.assertEqual(self.status()["stale_bundled"], stale, directory)
+
+    def test_stable_copy_is_managed_never_stale_and_a_dev_path_is_neither(self):
+        data = Path(str(paths.data_dir(prefix=self.root / "prefix")))
+        stable = data / "osiris" / "osiris-0.3.0-0123456789ab"
+        self.set_plugins(entry("path:" + str(stable)))
+        status = self.status()
+        self.assertEqual((status["stale_bundled"], status["managed_bundle"]), (False, True))
+        # The owner's kind of install: a worktree path outside bff's data directory, the dev channel.
+        for dev in (self.root / "osiris-worktrees" / "install-0.2.16-abc1234", data / "elsewhere" / "osiris-0.3.0-0123456789ab",
+                    data / "osiris" / "nested" / "osiris-0.3.0-0123456789ab"):
+            self.set_plugins(entry("path:" + str(dev)))
+            status = self.status()
+            self.assertEqual((status["stale_bundled"], status["managed_bundle"]), (False, False), dev)
 
 
 class PrerequisiteTests(Fake):
@@ -257,10 +276,10 @@ class SetupTests(Fake):
 
     def test_commit_replaces_the_tag(self):
         compat = self.compat(published=True, commit="abc123")
-        self.install_result(default={"source": "git:https://github.com/triunai/bb-plugin-osiris@abc123", "version": "0.3.0"})
+        self.install_result(default={"source": "git:https://github.com/example/bb-plugin-osiris@abc123", "version": "0.3.0"})
         self.set_plugins()
         self.call(osiris.setup, yes=True, compat=compat)
-        self.assertEqual(self.installs(), [["plugin", "install", "git:https://github.com/triunai/bb-plugin-osiris@abc123", "--yes"]])
+        self.assertEqual(self.installs(), [["plugin", "install", "git:https://github.com/example/bb-plugin-osiris@abc123", "--yes"]])
 
     def test_failed_post_check_restores_previous(self):
         compat = self.compat(published=True)
@@ -391,7 +410,7 @@ class UpdateTests(Fake):
         self.assertEqual(self.update(version="0.4.0"), 4)
         self.assertEqual(self.installs(), [])
         compat = self.compat(published=True)
-        target = "git:https://github.com/triunai/bb-plugin-osiris@v0.4.0"
+        target = "git:https://github.com/example/bb-plugin-osiris@v0.4.0"
         self.install_result(default={"source": target, "version": "0.4.0"})
         self.set_plugins()
         self.assertEqual(self.update(version="0.4.0", yes=True, compat=compat), 0)
@@ -451,7 +470,8 @@ class CliTests(Fake):
 
     def test_setup_dry_run(self):
         self.set_plugins()
-        code, stdout, _ = self.command(["osiris", "setup", "--dry-run"])
+        with mock.patch.object(osiris, "load_compat", return_value=self.compat(published=False)):
+            code, stdout, _ = self.command(["osiris", "setup", "--dry-run"])
         self.assertEqual(code, 4)
         self.assertIn("Osiris setup plan", stdout)
         self.assertIn("not publicly released yet", stdout)
@@ -492,7 +512,7 @@ class CliTests(Fake):
 
 
 class ReleaseTests(Fake):
-    def test_release_has_compat_and_no_plugin(self):
+    def test_release_has_compat_and_the_bundled_plugin(self):
         import importlib.util
         spec = importlib.util.spec_from_file_location("bff_installer", SDK / "install.py")
         installer = importlib.util.module_from_spec(spec)
@@ -502,13 +522,17 @@ class ReleaseTests(Fake):
         for name in ("bff", "templates"):
             shutil.copytree(str(SDK / name), str(source / name), ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copy(str(SDK / "compat.json"), str(source / "compat.json"))
-        shutil.copytree(str(SDK / "plugins"), str(source / "plugins"), ignore=shutil.ignore_patterns("node_modules"))
+        shutil.copytree(str(SDK / "plugins"), str(source / "plugins"))
         (source / "README.md").write_text("scratch\n", encoding="utf-8")
         result = installer.install(self.root / "prefix2", source=source)
         release = Path(str(paths.releases_dir(prefix=self.root / "prefix2"))) / result["release"]
         self.assertTrue((release / "compat.json").is_file())
         self.assertTrue((release / "bff" / "osiris.py").is_file())
-        self.assertFalse((release / "plugins").exists())
+        self.assertTrue((release / "plugins" / "osiris" / "package.json").is_file())
+        self.assertTrue((release / "plugins" / "osiris" / "node_modules" / "@xterm" / "xterm" / "package.json").is_file())
+        self.assertEqual(osiris.bundled_files(release), {name[len(osiris.BUNDLE_PREFIX):]: digest for name, digest in
+                         json.loads((release / "manifest.json").read_text(encoding="utf-8"))["files"].items()
+                         if name.startswith(osiris.BUNDLE_PREFIX)})
 
     def test_old_manifest_with_plugin_still_verifies(self):
         import importlib.util
@@ -537,11 +561,183 @@ class ReleaseTests(Fake):
         with self.assertRaises(ValueError):
             installer.verify_release(old)
 
-    def test_no_code_path_installs_the_bundled_plugin(self):
+    def test_only_osiris_py_touches_the_bundled_plugin_and_never_installs_from_the_release_dir(self):
         for module in (SDK / "bff").glob("*.py"):
             text = module.read_text(encoding="utf-8")
-            self.assertNotIn("plugins/osiris", text, module.name)
-            self.assertNotIn('"plugins" / "osiris"', text, module.name)
+            if module.name == "osiris.py":
+                self.assertEqual(text.count('"plugins" / "osiris"'), 1)  # the single read, inside materialize_bundled
+                self.assertIn('target = "path:" + str(stable_dir(', text)  # the install target is always the stable copy
+            else:
+                self.assertNotIn("plugins/osiris", text, module.name)
+                self.assertNotIn('"plugins" / "osiris"', text, module.name)
+
+
+@winskip.posix_only('the fake bb is a #! script; trusted_bin refuses scripts on Windows by design')
+class BundledTests(Fake):
+    """The bundled channel: a fake release root (manifest + plugin files), the fake bb, a private prefix. Nothing real is touched."""
+    VERSION = "0.3.0"
+
+    def setUp(self):
+        super().setUp()
+        self.release = self.root / "prefix" / "share" / "bff" / "releases" / "0.2.1-0123456789ab"
+        self.bundle = {"package.json": '{"version": "0.3.0"}', "server.ts": "export default {};\n",
+                       "node_modules/@xterm/xterm/package.json": '{"name": "@xterm/xterm"}', "bin/osiris-tui.mjs": "// tui\n"}
+        for name, text in self.bundle.items():
+            path = self.release / "plugins" / "osiris" / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        import hashlib
+        files = {"plugins/osiris/" + name: hashlib.sha256(text.encode("utf-8")).hexdigest() for name, text in self.bundle.items()}
+        files["bff/cli.py"] = "0" * 64
+        (self.release / "manifest.json").write_text(json.dumps({"schema_version": 1, "files": files}), encoding="utf-8")
+        self.data = Path(str(paths.data_dir(prefix=self.root / "prefix")))
+
+    def command(self, args):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = cli.main(args)
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def pin(self, **kw):
+        return self.compat(published=True, commit="a" * 40, source=osiris.BUNDLED_SOURCE, **kw)
+
+    def stable(self):
+        return osiris.stable_dir(self.VERSION, osiris.bundled_files(self.release))
+
+    def ok_install(self):
+        self.install_result(default={"source": "path:" + str(self.stable()), "version": self.VERSION})
+
+    def setup(self, **kw):
+        kw.setdefault("compat", self.pin())
+        kw.setdefault("root", self.release)
+        return self.call(osiris.setup, **kw)
+
+    def test_stable_dir_is_outside_every_release_dir(self):
+        stable = self.stable()
+        self.assertEqual(stable.parent, self.data / "osiris")
+        self.assertNotIn("releases", stable.parts)
+        self.assertIsNone(paths.RELEASE_NAME.fullmatch(stable.name))
+        self.assertTrue(stable.name.startswith("osiris-" + self.VERSION + "-"))
+
+    def test_dry_run_plans_the_stable_copy_and_changes_nothing(self):
+        self.assertEqual(self.setup(dry_run=True, yes=True), 0)
+        self.assertIn("Plan: bb plugin install " + str(self.stable()) + " --yes", self.output())
+        self.assertIn("dry run", self.output())
+        self.assertEqual(self.installs(), [])
+        self.assertFalse((self.data / "osiris").exists())
+
+    def test_install_copies_verifies_then_installs_from_the_stable_copy(self):
+        self.ok_install()
+        self.assertEqual(self.setup(yes=True), 0)
+        self.assertEqual(self.installs(), [["plugin", "install", str(self.stable()), "--yes"]])
+        for name, text in self.bundle.items():
+            self.assertEqual((self.stable() / name).read_text(encoding="utf-8"), text)
+        self.assertEqual([p.name for p in (self.data / "osiris").iterdir()], [self.stable().name])  # no staging debris
+        recorded = state.load(self.state_file)["plugin"]
+        self.assertEqual((recorded["source"], recorded["version"]), ("path:" + str(self.stable()), self.VERSION))
+
+    def test_the_copy_survives_the_release_being_pruned(self):
+        self.ok_install()
+        self.assertEqual(self.setup(yes=True), 0)
+        stable = self.stable()
+        shutil.rmtree(str(self.release))
+        self.assertEqual(osiris._inventory(stable), {k: __import__("hashlib").sha256(v.encode()).hexdigest() for k, v in self.bundle.items()})
+
+    def test_tampered_release_file_installs_nothing(self):
+        (self.release / "plugins" / "osiris" / "server.ts").write_text("tampered", encoding="utf-8")
+        self.ok_install()
+        self.assertEqual(self.setup(yes=True), 1)
+        self.assertEqual(self.installs(), [])
+        self.assertIn("does not match its manifest", self.output())
+        self.assertEqual(list((self.data / "osiris").iterdir()) if (self.data / "osiris").exists() else [], [])
+
+    def test_extra_or_missing_release_file_installs_nothing(self):
+        (self.release / "plugins" / "osiris" / "bin" / "osiris-tui.mjs").unlink()
+        self.assertEqual(self.setup(yes=True), 1)
+        self.assertEqual(self.installs(), [])
+
+    def test_no_release_manifest_refuses_instead_of_guessing(self):
+        (self.release / "manifest.json").unlink()
+        with self.assertRaisesRegex(ValueError, "cannot be verified"):
+            self.setup(yes=True)
+        self.assertEqual(self.installs(), [])
+
+    def test_a_damaged_stable_copy_is_rebuilt_not_trusted(self):
+        self.ok_install()
+        self.assertEqual(self.setup(yes=True), 0)
+        (self.stable() / "server.ts").write_text("damaged", encoding="utf-8")
+        (self.stable() / "stray.js").write_text("x", encoding="utf-8")
+        self.set_plugins()
+        self.assertEqual(self.setup(yes=True), 0)
+        self.assertEqual((self.stable() / "server.ts").read_text(encoding="utf-8"), self.bundle["server.ts"])
+        self.assertFalse((self.stable() / "stray.js").exists())
+
+    def test_dev_channel_install_is_left_alone_without_the_switch(self):
+        dev = self.root / "osiris-worktrees" / "install-0.2.16-abc1234"
+        self.set_plugins(entry("path:" + str(dev), version="0.2.16-dev"))
+        self.ok_install()
+        self.assertEqual(self.setup(yes=True), 0)
+        self.assertEqual(self.installs(), [])
+        self.assertIn("dev channel", self.output())
+        self.assertFalse((self.data / "osiris").exists())
+
+    def test_switch_to_release_replaces_a_dev_install_and_can_restore_it(self):
+        dev = self.root / "osiris-worktrees" / "install-0.2.16-abc1234"
+        self.set_plugins(entry("path:" + str(dev), version="0.2.16-dev"))
+        self.ok_install()
+        self.assertEqual(self.setup(yes=True, switch_to_release=True), 0)
+        self.assertEqual(self.installs(), [["plugin", "install", str(self.stable()), "--yes"]])
+        self.assertEqual(state.load(self.state_file)["plugin"]["previous_source"], "path:" + str(dev))
+
+    def test_an_older_managed_copy_is_upgraded_not_mistaken_for_a_dev_channel(self):
+        old = self.data / "osiris" / "osiris-0.2.9-ffffffffffff"
+        self.set_plugins(entry("path:" + str(old), version="0.2.9"))
+        self.ok_install()
+        self.assertEqual(self.setup(yes=True), 0)
+        self.assertEqual(self.installs(), [["plugin", "install", str(self.stable()), "--yes"]])
+        self.assertNotIn("dev channel", self.output())
+
+    def test_old_release_dir_bundle_is_named_stale_and_replaced_by_the_stable_copy(self):
+        stale = self.root / "r" / "0.1.1-abcdef012345" / "plugins" / "osiris"
+        self.set_plugins(entry("path:" + str(stale), version="0.2.0"))
+        self.ok_install()
+        self.assertEqual(self.setup(yes=True), 0)
+        self.assertIn("old bff bundle", self.output())
+        self.assertEqual(self.installs(), [["plugin", "install", str(self.stable()), "--yes"]])
+
+    def test_already_installed_is_a_no_op(self):
+        self.ok_install()
+        self.assertEqual(self.setup(yes=True), 0)
+        before = len(self.calls())
+        self.assertEqual(self.setup(yes=True), 0)
+        self.assertEqual(len(self.installs()), 1)
+        self.assertIn("up to date", self.output())
+        self.assertGreater(len(self.calls()), before)  # only the read-only plugin list ran
+
+    def test_unpublished_pin_still_exits_4_and_installs_nothing(self):
+        compat = self.compat(published=False, source=osiris.BUNDLED_SOURCE)
+        self.assertEqual(self.setup(yes=True, compat=compat), osiris.UNPUBLISHED_EXIT)
+        self.assertEqual(self.installs(), [])
+        self.assertFalse((self.data / "osiris").exists())
+
+    def test_update_to_a_version_this_bff_does_not_bundle_is_refused(self):
+        code = self.call(osiris.update, version="0.9.9", yes=True, compat=self.pin(), root=self.release)
+        self.assertEqual(code, 1)
+        self.assertEqual(self.installs(), [])
+        self.assertIn("bundles Osiris 0.3.0 only", self.output())
+
+    def test_cli_setup_dry_run_with_the_shipped_pin_points_at_the_stable_copy(self):
+        self.set_plugins()
+        with mock.patch.object(osiris, "_release_root", return_value=self.release):
+            code, stdout, _ = self.command(["osiris", "setup", "--dry-run"])
+        self.assertEqual(code, 0, stdout)
+        self.assertIn("Plan: bb plugin install " + str(self.stable()) + " --yes", stdout)
+        self.assertEqual(self.installs(), [])
+
+    def test_update_without_flags_installs_the_bundle(self):
+        self.ok_install()
+        self.assertEqual(self.call(osiris.update, yes=True, compat=self.pin(), root=self.release), 0)
+        self.assertEqual(self.installs(), [["plugin", "install", str(self.stable()), "--yes"]])
 
 
 if __name__ == "__main__":

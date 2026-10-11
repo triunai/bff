@@ -194,19 +194,43 @@ class InstallationTests(Scratch):
         with self.assertRaisesRegex(ValueError, "Invalid"):
             installer.verify_source_manifest(self.source)
 
-    def test_release_no_longer_bundles_the_plugin(self):
+    def make_plugin(self):
         plugin = self.source / "plugins" / "osiris"
-        (plugin / "dist").mkdir(parents=True)
-        (plugin / "package.json").write_text('{}', encoding="utf-8")
-        (plugin / "dist" / "app.js.map").write_text("source map", encoding="utf-8")
-        (plugin / "node_modules").mkdir()
-        (plugin / "node_modules" / "dep.js").write_text("dependency", encoding="utf-8")
+        (plugin / "node_modules" / "dep").mkdir(parents=True)
+        (plugin / "package.json").write_text('{"version": "0.3.0"}', encoding="utf-8")
+        (plugin / "server.ts").write_text("export default {};\n", encoding="utf-8")
+        (plugin / "node_modules" / "dep" / "index.js").write_text("module.exports = 1;\n", encoding="utf-8")
+        (plugin / "node_modules" / "dep" / "LICENSE").write_text("MIT\n", encoding="utf-8")
         (self.source / "compat.json").write_text((SDK / "compat.json").read_text(encoding="utf-8"), encoding="utf-8")
+        return plugin
+
+    def test_release_bundles_the_plugin_with_its_vendored_dependencies(self):
+        self.make_plugin()
         result = installer.install(self.prefix, source=self.source)
         release = Path(str(paths.releases_dir(prefix=self.prefix))) / result["release"]
-        self.assertFalse((release / "plugins").exists())
-        self.assertTrue((release / "compat.json").is_file())
+        manifest = json.loads((release / "manifest.json").read_text(encoding="utf-8"))
+        bundled = sorted(name for name in manifest["files"] if name.startswith("plugins/"))
+        self.assertEqual(bundled, ["plugins/osiris/node_modules/dep/LICENSE", "plugins/osiris/node_modules/dep/index.js",
+                                   "plugins/osiris/package.json", "plugins/osiris/server.ts"])
+        self.assertTrue((release / "plugins" / "osiris" / "node_modules" / "dep" / "index.js").is_file())
         self.assertTrue((release / "bff" / "osiris.py").is_file())
+        installer.verify_release(release)
+        (release / "plugins" / "osiris" / "server.ts").write_text("tampered", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "integrity"):
+            installer.verify_release(release)
+
+    def test_release_refuses_unreviewed_plugin_files(self):
+        plugin = self.make_plugin()
+        for name in ("dist/app.js.map", "setup.py", "node_modules/dep/native.node"):
+            (plugin / name).parent.mkdir(parents=True, exist_ok=True)
+            (plugin / name).write_text("x", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Unreviewed plugin file"):
+                installer.install(self.prefix, source=self.source)
+            (plugin / name).unlink()
+        (plugin / "package.json").unlink()
+        with self.assertRaisesRegex(ValueError, "no package.json"):
+            installer.install(self.prefix, source=self.source)
+        self.assertFalse(self.prefix.exists())
 
 
 class ProjectTests(Scratch):

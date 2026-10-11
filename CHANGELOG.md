@@ -6,6 +6,9 @@ Versioning policy: [Semantic Versioning](https://semver.org/). While BFF is 0.x,
 
 ## [Unreleased]
 
+### Added
+- Osiris 0.3.0 is bundled in the release archive (`plugins/osiris`, covered by `SHA256SUMS` and the release manifest) and `compat.json` is `published: true`, source `bundled`. `bff osiris setup` copies it to `<bff data dir>/osiris/osiris-<version>-<id>`, verifies every file against the release manifest, then runs `bb plugin install` on that copy, so a bff update or prune never strands BB on a deleted release path. An existing dev-channel path install is left alone unless `--switch-to-release`.
+
 ## [0.2.1] - 2026-10-11
 
 Native Windows is now proven on real `windows-latest` runners (Windows PowerShell 5.1 and PowerShell 7, Python 3.9 and 3.12): install, activation, `bff doctor`, `bff osiris prune` and `bff osiris factory`. The one-line installers need no login.

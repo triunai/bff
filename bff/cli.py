@@ -177,7 +177,7 @@ def check_osiris_plugin():
     if status["status"] != "running" or not status["enabled"]:
         raise ValueError("Osiris plugin is " + str(status["status"] if status["status"] != "running" else "disabled")
                          + ": enable it in BB, or run bff osiris setup")
-    if status["kind"] == "path" and not status["stale_bundled"]:
+    if status["kind"] == "path" and not status["stale_bundled"] and not status["managed_bundle"]:
         print("Osiris dev channel: " + status["display"])
         return
     compat = osiris.load_compat()["osiris"]

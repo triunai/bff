@@ -7,3 +7,7 @@ tests/test_launch_windows.py home-path-windows invented fixture profile (a fake 
 tests/test_osiris_windows.py home-path-windows invented fixture profile (a fake user named me) used to test path logic on any OS
 tests/test_trusted_bin_windows.py home-path-windows invented fixture profile (a fake user named me) used to test path logic on any OS
 .github/workflows/windows.yml email throwaway git identity on the reserved example.invalid domain for the CI fixture repo, not a real address
+plugins/osiris/node_modules/dagre/package.json email third-party npm package.json maintainer address as published in the public registry (vendored dependency, unmodified); NOT bff data. OWNER DECISION PENDING: drop this line to block the release
+plugins/osiris/node_modules/graphlib/package.json email third-party npm package.json maintainer address as published in the public registry (vendored dependency, unmodified); NOT bff data. OWNER DECISION PENDING: drop this line to block the release
+plugins/osiris/node_modules/lodash/package.json email third-party npm package.json maintainer address as published in the public registry (vendored dependency, unmodified); NOT bff data. OWNER DECISION PENDING: drop this line to block the release
+plugins/osiris/node_modules/zod/package.json email third-party npm package.json maintainer address as published in the public registry (vendored dependency, unmodified); NOT bff data. OWNER DECISION PENDING: drop this line to block the release
