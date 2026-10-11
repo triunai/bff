@@ -80,8 +80,8 @@ class WindowsPreviewTests(unittest.TestCase):
         self.ps1 = (ROOT / "install.ps1").read_text()
 
     def test_python_version_failure_has_the_windows_guidance(self):
-        self.assertIn("winget install Python.Python.3.12",
-                      self.ps1.split("sys.exit(0 if sys.version_info", 1)[1].split("$releases", 1)[0])
+        self.assertIn("winget install Python.Python.3.12", self.ps1.split("function ConvertTo-ArgString", 1)[0])
+        self.assertIn("throw $pythonHelp", self.ps1.split("function Find-Python", 1)[1])
 
     def test_generic_failures_name_the_next_step(self):
         self.assertNotIn("throw 'BFF install failed.'", self.ps1)

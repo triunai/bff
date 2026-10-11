@@ -145,5 +145,57 @@ class SimulatedInstall(unittest.TestCase):
         self.assertEqual(update._active_id(self.prefix, system="Linux"), result["release"])
 
 
+class ActivationHardening(unittest.TestCase):
+    def test_replace_retries_a_transient_permission_error(self):
+        calls = []
+
+        def flaky(src, dst):
+            calls.append((src, dst))
+            if len(calls) < 3:
+                raise PermissionError("in use")
+
+        waits = []
+        installer.replace_with_retry("a", "b", replace=flaky, sleep=waits.append)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(len(waits), 2)
+
+    def test_replace_gives_up_with_the_original_error(self):
+        def locked(src, dst):
+            raise PermissionError("still in use")
+
+        with self.assertRaises(PermissionError):
+            installer.replace_with_retry("a", "b", attempts=3, replace=locked, sleep=lambda _: None)
+
+    def test_replace_does_not_swallow_other_errors(self):
+        def broken(src, dst):
+            raise FileNotFoundError("gone")
+
+        with self.assertRaises(FileNotFoundError):
+            installer.replace_with_retry("a", "b", replace=broken, sleep=lambda _: None)
+
+    def test_paths_with_spaces_stay_quoted_and_ascii(self):
+        data = installer.windows_launcher("C:\\Program Files\\Python 312\\python.exe", "C:\\Users\\a b\\bff\\releases\\" + RELEASE, RELEASE)
+        text = data.decode("ascii")
+        self.assertIn('"C:\\Program Files\\Python 312\\python.exe" -c', text)
+        self.assertNotIn("chcp", text)
+        self.assertTrue(text.endswith("\r\n"))
+
+    def test_non_ascii_path_switches_to_utf8_and_keeps_crlf(self):
+        data = installer.windows_launcher("D:\\donn\u00e9es\\python.exe", "D:\\donn\u00e9es\\r", RELEASE)
+        text = data.decode("utf-8")
+        self.assertEqual(text.splitlines()[:2], ["@echo off", "chcp 65001 >nul"])
+        self.assertEqual(data.count(b"\n"), data.count(b"\r\n"))
+        self.assertIn("donn\u00e9es", text)
+        self.assertEqual(installer.shim_release(text), RELEASE)
+
+    def test_windows_activation_goes_through_the_retrying_replace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = (Path(tmp) / "data").resolve()
+            with mock.patch.object(installer, "replace_with_retry", wraps=installer.replace_with_retry) as spy:
+                installer.install(prefix, system="Windows")
+            self.assertEqual(spy.call_count, 1)
+            self.assertTrue((prefix / "bin" / "bff.cmd").is_file())
+
+
 if __name__ == "__main__":
     unittest.main()

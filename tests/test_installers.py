@@ -116,17 +116,36 @@ class WindowsInstallerTests(unittest.TestCase):
         self.assertEqual(sh.strip(), ps.strip())
 
     def test_verifies_sums_and_refuses_store_stub(self):
-        for needle in ("Get-FileHash -Algorithm SHA256", "SHA256SUMS", "checksum mismatch", "\\WindowsApps\\",
+        for needle in ("Get-FileHash -Algorithm SHA256", "SHA256SUMS", "checksum mismatch",
                        "winget install --id=astral-sh.uv -e", "winget install Python.Python.3.12",
                        "-NoModifyPath", "SetEnvironmentVariable('Path'"):
             self.assertIn(needle, self.ps1)
 
     def test_gh_source_and_fix_messages_are_present(self):
-        for needle in ("gh release download", "gh auth status", "gh auth login", "winget install --id GitHub.cli", "BFF_RELEASE_BASE",
-                       "[scriptblock]::Create"):
+        for needle in ("'release', 'download'", "'auth', 'status'", "gh auth login", "winget install --id GitHub.cli", "BFF_RELEASE_BASE",
+                       "BFF_RELEASE_DIR", "[scriptblock]::Create"):
             self.assertIn(needle, self.ps1)
-        self.assertLess(self.ps1.index("gh auth status"), self.ps1.index("New-Item -ItemType Directory"))
+        self.assertLess(self.ps1.index("'auth', 'status'"), self.ps1.index("New-Item -ItemType Directory"))
         self.assertTrue(self.ps1.isascii() and self.sh.isascii())  # PowerShell 5.1 reads BOM-less files as ANSI
+
+    def test_python_discovery_runs_each_candidate_instead_of_judging_the_path(self):
+        # A real Store/winget Python lives under WindowsApps too; only an alias stub fails when it is run.
+        head = self.ps1.split("function Find-Python", 1)[1].split("function Test-Interactive", 1)[0]
+        self.assertNotIn("WindowsApps", head)
+        for needle in ("'py', '-3'", "'python3'", "sys.version_info >= (3, 9)", "Invoke-Captured", "-CommandType Application"):
+            self.assertIn(needle, head)
+
+    def test_native_output_is_captured_without_error_records(self):
+        for needle in ("RedirectStandardOutput = $true", "RedirectStandardError = $true", "ReadToEndAsync", "$run.Out.Trim()"):
+            self.assertIn(needle, self.ps1)
+        self.assertNotIn("2>&1", self.ps1)
+        self.assertNotIn("exit $", self.ps1)  # exit would close a terminal when the script is run inline
+
+    def test_interactivity_check_covers_ci_and_noninteractive(self):
+        body = self.ps1.split("function Test-Interactive", 1)[1].split("\n}\n", 1)[0]
+        for needle in ("$env:CI", "UserInteractive", "IsInputRedirected", "noni"):
+            self.assertIn(needle, body)
+        self.assertIn("catch { $answer = $null }", self.ps1)
 
     def test_blanket_wsl_gate_is_gone_and_untested_notice_is_honest(self):
         self.assertNotIn("PREVIEW: use WSL", self.ps1)
@@ -151,6 +170,55 @@ class WindowsInstallerTests(unittest.TestCase):
         pattern = re.compile(r"\|\s*(sh|bash|zsh|iex)\b|iex \(|Invoke-Expression")
         for path in [ROOT / "install.sh", ROOT / "install.ps1", ROOT / "install.py"] + sorted((ROOT / "bff").glob("*.py")):
             self.assertIsNone(pattern.search(path.read_text()), str(path))
+
+
+@unittest.skipUnless(shutil.which("pwsh"), "pwsh not installed")
+class PowerShellRunTests(unittest.TestCase):
+    """Runs install.ps1 for real (pwsh) from a local release folder: the pipe-to-Invoke-Expression shape that
+    `irm | iex` produces, a prefix with a space, and a corrupted SHA256SUMS. CI runs this on windows-latest."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.work = Path(cls._tmp.name).resolve()
+        cls.release = cls.work / "release"
+        run = subprocess.run([sys.executable, str(ROOT / "scripts" / "build-bff-release.py"), "--output", str(cls.release)],
+                             capture_output=True, text=True)
+        if run.returncode != 0:
+            raise unittest.SkipTest("release build failed: " + run.stderr[-300:])
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def piped(self, release, prefix, result):
+        env = dict(os.environ, BFF_RELEASE_DIR=str(release), BFF_PREFIX=str(prefix), BFF_YES="1", BFF_NO_SETUP="1",
+                   BFF_RESULT_FILE=str(result), HOME=str(self.work / "home"), USERPROFILE=str(self.work / "home"),
+                   LOCALAPPDATA=str(self.work / "home" / "local"))  # never the real home
+        script = "Get-Content -Raw -LiteralPath '%s' | Invoke-Expression" % (ROOT / "install.ps1")
+        return subprocess.run(["pwsh", "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True, text=True, env=env)
+
+    def test_piped_install_from_local_release_dir(self):
+        prefix, result = self.work / "pre fix", self.work / "result.json"
+        run = self.piped(self.release, prefix, result)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        payload = json.loads(result.read_text())
+        self.assertTrue(Path(payload["command"]).is_file())
+        Path(payload["command"]).resolve().relative_to(prefix.resolve())  # raises if it landed elsewhere
+        version = subprocess.run([payload["command"], "--version"], capture_output=True, text=True)
+        self.assertEqual(version.returncode, 0, version.stdout + version.stderr)
+        self.assertIn(installer.__version__, version.stdout)
+
+    def test_corrupted_sha256sums_installs_nothing(self):
+        bad = self.work / "bad"
+        shutil.copytree(str(self.release), str(bad))
+        sums = bad / "SHA256SUMS"
+        sums.write_text("0" + sums.read_text()[1:])
+        prefix = self.work / "never"
+        run = self.piped(bad, prefix, self.work / "none.json")
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("checksum mismatch", run.stdout + run.stderr)
+        self.assertFalse(prefix.exists())
 
 
 class ReleaseBuilderTests(unittest.TestCase):
