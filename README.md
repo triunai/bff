@@ -28,7 +28,7 @@ Re-running either line updates in place. They offer to add the bin directory to 
 
 **Windows limits:** `herdr` has no Windows build, the `caffeinate` keep-awake is macOS only, and BB (so Osiris inside BB) is not supported on Windows. `bff`, `bff doctor`, `bff update`, `bff check` and the terminal apps `bff osiris factory | worktrees | prune` work (the terminal apps need Node 22.6 or newer).
 
-BFF is a portable CLI and a set of repo conventions for running coding agents without losing the plot. Osiris, its workbench, shows what the agents actually did. It runs inside **BB**, a separate desktop workbench app that hosts Osiris as a plugin; BFF does not install BB, so install it first if you want Osiris (the CLI works without it). [Install the CLI](#install-in-30-seconds) below.
+BFF is a portable CLI and a set of repo conventions for running coding agents without losing the plot. Osiris, its workbench, shows what the agents actually did. It runs inside **BB**, a separate desktop workbench app that hosts Osiris as a plugin; BFF does not install BB, so install it first if you want Osiris (the CLI works without it). The Osiris plugin itself is included in the bff release: `bff osiris setup` installs it into BB, no separate download. [Install the CLI](#install-in-30-seconds) below.
 
 > The CLI is public and usable today (v0.1.1). The one-command installer is not out yet; to hear when it ships, see [Get v0.2.0](#get-v020).
 
@@ -129,7 +129,7 @@ Osiris is evidence-first. A shell exit code is an observation, not necessarily a
 bff osiris --install    # with BB already running (v0.1.1 behaviour)
 ```
 
-BFF installs the included prebuilt Osiris plugin through BB and opens it. The tested baseline is BB 0.45+ against public SDK 0.6.15. Upstream compatibility remains upstream compatibility; BFF does not claim clairvoyance.
+BFF installs the Osiris plugin included in its release through BB (copied to a stable directory under bff's data directory and verified first) and opens it. The tested baseline is BB 0.45+ against public SDK 0.6.15. Upstream compatibility remains upstream compatibility; BFF does not claim clairvoyance.
 
 ## How it works
 
