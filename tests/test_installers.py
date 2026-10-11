@@ -215,7 +215,9 @@ class PowerShellRunTests(unittest.TestCase):
         bad = self.work / "bad"
         shutil.copytree(str(self.release), str(bad))
         sums = bad / "SHA256SUMS"
-        sums.write_text("0" + sums.read_text(encoding="utf-8")[1:], encoding="utf-8")
+        text = sums.read_text(encoding="utf-8")
+        # Flip the first hex digit to a DIFFERENT one: a fixed "0" is a no-op one run in sixteen (flaky 0 == 0 on windows-latest).
+        sums.write_text(("1" if text[0] == "0" else "0") + text[1:], encoding="utf-8")
         prefix = self.work / "never"
         run = self.piped(bad, prefix, self.work / "none.json")
         self.assertNotEqual(run.returncode, 0)
