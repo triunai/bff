@@ -206,7 +206,7 @@ def run_checks(profile, repo):
         try:
             # A bare program name is found in the fixed trusted directories (never PATH); a path must itself be absolute and trusted.
             # An absolute path is the user's explicit choice in their own profile (location is theirs; ownership, mode and directory-chain checks still apply).
-            absolute = "/" in argv[0]
+            absolute = os.path.isabs(argv[0])  # a "/" test alone misses C:\\... on Windows
             program = argv[0] if absolute else trusted_bin.which(argv[0])
             if program is None:
                 raise FileNotFoundError("no trusted program named " + argv[0])

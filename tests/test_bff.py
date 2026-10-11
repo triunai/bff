@@ -163,6 +163,7 @@ class InstallationTests(Scratch):
         with self.assertRaisesRegex(ValueError, "Symlink"):
             installer.install(self.prefix, source=self.source)
 
+    @winskip.posix_only('compares the bin/bff symlink target; Windows activates bin/bff.cmd, pinned by test_windows_install')
     def test_new_release_preserves_old_and_rollback(self):
         first = installer.install(self.prefix, source=self.source)
         (self.source / "README.md").write_text("new README", encoding="utf-8")
