@@ -408,6 +408,7 @@ def _vet_argv(argv, policy):
 
 def _batch_via_cmd(items, verdict, policy):
     """Rule W5: a .cmd/.bat runs only through the vetted System32 cmd.exe, and only when nothing in the line can be reinterpreted by cmd."""
+    policy = policy or Policy()  # the default-policy callers (doctor, update) pass None; real Windows crashed on policy.platform
     for item in [verdict.path] + items:
         if WIN_METACHARS & set(item):
             raise TrustRefused("bad-argv", "refusing a cmd.exe metacharacter (& | < > ^ % ! \" or a newline) in " + repr(item))

@@ -213,7 +213,7 @@ class PowerShellRunTests(unittest.TestCase):
         bad = self.work / "bad"
         shutil.copytree(str(self.release), str(bad))
         sums = bad / "SHA256SUMS"
-        sums.write_text("0" + sums.read_text(encoding="utf-8")[1:])
+        sums.write_text("0" + sums.read_text(encoding="utf-8")[1:], encoding="utf-8")
         prefix = self.work / "never"
         run = self.piped(bad, prefix, self.work / "none.json")
         self.assertNotEqual(run.returncode, 0)

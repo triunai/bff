@@ -25,7 +25,7 @@ spec.loader.exec_module(installer)
 
 def copy_repo(destination, marker):
     shutil.copytree(str(SDK), str(destination), ignore=shutil.ignore_patterns(".git", "node_modules", "__pycache__", "*.pyc", "docs", "evidence", "tests"))
-    (Path(destination) / "README.md").write_text((Path(destination) / "README.md").read_text(encoding="utf-8") + "\n" + marker + "\n")
+    (Path(destination) / "README.md").write_text((Path(destination) / "README.md").read_text(encoding="utf-8") + "\n" + marker + "\n", encoding="utf-8")
 
 
 class WindowsLayout(unittest.TestCase):

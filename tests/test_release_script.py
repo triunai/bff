@@ -24,7 +24,7 @@ def scratch(directory):
 
 def add_section(root, version):
     path = root / "CHANGELOG.md"
-    path.write_text(path.read_text(encoding="utf-8").replace("## [Unreleased]\n", "## [Unreleased]\n\n## [%s] - 2030-01-01\n\n### Added\n- thing\n" % version, 1))
+    path.write_text(path.read_text(encoding="utf-8").replace("## [Unreleased]\n", "## [Unreleased]\n\n## [%s] - 2030-01-01\n\n### Added\n- thing\n" % version, 1), encoding="utf-8")
 
 
 class PureHelperTests(unittest.TestCase):
@@ -49,8 +49,8 @@ class PureHelperTests(unittest.TestCase):
         self.assertIn("v1.2.3", commands[2])
         gh = commands[3]
         self.assertEqual(gh[:4], ["gh", "release", "create", "v1.2.3"])
-        self.assertIn("/out/bff-1.2.3.tar.gz", gh)
-        self.assertIn("/out/SHA256SUMS", gh)
+        self.assertIn(str(Path("/out") / "bff-1.2.3.tar.gz"), gh)
+        self.assertIn(str(Path("/out") / "SHA256SUMS"), gh)
         self.assertIn("--verify-tag", gh)
 
 

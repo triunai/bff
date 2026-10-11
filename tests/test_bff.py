@@ -106,7 +106,7 @@ class InstallationTests(Scratch):
         result = installer.install(self.prefix, source=self.source)
         release = self.prefix / "share" / "bff" / "releases" / result["release"]
         target = release / "bff" / "cli.py"
-        target.write_text(target.read_text(encoding="utf-8") + "\n# mutation\n")
+        target.write_text(target.read_text(encoding="utf-8") + "\n# mutation\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "integrity"):
             installer.install(self.prefix, source=self.source)
         with self.assertRaisesRegex(ValueError, "integrity"):
@@ -193,7 +193,7 @@ class InstallationTests(Scratch):
         (plugin / "dist" / "app.js.map").write_text("source map", encoding="utf-8")
         (plugin / "node_modules").mkdir()
         (plugin / "node_modules" / "dep.js").write_text("dependency", encoding="utf-8")
-        (self.source / "compat.json").write_text((SDK / "compat.json").read_text(encoding="utf-8"))
+        (self.source / "compat.json").write_text((SDK / "compat.json").read_text(encoding="utf-8"), encoding="utf-8")
         result = installer.install(self.prefix, source=self.source)
         release = self.prefix / "share" / "bff" / "releases" / result["release"]
         self.assertFalse((release / "plugins").exists())
@@ -205,7 +205,7 @@ class ProjectTests(Scratch):
     def test_init_repeat_preserves_edited_router(self):
         self.assertEqual(self.init()["status"], "initialized")
         router = self.repo / "hygiene.md"
-        router.write_text(router.read_text(encoding="utf-8") + "\nProject addition\n")
+        router.write_text(router.read_text(encoding="utf-8") + "\nProject addition\n", encoding="utf-8")
         before = tree(self.repo)
         self.assertEqual(self.init()["status"], "already-initialized")
         self.assertEqual(before, tree(self.repo))
@@ -300,7 +300,7 @@ class ProjectTests(Scratch):
         journal = self.repo / "docs" / "project-log.md"
         journal.write_text("### 2026-10-05#1 — bad\nOwner: somebody\nWS: WS-01\n", encoding="utf-8")
         board = self.repo / "docs" / "workstreams.md"
-        board.write_text(board.read_text(encoding="utf-8").replace("Status: 🟢 ACTIVE", "Status: DONE"))
+        board.write_text(board.read_text(encoding="utf-8").replace("Status: 🟢 ACTIVE", "Status: DONE"), encoding="utf-8")
         code, stdout, _ = self.command(["check", "--repo", str(self.repo)])
         self.assertEqual(code, 1)
         self.assertIn("First body line", stdout)

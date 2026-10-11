@@ -52,7 +52,7 @@ class Fixture(unittest.TestCase):
         versioning.apply_version(newer, NEW)
         changelog = newer / "CHANGELOG.md"
         changelog.write_text(changelog.read_text(encoding="utf-8").replace(
-            "## [Unreleased]", "## [Unreleased]\n\n## [" + NEW + "] - 2026-10-06\n\n### Added\n- Synthetic change line.\n", 1))
+            "## [Unreleased]", "## [Unreleased]\n\n## [" + NEW + "] - 2026-10-06\n\n### Added\n- Synthetic change line.\n", 1), encoding="utf-8")
         built = root / "built"
         subprocess.run([sys.executable, str(newer / "scripts" / "build-bff-release.py"), "--output", str(built)],
                        check=True, stdout=subprocess.PIPE)
@@ -75,7 +75,7 @@ class Fixture(unittest.TestCase):
         installer.install(self.prefix, source=self.current_src)
         self.srv = self.root / "srv"
         shutil.copytree(str(self.template_srv), str(self.srv))
-        self.base = "file://" + str(self.srv)
+        self.base = Path(self.srv).resolve().as_uri()
         self.bin = self.root / "fakebin"
         self.bin.mkdir()
         self.state_file = Path(str(paths.state_path(prefix=self.prefix)))
@@ -450,7 +450,7 @@ class Engine(unittest.TestCase):
         directory.mkdir(parents=True)
         if text is not None:
             (directory / "SHA256SUMS").write_text(text, encoding="utf-8")
-        return "file://" + temporary.name
+        return Path(temporary.name).resolve().as_uri()
 
     def test_latest_version(self):
         line = "a" * 64 + "  bff-1.2.3.tar.gz\n"
@@ -480,8 +480,8 @@ class Engine(unittest.TestCase):
         self.addCleanup(shutil.rmtree, str(prefix))
         package = prefix / "share" / "bff" / "releases" / "1.2.3-0123456789ab" / "bff"
         package.mkdir(parents=True)
-        self.assertEqual(paths.install_prefix(str(package / "__init__.py")), prefix)
-        self.assertIsNone(paths.install_prefix(str(prefix / "share" / "bff" / "releases" / "not-a-release" / "bff" / "x.py")))
+        self.assertEqual(paths.install_prefix(str(package / "__init__.py"), system="Linux"), prefix)
+        self.assertIsNone(paths.install_prefix(str(prefix / "share" / "bff" / "releases" / "not-a-release" / "bff" / "x.py"), system="Linux"))
         self.assertIsNone(paths.install_prefix(str(SDK / "bff" / "__init__.py")))
 
     def test_active_state_path_follows_the_running_install(self):

@@ -150,6 +150,16 @@ class BatchFiles(WindowsCase):
         self.assertIsInstance(items, str)
         self.assertEqual(items, '"C:\\Windows\\System32\\cmd.exe" /d /s /c ""C:\\Program Files\\nodejs\\npm.cmd" "install" "left pad""')
 
+    def test_a_batch_file_runs_under_the_default_policy_none(self):
+        # Found on real windows-latest: doctor/update pass policy=None, and _batch_via_cmd read policy.platform on it (AttributeError).
+        npm = "C:\\Program Files\\nodejs\\npm.cmd"
+        vets = {npm: trusted_bin.Vet(True, npm, npm, None, None), SYS32 + "\\cmd.exe": trusted_bin.Vet(True, SYS32 + "\\cmd.exe", SYS32 + "\\cmd.exe", None, None)}
+        with mock.patch.object(trusted_bin, "vet_path", side_effect=lambda candidate, policy=None: vets[candidate]), \
+                mock.patch.object(trusted_bin, "_is_win", return_value=True):
+            items, verdict = trusted_bin._vet_argv([npm, "view"], None)
+        self.assertEqual(verdict.path, SYS32 + "\\cmd.exe")
+        self.assertTrue(items.startswith('"C:\\Windows\\System32\\cmd.exe" /d /s /c'))
+
     def test_metacharacters_in_any_argument_are_refused(self):
         p = policy(self.files(), dirs=["C:\\Program Files\\nodejs"])
         for ch in "&|<>^%!\"\n\r":

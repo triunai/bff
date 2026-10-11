@@ -103,7 +103,7 @@ class VersionSourceTests(unittest.TestCase):
             built = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(built.returncode, 0, built.stderr)
             self.assertTrue((Path(directory) / "out" / ("bff-" + __version__ + ".tar.gz")).is_file())
-            (root / "install.sh").write_text((root / "install.sh").read_text(encoding="utf-8").replace("BFF_VERSION=" + __version__, "BFF_VERSION=0.0.1"))
+            (root / "install.sh").write_text((root / "install.sh").read_text(encoding="utf-8").replace("BFF_VERSION=" + __version__, "BFF_VERSION=0.0.1"), encoding="utf-8")
             broken = subprocess.run(command, capture_output=True, text=True)
             self.assertNotEqual(broken.returncode, 0)
             self.assertIn("disagree", broken.stderr)
