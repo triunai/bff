@@ -372,13 +372,16 @@ class InstallShTests(unittest.TestCase):
         self.assertFalse((self.prefix / "bin" / "bff").exists())
         self.assertEqual(list(self.home.iterdir()), [])
 
-    def test_setup_while_osiris_is_unpublished_exits_4(self):
+    def test_setup_plans_the_bundled_osiris_from_a_stable_copy(self):
+        # Osiris is published (bundled): with no terminal and no --yes the installed bff prints the plan and changes nothing in BB.
         self.add_fake_bb()
         run = self.run_sh("--setup", "--prefix", str(self.prefix), "--no-modify-path")
-        self.assertEqual(run.returncode, 4, run.stdout + run.stderr)
-        self.assertIn("not publicly released yet", run.stdout)  # the installed bff ran `osiris setup`
-        self.assertIn("bff is installed. Osiris is not publicly released yet", run.stderr)
-        self.assertNotIn("waiting on the prerequisites", run.stderr)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        stable = self.prefix / "share" / "bff" / "osiris"
+        self.assertRegex(run.stdout, r"Plan: bb plugin install \S*share[/\\]bff[/\\]osiris[/\\]osiris-0\.3\.0-[0-9a-f]{12} --yes")
+        self.assertIn("Re-run with --yes to install.", run.stdout)
+        self.assertNotIn("not publicly released yet", run.stdout + run.stderr)
+        self.assertFalse(stable.exists())  # nothing is copied before consent
         self.assertTrue((self.prefix / "bin" / "bff").is_symlink())
 
     def test_setup_without_bb_is_still_exit_3(self):
@@ -425,7 +428,7 @@ class InstallShGhSourceTests(InstallShTests):
 
     # Re-running the inherited curl tests here would only repeat them.
     test_download_install_runs_new_bff = test_tampered_tarball_installs_nothing = None
-    test_setup_while_osiris_is_unpublished_exits_4 = test_setup_without_bb_is_still_exit_3 = None
+    test_setup_plans_the_bundled_osiris_from_a_stable_copy = test_setup_without_bb_is_still_exit_3 = None
     test_http_release_base_is_refused = test_old_flags_still_pass_through = None
 
     def add_fake_gh(self):
@@ -503,8 +506,8 @@ class InstallShGhSourceTests(InstallShTests):
         self.add_fake_gh()
         self.add_fake_bb()
         run = self.run_gh("--setup", "--prefix", str(self.prefix), "--no-modify-path")
-        self.assertEqual(run.returncode, 4, run.stdout + run.stderr)
-        self.assertIn("bff --help", run.stderr)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn("Plan: bb plugin install", run.stdout)
 
     def test_oneliner_form_runs_script_text_via_sh_c(self):
         # The documented one-liner passes the script as a -c string, so stdin stays the terminal for the PATH prompt.
