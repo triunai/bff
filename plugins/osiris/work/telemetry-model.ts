@@ -275,24 +275,4 @@ export function telemetryMaps(t: WorkTelemetry | null): TelemetryMaps | null {
 
 // ---- plain-English text for the observer's cost and cache cards (pure, so the words are tested) ----
 export const compactCount = (n: number): string => (n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(n));
-const usd = (n: number) => `$${n < 10 ? n.toFixed(2) : n.toFixed(0)}`;
-const pctText = (r: number | null) => (r === null ? "—" : `${(r * 100).toFixed(0)}%`);
 export const ageText = (ms: number) => (ms < 1000 ? "just now" : ms < 60_000 ? `${Math.round(ms / 1000)}s ago` : `${Math.round(ms / 60_000)} min ago`);
-export interface TelemetryCards {
-  tokens: { value: string; sub: string };
-  cost: { value: string; sub: string };
-  cache: { value: string; sub: string };
-  misses: { value: string; sub: string };
-  freshness: { value: string; sub: string };
-}
-/** What the Cost cards say. Cost is an estimate at list price, and a lower bound while any model has no price. */
-export function telemetryCards(t: WorkTelemetry, now: number): TelemetryCards {
-  const a = t.totals, f = t.freshness, c = t.coverage;
-  return {
-    tokens: { value: `${compactCount(a.input + a.cacheWrite + a.cacheRead)} in · ${compactCount(a.output)} out`, sub: `${a.requests} calls · ${compactCount(a.cacheRead)} read from cache` },
-    cost: { value: `${a.costComplete ? "" : "at least "}${usd(a.costUsd)}`, sub: a.costComplete ? `estimate at list price · ${usd(a.joinedCostUsd)} matched to beads` : `estimate at list price · no price for ${a.unpricedModels.join(", ") || "a model"}` },
-    cache: { value: pctText(a.hitRate), sub: "share of input read from cache; higher is cheaper" },
-    misses: { value: `${a.misses}`, sub: `${a.prefixBreaks} because the cached start of the prompt changed` },
-    freshness: { value: f.polledAt ? `read ${ageText(Math.max(0, now - f.polledAt))}` : "not read yet", sub: `${f.filesSeen} transcript files · ${c.joined} of ${c.units} agents matched to a bead${f.catchingUp ? " · still reading older history" : ""}${f.stale ? ` · showing the answer from ${ageText(Math.max(0, now - f.stale.since))} while it refreshes (${f.stale.reason})` : ""}` },
-  };
-}

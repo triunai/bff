@@ -45,7 +45,7 @@ export function FloorTimeline(p: { lines: readonly TimelineLine[]; t0: number; t
       <line className="oi-ftl-axis" x1={0} x2={w} y1={MID} y2={MID} />
       {layout.pips.map(pip => <PipMark key={pip.key} pip={pip} fresh={pip.key === newest && !p.reduced && !pip.earlier} expanded={openPip === pip}
         onToggle={() => setOpen(o => (o === pip.lines[0].key ? null : pip.lines[0].key))} onSelect={p.onSelect} onHover={p.onHover} />)}
-      <g className="oi-ftl-now" transform={`translate(${layout.nowX} 0)`}><title>Now</title><line y1={6} y2={H - 6} /><path d={`M-4 ${MID - 4}L2 ${MID}L-4 ${MID + 4}Z`} /></g>
+      <g className="oi-ftl-now" transform={`translate(${layout.nowX} 0)`}><title>Now: the right edge of the axis is the present moment</title><line y1={6} y2={H - 6} /><text className="oi-ftl-nowt" x={-6} y={H - 8} textAnchor="end">now</text><path d={`M-4 ${MID - 4}L2 ${MID}L-4 ${MID + 4}Z`} /></g>
     </svg>
     {p.lines.length === 0 && <span className="oi-ftl-empty">Nothing yet</span>}
     {openPip && <EventCard pip={openPip} w={w} stationOf={p.stationOf} onSelect={id => { setOpen(null); p.onSelect(id); }} onHover={p.onHover} onClose={() => setOpen(null)} />}
@@ -99,7 +99,7 @@ export const floorTimelineStyles = `
 .oi-ftl-pip.act:hover .oi-ftl-bg,.oi-ftl-pip.act:focus-visible .oi-ftl-bg{stroke-width:2.4;fill:color-mix(in srgb,var(--c) 22%,var(--oi-panel,var(--oi-bg)))}
 .oi-ftl-pip:focus-visible{outline:none}
 .oi-ftl-pip:focus-visible .oi-ftl-bg{stroke:var(--oi-focus,var(--c));stroke-width:2.6}
-.oi-ftl-now line{stroke:var(--oi-accent,var(--oi-tone-running));stroke-width:1.5;stroke-dasharray:3 2}.oi-ftl-now path{fill:var(--oi-accent,var(--oi-tone-running))}
+.oi-ftl-nowt{fill:var(--oi-accent,var(--oi-tone-running));font:600 9px ui-monospace,monospace;letter-spacing:.04em}.oi-ftl-now line{stroke:var(--oi-accent,var(--oi-tone-running));stroke-width:1.5;stroke-dasharray:3 2}.oi-ftl-now path{fill:var(--oi-accent,var(--oi-tone-running))}
 .oi-ftl-empty{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--oi-muted);pointer-events:none}
 .oi-ftl-pip.new .oi-ftl-bg{animation:oi-ftl-pop .5s ease-out 1}
 @keyframes oi-ftl-pop{from{stroke-width:5;opacity:.4}to{stroke-width:1.4;opacity:1}}

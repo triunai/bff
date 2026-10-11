@@ -7,36 +7,43 @@ import { isHerdrCli, type HerdrCli } from "../herdr-dispatch/plan.ts";
 /** The product name of the team action; the Board's button uses this one label. */
 export const TEAM_LABEL = "Dispatch team";
 export const TEAM_MAX_WORKERS = 6;
+import { BLAST_LEAD, BLAST_MAX_AGENTS, BLAST_MAX_TARGETS, BLAST_SILOS, BLAST_WORKER, isBlastSilo, type BlastSilo } from "./blast-silos.ts";
+export { BLAST_LEAD, BLAST_MAX_AGENTS, BLAST_MAX_TARGETS, BLAST_SILOS, BLAST_WORKER, isBlastSilo };
+export type { BlastSilo };
 export type TeamMember = { cli: HerdrCli; model: string | null };
 /** The defaults only: the CLI/model choices themselves come from data (HERDR_CLIS, the dialog's availability list). */
 export const TEAM_DEFAULT_LEAD: TeamMember = { cli: "claude", model: "opus" };
 export const TEAM_DEFAULT_WORKER: TeamMember = { cli: "claude", model: "sonnet" };
 export type TeamCard = { id: string; title: string; description?: string; acceptance?: string };
 export type TeamPane = TeamMember & { role: "lead" | "worker"; label: string; cards: TeamCard[] };
-export type TeamPlan = { tab: string; lead: TeamPane; workers: TeamPane[]; beadIds: string[]; cards: TeamCard[]; worker: TeamMember; epic: string | null };
-export type TeamInput = { cards: readonly TeamCard[]; lead?: TeamMember; worker?: TeamMember; workers?: number; epic?: string | null };
+export type TeamPlan = { tab: string; lead: TeamPane; workers: TeamPane[]; beadIds: string[]; cards: TeamCard[]; worker: TeamMember; epic: string | null; /** set only for a Factory Blast */ preset: BlastSilo | null };
+export type TeamInput = { cards: readonly TeamCard[]; lead?: TeamMember; worker?: TeamMember; workers?: number; epic?: string | null; preset?: BlastSilo | null };
 export type TeamResult = { ok: true; plan: TeamPlan } | { ok: false; reason: string };
 
 const tabName = (epicOrFirst: string): string => `team-${epicOrFirst.toLowerCase().replace(/[^a-z0-9.]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40)}`;
-export const clampWorkers = (n: number | undefined, cards: number): number => Math.max(1, Math.min(TEAM_MAX_WORKERS, Math.floor(typeof n === "number" && Number.isFinite(n) ? n : cards)));
+export const clampWorkers = (n: number | undefined, cards: number, max: number = TEAM_MAX_WORKERS): number => Math.max(1, Math.min(max, Math.floor(typeof n === "number" && Number.isFinite(n) ? n : cards)));
 
 export function buildTeamPlan(input: TeamInput): TeamResult {
   const cards = input.cards ?? [];
   if (!cards.length) return { ok: false, reason: "select at least one card" };
   for (const c of cards) if (!BEAD_ID_RE.test(String(c?.id))) return { ok: false, reason: "a selected card has an id Osiris will not pass to an agent" };
   if (new Set(cards.map(c => c.id)).size !== cards.length) return { ok: false, reason: "the same card was selected twice" };
-  const lead = input.lead ?? TEAM_DEFAULT_LEAD, worker = input.worker ?? TEAM_DEFAULT_WORKER;
+  if (input.preset != null && !isBlastSilo(input.preset)) return { ok: false, reason: "that blast target is not one Osiris knows" };
+  // A blast has FIXED routing, set here on the server: any lead/worker a caller sent is ignored.
+  const lead: TeamMember = input.preset ? BLAST_LEAD : input.lead ?? TEAM_DEFAULT_LEAD, worker: TeamMember = input.preset ? BLAST_WORKER : input.worker ?? TEAM_DEFAULT_WORKER;
   for (const m of [lead, worker]) {
     if (!isHerdrCli(m.cli)) return { ok: false, reason: "that agent is not one Osiris can start (claude, codex or gemini)" };
     if (m.model !== null && !MODEL_RE.test(m.model)) return { ok: false, reason: "a model id may only use letters, digits and . _ : -" };
   }
-  const n = clampWorkers(input.workers, cards.length);
+  const preset = input.preset ?? null;
+  if (preset && cards.length > BLAST_MAX_TARGETS) return { ok: false, reason: `a blast takes at most ${BLAST_MAX_TARGETS} items (${BLAST_MAX_AGENTS} agents with the lead); the rest wait for the next blast` };
+  const n = clampWorkers(input.workers, cards.length, preset ? BLAST_MAX_TARGETS : TEAM_MAX_WORKERS);
   const buckets: TeamCard[][] = Array.from({ length: n }, () => []);
   cards.forEach((c, i) => buckets[i % n].push(c));
   const used = buckets.filter(b => b.length > 0); // fewer cards than workers: no idle worker
   const epic = input.epic && BEAD_ID_RE.test(input.epic) ? input.epic : null;
   return { ok: true, plan: {
-    tab: tabName(epic ?? cards[0].id), beadIds: cards.map(c => c.id), cards: [...cards], worker, epic,
+    tab: tabName(epic ?? cards[0].id), beadIds: cards.map(c => c.id), cards: [...cards], worker, epic, preset,
     lead: { ...lead, role: "lead", label: "Lead", cards: [...cards] },
     workers: used.map((b, i) => ({ ...worker, role: "worker" as const, label: `Worker ${i + 1}: ${b.map(c => c.id).join(" ")}`.slice(0, 60), cards: b })),
   } };

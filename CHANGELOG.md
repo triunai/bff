@@ -6,6 +6,26 @@ Versioning policy: [Semantic Versioning](https://semver.org/). While BFF is 0.x,
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-12
+
+Bundled Osiris is now 0.3.2 (711e1fa).
+
+### Fixed (bundled Osiris 0.3.2)
+- Cost cards are back on the Overview, even when no tracker is set up.
+- The dispatch dialog finds your installed agent programs again.
+- "Open full list" now opens the Agents list.
+- The transcript check no longer times out.
+- Factory: hovering no longer makes the strip jump.
+
+### Changed (bundled Osiris 0.3.2)
+- The calendar day view is ordered log, workstreams, neighbouring days, decisions, commits.
+- One right-side panel replaces the bottom strip.
+- The animated Factory floor is the default again.
+
+### Added (bundled Osiris 0.3.2)
+- A "Choose a tracker" button.
+- Factory: a clean tree strip, and a Blast button per silo that prefills a team dispatch and asks you to confirm before it runs.
+
 ## [0.3.1] - 2026-10-11
 
 Bundled Osiris is now 0.3.1 (c8aa44e).

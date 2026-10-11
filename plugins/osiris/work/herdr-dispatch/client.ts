@@ -1,12 +1,12 @@
 // Dispatch to Herdr: the ONE client primitive. Any surface (the Board's status, an inspector, a calendar day) calls dispatchToHerdr after the
 // shared HerdrDispatchDialog has asked the human to confirm. app.tsx binds the RPC caller and the "open the Terminal tab" action once.
 import type { HerdrCli, HerdrDispatchResult } from "./plan.ts";
-import type { TeamPlan } from "../team-dispatch/plan.ts";
+import type { BlastSilo, TeamPlan } from "../team-dispatch/plan.ts";
 import type { HerdrTeamResult } from "./run.ts";
 
 export type DispatchBinding = {
   call(name: "herdrDispatch", input: { prompt: string; cli: HerdrCli; title: string; repo?: string }): Promise<HerdrDispatchResult>;
-  call(name: "herdrTeam", input: { repo?: string; epic?: string; lead: { cli: HerdrCli; model: string | null }; worker: { cli: HerdrCli; model: string | null }; cards: { id: string; title: string }[]; workers: number }): Promise<HerdrTeamResult>;
+  call(name: "herdrTeam", input: { repo?: string; epic?: string; preset?: BlastSilo; lead: { cli: HerdrCli; model: string | null }; worker: { cli: HerdrCli; model: string | null }; cards: { id: string; title: string }[]; workers: number }): Promise<HerdrTeamResult>;
   call(name: "herdrClis", input: Record<string, never>): Promise<{ clis: HerdrCli[]; paths?: Partial<Record<HerdrCli, string>> }>;
   /** Shows the Terminal tab (the fallback when herdr cannot open a pane). */
   openTerminal(): void;
@@ -40,7 +40,7 @@ export type TeamOutcome = { ok: true; message: string } | { ok: false; message: 
 export async function dispatchTeamToHerdr(plan: TeamPlan, b: DispatchBinding | null = bound): Promise<TeamOutcome> {
   if (!b) return { ok: false, message: "Dispatch is not available here." };
   let r: HerdrTeamResult;
-  try { r = await b.call("herdrTeam", { ...(b.repo ? { repo: b.repo } : {}), ...(plan.epic ? { epic: plan.epic } : {}), lead: { cli: plan.lead.cli, model: plan.lead.model }, worker: { cli: plan.worker.cli, model: plan.worker.model }, cards: plan.cards.map(c => ({ id: c.id, title: c.title.slice(0, 200) })), workers: plan.workers.length }); }
+  try { r = await b.call("herdrTeam", { ...(b.repo ? { repo: b.repo } : {}), ...(plan.epic ? { epic: plan.epic } : {}), ...(plan.preset ? { preset: plan.preset } : {}), lead: { cli: plan.lead.cli, model: plan.lead.model }, worker: { cli: plan.worker.cli, model: plan.worker.model }, cards: plan.cards.map(c => ({ id: c.id, title: c.title.slice(0, 200) })), workers: plan.workers.length }); }
   catch (e) { return { ok: false, message: `Team not started: ${e instanceof Error ? e.message : String(e)}` }; }
   if (r.ok) return { ok: true, message: `Team started: tab ${r.tab}, 1 lead + ${plan.workers.length} worker${plan.workers.length === 1 ? "" : "s"}` };
   return { ok: false, message: `Team not fully started (${r.started} of ${plan.workers.length + 1} panes): ${r.reason}.` };

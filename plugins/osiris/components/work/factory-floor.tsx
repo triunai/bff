@@ -36,6 +36,9 @@ import { capitalise, firstUse, termDef, termLabel } from "../../work/glossary.ts
 const PANE = termLabel("pane"), GHOST = termLabel("ghost"), ITEM = termLabel("bead"), STALE = termLabel("stale");
 import { hourlyLanded, shouldCatchUp, unseenCount } from "../../work/time-lens.ts";
 import { BURST, SHELF, shelfLine } from "../../work/factory-fx.ts";
+import { HerdrDispatchDialog } from "../../work/herdr-dispatch/index.ts";
+import { BLAST_LABEL, BLAST_ROLE, blastPlan, blastSilo, ghostWorkers, type BlastPlan, type BlastSilo } from "../../work/blast-model.ts";
+import { teamGuard } from "../../work/dispatch-guard.ts";
 
 const EPIC_CHIPS = 4;
 const isWorkStation = (s: StationId) => s === "claim" || s === "build" || s === "gate";
@@ -137,6 +140,7 @@ export function FactoryFloor(p: { snap: WorkSurfaceSnapshot; now: number; select
   const [reduced, setReduced] = useState(reducedMotion);
   const [heat, setHeat] = useState<HeatMode | null>(null);
   const [heatScale, setHeatScale] = useState<HeatScale>("absolute");
+  const [heatBand, setHeatBand] = useState<number | null>(null), [blast, setBlast] = useState<BlastPlan | null>(null); // Blast (work/blast-model.ts): an active legend band narrows it; the plan opens the ONE team-dispatch dialog, prefilled
   const [seenAtOpen] = useState(readSeen), [caughtUp, setCaughtUp] = useState(false);
   const [follow, setFollow] = useState<string | null>(null);
   const [spot, setSpot] = useState<StationId | null>(null);
@@ -202,6 +206,12 @@ export function FactoryFloor(p: { snap: WorkSurfaceSnapshot; now: number; select
   const scene = useMemo(() => withFx(sceneBase, fxLit), [sceneBase, fxLit]);
   const vault = useMemo(() => vaultOf(split.archived, scene.pinned), [split, scene.pinned]); // the beads actually archived: pinned ones bypass the archive and are drawn on Land
   const frame = scene.frame;
+  const frameRef = useRef(frame); frameRef.current = frame;
+  useEffect(() => { setHeatBand(null); }, [heat, heatScale]); // a band belongs to one heat mode
+  const blastCount = (silo: BlastSilo) => blastSilo(frame, silo).length;
+  const openBlast = (silo: BlastSilo) => { if (blastCount(silo) > 0) setBlast(blastPlan(frame, silo, heat !== null ? heatBand : null)); };
+  /** The Blast button, HTML flavour (the Locks stat). */
+  const blastBtn = (silo: BlastSilo) => { const n = blastCount(silo); return <button type="button" className="oi-ff-blastbtn" disabled={n === 0} {...tipProps(BLAST_LABEL[silo], n ? `${BLAST_ROLE[silo].who}: ${BLAST_ROLE[silo].does} Opens the dispatch dialog; nothing runs until you confirm.` : `No ${BLAST_ROLE[silo].noun}s to blast.`)} onClick={() => openBlast(silo)}>⚡ Blast</button>; };
   useEffect(() => { prevRef.current = frame; }, [frame]);
   // Silos breathe: the frame carries each bay's TARGET rect (work/silo-layout.ts, from the station counts); the drawn bays ease
   // toward it over BAY_MS (the beads fly there on their own flights). Reduced motion snaps. JS-tweened, not a CSS transition, so
@@ -415,7 +425,7 @@ export function FactoryFloor(p: { snap: WorkSurfaceSnapshot; now: number; select
   movingRef.current = moving;
   const busy = frame.stations.some(s => (s.id === "claim" || s.id === "build" || s.id === "gate") && s.count > 0);
   const viaTranscript = frame.workers.filter(w => w.via === "transcript").length;
-  const liveN = frame.workers.filter(w => w.presence === "live").length, ghosts = frame.workers.filter(w => w.presence === "ghost").length;
+  const liveN = frame.workers.filter(w => w.presence === "live").length, ghosts = ghostWorkers(frame.workers).length;
   const spentTotal = frame.costWired ? frame.workers.reduce((a, w) => a + (w.cost ?? 0), 0) : 0;
   const spark = useMemo(() => hourlyLanded(events, tq), [events, tq]), sparkMax = Math.max(3, ...spark);
   /** One stat cell's value and sub-line. Sub-lines use .oi-ff-note (never a bare span rule, which once shrank "4 · 2"). */
@@ -430,10 +440,11 @@ export function FactoryFloor(p: { snap: WorkSurfaceSnapshot; now: number; select
     : id === "spent" ? (frame.costWired ? <b>{`$${spentTotal < 100 ? spentTotal.toFixed(1) : Math.round(spentTotal)}`}</b> : null)
     : id === "agents" ? <><b><RollNum n={liveN} reduced={reduced} /></b>{(viaTranscript > 0 || ghosts > 0) && <em className="oi-ff-note">{viaTranscript > 0 && <span className="oi-ff-t-running" title={`${viaTranscript} working with no ${PANE}: their transcript was written in the last 5 min`}>{viaTranscript} by transcript</span>}{viaTranscript > 0 && ghosts > 0 && " · "}{ghosts > 0 && <span className="oi-ff-t-attention" title={`${termDef("ghost")} (No transcript in the last 5 min either.)`}>{ghosts} {GHOST}{ghosts === 1 ? "" : "s"}</span>}</em>}</>
     : id === "sentBack" ? <><b className="oi-ff-t-attention"><RollNum n={sentBack} reduced={reduced} /></b><em className="oi-ff-note oi-ff-t-attention" title={`${frame.inRework} came back from review and are being fixed now${jams.length ? ` · queue building at ${jams.map(x => x.label).join(", ")}` : ""}`}>{frame.inRework} being fixed now{jams.length > 0 && <span className="oi-ff-t-failure"> · jam</span>}</em></>
-    : <><b className={ls.active ? "oi-ff-t-failure" : undefined}><RollNum n={ls.active} reduced={reduced} /></b>{ls.oldestMs !== null && <em className="oi-ff-note" title={`oldest lock ${elapsedText(ls.oldestMs)}`}>oldest {elapsedText(ls.oldestMs)}</em>}</>;
+    : <><b className={ls.active ? "oi-ff-t-failure" : undefined}><RollNum n={ls.active} reduced={reduced} /></b>{ls.oldestMs !== null && <em className="oi-ff-note" title={`oldest lock ${elapsedText(ls.oldestMs)}`}>oldest {elapsedText(ls.oldestMs)}</em>}{ls.active > 0 && blastBtn("locks")}</>;
   const { landedToday, sentBack } = scene.stats, { sparks, shelf, weather, unlocking, fresh } = scene.fx, log = scene.timeline;
   const rework = frame.tokens.filter(k => k.motion === "rework").length, jams = frame.stations.filter(s => s.bottleneck), ls = lockStats(frame.locks);
-  const heatChips = (m: HeatMode) => heatSwatches(m).map(s => <i key={s.step} className="oi-ff-heatchip" style={{ background: `var(${s.colorVar})`, color: `var(${s.textVar})` }} title={s.label}>{s.label}</i>); // ONE swatch table feeds the Key and the corner legend
+  const pickBand = (step: number) => setHeatBand(b => (b === step ? null : step));
+  const heatChips = (m: HeatMode) => heatSwatches(m).map(s => <i key={s.step} className={`oi-ff-heatchip${heatBand === s.step ? " on" : ""}`} role="button" tabIndex={0} aria-pressed={heatBand === s.step} style={{ background: `var(${s.colorVar})`, color: `var(${s.textVar})` }} title={`${s.label}: click to aim a Blast at only this band${heatBand === s.step ? " (active; click again to clear)" : ""}`} onClick={() => pickBand(s.step)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); pickBand(s.step); } }}>{s.label}</i>); // ONE swatch table feeds the Key and the corner legend
   const empty = frame.stations.every(s => s.count === 0), heatOn = heat !== null;
   const skew = frame.live && !reduced ? Math.max(0, wall - now) : 0;
   const fw: FloorWorker | null = follow ? frame.workers.find(w => w.beadId === follow) ?? null : null;
@@ -550,6 +561,12 @@ export function FactoryFloor(p: { snap: WorkSurfaceSnapshot; now: number; select
                 {stats[s.id].p50 && <text className="oi-ff-sub oi-ff-p50" x={s.x + 16} y={55 + bt(s)}>{stats[s.id].p50}</text>}
               </>}
             </g>
+            {(s.id === "intake" || s.id === "claim" || s.id === "gate") && s.w >= SLIVER_PX && (() => { const n = blastCount(s.id), compact = s.w < 200, bw = compact ? 26 : 62, bx = s.x + s.w - bw - 14, by = 16 + bt(s);
+              return <g className={`oi-ff-blast${n === 0 ? " off" : ""}`} data-blast={s.id} role="button" tabIndex={n === 0 ? -1 : 0} aria-disabled={n === 0} aria-label={`${BLAST_LABEL[s.id]}: ${n} ${BLAST_ROLE[s.id].noun}${n === 1 ? "" : "s"}. Opens the dispatch dialog; nothing runs until you confirm.`}
+                onClick={e => { e.stopPropagation(); openBlast(s.id as BlastSilo); }} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); openBlast(s.id as BlastSilo); } }}>
+                <title>{n === 0 ? `No ${BLAST_ROLE[s.id].noun}s to blast.` : `${BLAST_LABEL[s.id]} (${n}): ${BLAST_ROLE[s.id].who}. ${BLAST_ROLE[s.id].does}${heat !== null && heatBand !== null ? " Aimed at the active heat band." : " Oldest first, at most 9 at once."} Opens the dispatch dialog; nothing runs until you confirm.`}</title>
+                <rect x={bx} y={by} width={bw} height={18} rx={9} className="oi-ff-blastbg" /><text x={bx + bw / 2} y={by + 12.5} textAnchor="middle" className="oi-ff-blasttx">{compact ? "⚡" : `⚡ BLAST`}</text>
+              </g>; })()}
             {!fullScale && s.overflow > 0 && <g className="oi-ff-more" transform={`translate(${s.overflowAt.x} ${s.overflowAt.y})`}><rect width="44" height="16" rx="8" /><text x="22" y="12" textAnchor="middle">+{s.overflow}</text></g>}
             {s.id === "land" && shelf.total > 0 && s.w >= SLIVER_PX && !fullScale && <g className="oi-ff-shelf" role="group" aria-label={`Shipped today: ${shelf.total}`}>
               <text className="oi-ff-shelfhead" x={s.x + 16} y={70 + bt(s)}>SHIPPED TODAY · {shelf.total}</text>
@@ -685,6 +702,7 @@ export function FactoryFloor(p: { snap: WorkSurfaceSnapshot; now: number; select
     <div className={`oi-ff-rail oi-ff-treebar${railOpen ? " open" : ""}`} data-tree={railOpen ? "open" : "closed"}>{p.rail ?? <FactoryTreeRail snap={snap} now={now} selectedId={p.selectedId} onSelect={p.onSelect} onHover={h => setHover(h)} roles={railTint} open={railOpen} onToggle={() => setRailOpen(o => !o)} frame={frame.live ? frame : null} scrubbed={!frame.live} transcriptLive={p.transcriptLive ?? null} hoverId={hover?.id ?? null} />}</div>
     <div className="oi-ff-time">{p.time ?? <FloorTimeline lines={log as readonly TimelineLine[]} t0={range.t0} t1={Math.max(range.t0, now)} now={now} reduced={reduced} stationOf={stationOf} onSelect={p.onSelect} onHover={h => setHover(h)} />}</div>
     {groups.length > 0 && <div className="oi-ff-epics" title="A card's edge colour is the epic (parent work item) it belongs to">{groups.slice(0, EPIC_CHIPS).map(g => { const c = epicChip(g.label); return <span key={g.tone} className={`oi-ff-epic oi-ln-${g.tone}`} title={`${g.label} (${g.count})`}><i className="oi-ff-swatch" /><b>{c.id}</b> {c.name}</span>; })}{groups.length > EPIC_CHIPS && <span className="oi-ff-epic more" title={groups.slice(EPIC_CHIPS).map(g => g.label).join("\n")}>+{groups.length - EPIC_CHIPS}</span>}</div>}
+    {blast && <HerdrDispatchDialog title={BLAST_LABEL[blast.silo]} prompt="" team={{ cards: blast.targets.map(t => ({ id: t.id, title: t.title })), epic: null }} blast={{ plan: blast, recheck: () => blastSilo(frameRef.current, blast.silo) }} guard={teamGuard(snap, blast.targets.map(t => t.id), now, frame.locks)} onClose={() => setBlast(null)} />}
     {keyOpen && <div className="oi-ff-keypop" role="dialog" aria-label="Factory key">
       <div className="oi-ff-keygrid">{keyItems.map(([glyph, words, tip]) => <span key={words} className="oi-ff-keyitem" title={tip}><i>{glyph}</i>{words}</span>)}
         {heatOn && <span className="oi-ff-keyitem wide" title={HEAT_TEXT[heat!]}>{frame.heatMode === "cost" && !frame.costWired ? "heat: cost not connected" : <>{heatLegend(heat!, heatScale)} {heatChips(heat!)}</>}</span>}
@@ -771,8 +789,17 @@ export const factoryFloorStyles = `${timeLensBarStyles}${factoryLookStyles}${fac
 /* The work tree is a strip BELOW the scene (owner 11:55): open = a short multi-column tree, closed = a slim bar; the scene keeps the full width. */
 .oi-ff-treebar{flex:none;height:28px;border-top:1px solid var(--oi-border)}.oi-ff-treebar.open{height:var(--ff-tree-h,188px)}
 .oi-ff-treebar .oi-ftr{height:100%;box-shadow:none}
-.oi-ff-treebar .oi-ftr:not(.oi-ftr-shut){column-width:340px;column-gap:18px;column-fill:auto;overflow-x:auto;overflow-y:hidden;padding-right:34px}
-.oi-ff-treebar .oi-bt-row,.oi-ff-treebar .oi-bt-root{break-inside:avoid}
+/* Columns are an explicit GRID (owner 23:30: CSS multi-column let a column's right bloc and guide rules run into the next column): every column is its own 400px track, rows are clipped to it, the title takes what the right bloc leaves, and the strip scrolls sideways. Short segment forms always (the container query cannot see a column). */
+.oi-ff-treebar .oi-ftr:not(.oi-ftr-shut){display:flex;flex-direction:column;overflow:hidden}
+.oi-ff-treebar .oi-bt{flex:1;min-height:0;container-type:normal}
+.oi-ff-treebar .oi-bt-root{overflow:hidden}
+.oi-ff-treebar .oi-bt-body{flex:1;min-height:0;overflow-x:auto;overflow-y:hidden}
+.oi-ff-treebar .oi-bt-lines{display:grid;grid-auto-flow:column;grid-template-rows:repeat(var(--ff-tree-rows,6),20px);grid-auto-columns:400px;column-gap:18px;width:max-content;min-width:100%;padding-right:34px;box-sizing:border-box}
+.oi-ff-treebar .oi-bt-row{overflow:hidden}
+.oi-ff-treebar .oi-bt-title{min-width:12ch}
+.oi-ff-treebar .oi-bt-right{flex:0 1 auto;min-width:0;max-width:46%;overflow:hidden}
+.oi-ff-treebar .oi-bt-hs .oi-bt-short{display:inline}.oi-ff-treebar .oi-bt-hs .oi-bt-full{display:none}
+.oi-ff-treebar .oi-bt-keys{flex-wrap:nowrap;overflow:hidden;white-space:nowrap}
 .oi-ff-treebar .oi-ftr-sliver{flex-direction:row;justify-content:flex-start;padding:0 12px;gap:8px;align-items:center}
 .oi-ff-treebar .oi-ftr-count{writing-mode:horizontal-tb}
 .oi-ff-rail,.oi-ff-sidecol{min-width:0;overflow:hidden}.oi-ff-rail:empty,.oi-ff-sidecol:empty{display:none}
@@ -939,6 +966,11 @@ ${Array.from({ length: 8 }, (_, n) => `.oi-ln-${n}{--lane:var(--oi-lane-${n})}`)
 .oi-ff-keygrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 16px}
 .oi-ff-keyitem{display:flex;gap:8px;align-items:center;min-width:0;white-space:nowrap;color:var(--oi-text-2);cursor:help}.oi-ff-keyitem.wide{grid-column:1/-1}
 .oi-ff-keyitem i{font-style:normal;min-width:26px;display:inline-flex;justify-content:center;color:var(--oi-text)}.oi-ff-keyitem svg{overflow:visible}
+.oi-ff-blast{cursor:pointer;outline:none}.oi-ff-blastbg{fill:color-mix(in srgb,var(--oi-accent) 22%,var(--oi-bg));stroke:var(--oi-accent);stroke-width:1}.oi-ff-blasttx{font:700 9.5px ui-monospace,monospace;letter-spacing:.06em;fill:var(--oi-text);pointer-events:none}
+.oi-ff-blast:hover .oi-ff-blastbg,.oi-ff-blast:focus-visible .oi-ff-blastbg{fill:var(--oi-accent)}.oi-ff-blast:hover .oi-ff-blasttx,.oi-ff-blast:focus-visible .oi-ff-blasttx{fill:var(--oi-on-accent,var(--oi-bg))}
+.oi-ff-blast.off{cursor:not-allowed;opacity:.4}
+.oi-ff-blastbtn{margin-top:3px;padding:1px 8px;border:1px solid var(--oi-accent);border-radius:9px;background:color-mix(in srgb,var(--oi-accent) 22%,var(--oi-bg));color:var(--oi-text);font:700 10px ui-monospace,monospace;letter-spacing:.05em;cursor:pointer}.oi-ff-blastbtn:hover:not(:disabled){background:var(--oi-accent);color:var(--oi-on-accent,var(--oi-bg))}.oi-ff-blastbtn:disabled{opacity:.4;cursor:not-allowed}
+.oi-ff-heatcorner .oi-ff-heatchip{pointer-events:auto;cursor:pointer}.oi-ff-heatchip.on{outline:2px solid var(--oi-text);outline-offset:1px}.oi-ff-heatchip:focus-visible{outline:2px solid var(--oi-focus,var(--oi-accent));outline-offset:1px}
 .oi-ff-heatchip{min-width:14px;padding:1px 5px;border-radius:3px;display:inline-block;font:600 10px ui-monospace,monospace;font-style:normal;text-align:center}.oi-ff-heatchip.heat-0{background:var(--ff-h0)}.oi-ff-heatchip.heat-1{background:var(--ff-h1)}.oi-ff-heatchip.heat-2{background:var(--ff-h2)}.oi-ff-heatchip.heat-3{background:var(--ff-h3)}.oi-ff-heatchip.heat-4{background:var(--ff-h4)}
 .oi-ff-epics{display:flex;gap:12px;flex-wrap:nowrap;overflow:hidden;margin:0 12px;padding:4px 0;font-size:11px;color:var(--oi-tone-muted);white-space:nowrap}
 .oi-ff-epic{display:inline-flex;gap:5px;align-items:center;min-width:0}.oi-ff-epic b{font:700 11px ui-monospace,monospace;color:var(--oi-text-2)}

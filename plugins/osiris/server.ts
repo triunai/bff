@@ -18,7 +18,7 @@ import { readDocSection } from "./doc-feed.ts";
 import { readHead, readRepoHealth } from "./health-feed.ts";
 import { paneSeen, readPaneTail, readWorkSnapshot } from "./work/bdi-feed.ts";
 import { defaultDeps, dispatch, previewDispatch } from "./work/dispatch.ts";
-import { createTelemetryService } from "./work/telemetry-rpc.ts";
+import { createTelemetryService, NO_TRACKER } from "./work/telemetry-rpc.ts";
 import { READ_CAP_MS, rangeSpanMs } from "./work/calls-range.ts";
 import { makeRepoGuard, PIN_KEY, repoAllowedFact } from "./work/repo-allow.ts";
 import { runTrackerMove, MOVE_STATUSES } from "./work/tracker-write.ts";
@@ -26,6 +26,8 @@ import { checkHerdrSession } from "./work/seam-guards/herdr-session.ts";
 import { availableClis, defaultHerdrDispatchDeps, runHerdrDispatch, runHerdrTeam, trustedCli } from "./work/herdr-dispatch/run.ts";
 import { PROVIDER_IDS } from "./work/providers/registry.ts";
 import { HERDR_CLIS } from "./work/herdr-dispatch/plan.ts";
+import { buildHerdrClis, herdrClisOutput } from "./work/herdr-dispatch/clis.ts";
+import { BLAST_MAX_TARGETS, BLAST_SILOS, TEAM_MAX_WORKERS } from "./work/team-dispatch/plan.ts";
 import { BEAD_ID_RE, MODEL_RE } from "./work/runtime-models.ts";
 import { runGuards } from "./work/seam-guards/registry.ts";
 import { makeSeamCtx } from "./work/seam-guards/server-ctx.ts";
@@ -77,8 +79,8 @@ export const rpcContract = defineRpcContract({
     workSnapshot: { input: z.object({ repo: z.string().max(4096) }), output: z.any() },
     workPaneTail: { input: z.object({ paneId: z.string().max(64), lines: z.number().int().optional() }), output: z.any() },
     workMove: { input: z.object({ repo: z.string().max(4096), id: z.string().max(64), status: z.enum(MOVE_STATUSES), ifStatus: z.string().max(32), note: z.string().max(400).optional() }), output: z.any() },
-    herdrClis: { input: z.object({}), output: z.object({ clis: z.array(z.enum(HERDR_CLIS)), paths: z.record(z.enum(HERDR_CLIS), z.string()).optional() }) },
-    herdrTeam: { input: z.object({ repo: z.string().max(4096).optional(), epic: z.string().regex(BEAD_ID_RE).max(64).optional(), lead: teamMember, worker: teamMember, cards: z.array(z.object({ id: z.string().regex(BEAD_ID_RE).max(64), title: z.string().max(200) }).strict()).min(1).max(50), workers: z.number().int().min(1).max(6) }).strict(), output: z.any() },
+    herdrClis: { input: z.object({}), output: herdrClisOutput },
+    herdrTeam: { input: z.object({ repo: z.string().max(4096).optional(), epic: z.string().regex(BEAD_ID_RE).max(64).optional(), preset: z.enum(BLAST_SILOS).optional(), lead: teamMember, worker: teamMember, cards: z.array(z.object({ id: z.string().regex(BEAD_ID_RE).max(64), title: z.string().max(200) }).strict()).min(1).max(50), workers: z.number().int().min(1).max(BLAST_MAX_TARGETS) }).strict().refine(v => v.preset !== undefined || v.workers <= TEAM_MAX_WORKERS, { message: "more than 6 workers is only allowed for a blast" }), output: z.any() },
     herdrDispatch: { input: z.object({ prompt: z.string().max(20000), cli: z.enum(HERDR_CLIS), title: z.string().max(60), repo: z.string().max(4096).optional() }), output: z.any() },
     workDispatchPreview: { input: dispatchIn, output: z.any() },
     workDispatch: { input: dispatchIn, output: z.any() },
@@ -200,7 +202,7 @@ export default async function plugin(bb: BbPluginApi) {
     const modFeedReader = createModFeedReader(), transcriptActivity = createTranscriptActivity(TRANSCRIPT_ROOT);
     // The ONE place the seam guards run (the RPC below and the fleet pager both call it): one registry over one ctx builder.
     // The pager passes terminal=false: it has no Terminal tab, so the herdr-session guard has nothing to compare (it would read "cannot tell" as a crit and page falsely).
-    const runSeams = (view: Parameters<typeof makeSeamCtx>[0], terminal = true) => runGuards(makeSeamCtx(view, { isRepoAllowed: p => repoAllowedFact(assertAllowedRepo, p), ...(terminal ? { herdrSession: async (v: typeof view) => ({ run: dispatchDeps.herdr, picked: v.terminalSession ?? null, launched: v.terminalId ? await launchedSessionOf(bb.storage.kv, v.terminalId) : null }) } : {}), keepAwake: async () => keepAwakeFact() }));
+    const runSeams = (view: Parameters<typeof makeSeamCtx>[0], terminal = true) => runGuards(makeSeamCtx(view, { isRepoAllowed: p => repoAllowedFact(assertAllowedRepo, p), ...(terminal ? { herdrSession: async (v: typeof view) => ({ run: dispatchDeps.herdr, picked: v.terminalSession ?? null, launched: v.terminalId ? await launchedSessionOf(bb.storage.kv, v.terminalId) : null }) } : {}), keepAwake: async () => keepAwakeFact(), knownNewest: root => { const n = telemetry.newestTranscript(); return n && n.root === root ? n.mtimeMs : null; } }));
     // build8 lane F: ONE outbound fleet pager (ideas-final #7). DISABLED by default; with no channel it only appends to a local outbox file.
     // Secrets are `secret: true` settings (0600 file, never sent to the UI). Outbound only: nothing here reads a reply. work/pager*.ts.
     const pagerSettings = bb.settings.define({
@@ -267,7 +269,7 @@ export default async function plugin(bb: BbPluginApi) {
     };
     bb.rpc.register(rpcContract, withDemo({
         workMove: async (r, c) => pluginCaller(c) ? { ok: false, reason: NO_PLUGIN } : runTrackerMove({ ...r, repo: await assertAllowedRepo(r.repo) }, dispatchDeps.bd),
-        herdrClis: async (_r, c) => { if (pluginCaller(c)) return { clis: [] }; const clis = availableClis(); return { clis, paths: Object.fromEntries(clis.map(k => [k, trustedCli(k)]).filter(e => e[1])) }; },
+        herdrClis: async (_r, c) => buildHerdrClis(pluginCaller(c)),
         herdrTeam: async (r, c) => pluginCaller(c) ? { ok: false, reason: NO_PLUGIN, started: 0, fallback: false } : runHerdrTeam({ ...r, repo: r.repo ? await assertAllowedRepo(r.repo) : undefined }, herdrDispatchDeps),
         herdrDispatch: async (r, c) => pluginCaller(c) ? { ok: false, reason: NO_PLUGIN, fallback: false } : runHerdrDispatch({ ...r, repo: r.repo ? await assertAllowedRepo(r.repo) : undefined }, herdrDispatchDeps),
         workDispatchPreview: async (r, c) => pluginCaller(c) ? { ok: false, reason: NO_PLUGIN } : previewDispatch({ ...r, repo: await assertAllowedRepo(r.repo) }, dispatchDeps),
@@ -311,7 +313,7 @@ export default async function plugin(bb: BbPluginApi) {
         workSnapshot: async ({ repo }) => { const path = await assertAllowedRepo(repo); return withSandboxFlag(path, await readWorkSnapshot(path)); },
         // M5: only a pane that appeared as a joined agent pane in the latest snapshot of an allowed repo; never for a plugin caller.
         workPaneTail: async ({ paneId, lines }, c) => pluginCaller(c) ? { ok: false, reason: NO_PLUGIN } : !paneSeen(paneId) ? { ok: false, reason: "not a pane from your tracker" } : readPaneTail(paneId, lines),
-        workTelemetry: async ({ repo, range }, c) => pluginCaller(c) ? { ok: false, reason: NO_PLUGIN } : telemetry.read(await assertAllowedRepo(repo), range ? Math.min(rangeSpanMs(range, Date.now()), READ_CAP_MS) : undefined),
+        workTelemetry: async ({ repo, range }, c) => pluginCaller(c) ? { ok: false, reason: NO_PLUGIN } : telemetry.read(repo === NO_TRACKER ? NO_TRACKER : await assertAllowedRepo(repo), range ? Math.min(rangeSpanMs(range, Date.now()), READ_CAP_MS) : undefined),
         keepAwakeStatus: async () => keepAwakeFact(),
         // Runtime seam guards (td-osi.12): read-only; the answer is a verdict per guard, never an action. Never for a plugin caller.
         seamReport: async (view, c) => pluginCaller(c) ? { ok: false, reason: NO_PLUGIN } : { ok: true, report: await runSeams(view) },

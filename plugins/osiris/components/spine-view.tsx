@@ -9,6 +9,7 @@ import type { CommitMention, DocSection } from "../git-types.ts";
 import { CALENDAR_KINDS, countKinds, dotsForDay, filterTotal, kindDef, kindLabel, monthKindTotals, pillsForDay, type KindFilter } from "../calendar-kinds.ts";
 import { relativeAge, shortSha } from "../git-ui.ts";
 import { commitBeads } from "../git-lane-identity.ts";
+import { dayNeighbours, dayWorkstreams, kindRank, LINKED_CAP } from "../lib/day-links.ts";
 import { adrIdsIn, adrsOfThread, logsOfThread, threadsCitingAdr } from "../spine-links.ts";
 import {
   archiveByMonth, displayTitle, groupThreads, healthBar, healthFigure, healthSummary, isSafeObsidianOpenUrl, newestEventDate, relativeTime, sortHealth,
@@ -363,9 +364,11 @@ function DayRow({ e, onOpenCommit, onOpenDoc, beads, citedBy, onOpenThread, onOp
   const enabled = e.kind === "commit" ? !!onOpenCommit : !!onOpenDoc;
   return <div className="oi-sp-line oi-sp-rowwrap">{act ? <button type="button" className="oi-sp-act" disabled={!enabled} onClick={act}>{main}</button> : <span className="oi-sp-plain">{main}</span>}{links}</div>;
 }
-function DayEvents({ events, filter, onOpenCommit, onOpenDoc, beads, citedBy, onOpenThread, onOpenBead }: { events: SpineEvent[]; filter: KindFilter } & DayHandlers) {
+/** The kind sections in the owner's order (lib/day-links DAY_INSPECTOR_ORDER): log first, commits last. `linked` (workstreams, neighbours) renders between log and decisions. */
+function DayEvents({ events, filter, onOpenCommit, onOpenDoc, beads, citedBy, onOpenThread, onOpenBead, linked }: { events: SpineEvent[]; filter: KindFilter; linked?: ReactNode } & DayHandlers) {
   const [open, setOpen] = useState<Record<string, boolean>>({}), SHOW = 8;
-  return <>{CALENDAR_KINDS.filter(k => filter === "all" || k.kind === filter).map(k => {
+  const kinds = CALENDAR_KINDS.filter(k => filter === "all" || k.kind === filter).slice().sort((a, b) => kindRank(a.kind) - kindRank(b.kind));
+  const section = (k: (typeof kinds)[number]) => {
     const list = events.filter(e => e.kind === k.kind);
     if (!list.length) return null;
     const shown = open[k.kind] ? list : list.slice(0, SHOW);
@@ -373,7 +376,26 @@ function DayEvents({ events, filter, onOpenCommit, onOpenDoc, beads, citedBy, on
       {shown.map((e, i) => <DayRow key={`${e.ref}:${i}`} e={e} onOpenCommit={onOpenCommit} onOpenDoc={onOpenDoc} beads={beads} citedBy={citedBy} onOpenThread={onOpenThread} onOpenBead={onOpenBead} />)}
       {list.length > SHOW && <button type="button" className="oi-sp-more" onClick={() => setOpen(o => ({ ...o, [k.kind]: !o[k.kind] }))}>{open[k.kind] ? "Show fewer" : `+${list.length - SHOW} more`}</button>}
     </section>;
-  })}</>;
+  };
+  const before = kinds.filter(k => kindRank(k.kind) < kindRank("@workstreams")), after = kinds.filter(k => kindRank(k.kind) > kindRank("@workstreams"));
+  return <>{before.map(section)}{filter === "all" && linked}{after.map(section)}</>;
+}
+
+/** WORKSTREAMS (the threads this day's events name) and NEIGHBOURS (other days naming the same threads, one click to jump). Always printed: an empty one says so. */
+function DayLinked({ index, date, onOpenThread, onSelectDay }: { index: SpineIndex; date: string; onOpenThread?: (id: string) => void; onSelectDay?: (date: string) => void }) {
+  const ws = useMemo(() => dayWorkstreams(index.calendar, date, index.threads), [index.calendar, index.threads, date]), nbr = useMemo(() => dayNeighbours(index.calendar, date), [index.calendar, date]), nb = nbr.items;
+  return <>
+    <section aria-label="Workstreams"><h3 className="oi-sp-h">Workstreams<i>{ws.length}</i></h3>
+      {ws.length === 0 ? <p className="oi-sp-note">No workstream is named by this day's events.</p>
+        : ws.slice(0, LINKED_CAP).map(w => <div key={w.id} className="oi-sp-line oi-sp-rowwrap"><button type="button" className="oi-sp-idlink" disabled={!onOpenThread} title={`Open ${w.id}`} onClick={() => onOpenThread?.(w.id)}>{w.id}</button><span className="oi-sp-plain"><span className="t">{w.title ? displayTitle(w.id, w.title) : "(not on the board)"}</span></span><small>{w.events}</small></div>)}
+      {ws.length > LINKED_CAP && <p className="oi-sp-note">+{ws.length - LINKED_CAP} more workstreams</p>}
+    </section>
+    <section aria-label="Neighbours"><h3 className="oi-sp-h">Neighbours<i>{nbr.total}</i></h3>
+      {nb.length === 0 ? <p className="oi-sp-note">{ws.length ? "No other day names these workstreams." : "No workstreams, so no linked days."}</p>
+        : nb.map(n => <button key={n.date} type="button" className="oi-sp-row" disabled={!onSelectDay} title={`Open ${n.date}`} onClick={() => onSelectDay?.(n.date)}><b>{n.date}</b><span className="t mono">{n.shared.slice(0, 4).join(" ")}{n.shared.length > 4 ? ` +${n.shared.length - 4}` : ""}</span><small>{n.shared.length} shared</small></button>)}
+      {nbr.total > nb.length && <p className="oi-sp-note">+{nbr.total - nb.length} more days</p>}
+    </section>
+  </>;
 }
 
 /** FULL calendar body under the grid: the day's log / decision / thread-done lists (kind filter applies) and the commits block (branch groups, bead chips, expandable files) passed in as `commits`. */
@@ -416,7 +438,7 @@ function MentionList({ id, mentions, onOpenCommit }: { id: string; mentions: Thr
   </section>;
 }
 
-export function SpineInspector({ spine, section, selection, mentions, onOpenCommit, onOpenDoc, doc, onBackToDay, dayBeads, onSelectThread, onOpenThread, onOpenBead }: { spine: SpineState; section: SpineSection; selection: SpineSelection; mentions?: ThreadMentions; onOpenCommit?: (sha: string) => void; onOpenDoc?: (ev: SpineEvent) => void; doc?: DocView | null; onBackToDay?: () => void; dayBeads?: DayBeads; onSelectThread?: (t: SpineThread) => void; onOpenThread?: (id: string) => void; onOpenBead?: (id: string) => void }) {
+export function SpineInspector({ spine, section, selection, mentions, onOpenCommit, onOpenDoc, doc, onBackToDay, dayBeads, onSelectThread, onOpenThread, onOpenBead, onSelectDay }: { spine: SpineState; section: SpineSection; selection: SpineSelection; mentions?: ThreadMentions; onOpenCommit?: (sha: string) => void; onOpenDoc?: (ev: SpineEvent) => void; doc?: DocView | null; onBackToDay?: () => void; dayBeads?: DayBeads; onSelectThread?: (t: SpineThread) => void; onOpenThread?: (id: string) => void; onOpenBead?: (id: string) => void; onSelectDay?: (date: string) => void }) {
   const filter = useKindFilter();
   const r = spine.result && spine.result.state === "ok" ? spine.result : null;
   if (!r) return <div className="oi-sp-insp"><p className="oi-sp-note">No spine index loaded.</p></div>;
@@ -436,7 +458,7 @@ export function SpineInspector({ spine, section, selection, mentions, onOpenComm
   if (section === "calendar" && selection?.kind === "day") {
     if (doc) return <DocPanel doc={doc} onBack={onBackToDay} onOpenCommit={onOpenCommit} />;
     const all = index.calendar.filter(e => e.date === selection.date), events = all.filter(e => filter === "all" || e.kind === filter);
-    return <div className="oi-sp-insp"><h2 className="oi-sp-ih">{selection.date} <small>{events.length} events{events.length !== all.length ? ` of ${all.length}` : ""}</small></h2><AskAgentButton ask={() => dayContext({ date: selection.date, today: new Date().toLocaleDateString("en-CA"), commits: all.filter(e => e.kind === "commit").map(e => ({ sha: e.ref, subject: e.title })), events: all.filter(e => e.kind !== "commit"), threads: index.threads })} />{events.length === 0 ? <p className="oi-sp-note">{all.length ? "Nothing of this kind on this day." : "Nothing recorded."}</p> : <DayEvents key={selection.date} events={events} filter={filter} onOpenThread={onOpenThread} onOpenBead={onOpenBead} beads={dayBeads} citedBy={e => [...new Map(adrIdsIn(e.title).flatMap(id => threadsCitingAdr(index, id)).map(t => [t.id, t] as const)).values()]} onOpenCommit={onOpenCommit} onOpenDoc={onOpenDoc} />}</div>;
+    return <div className="oi-sp-insp"><h2 className="oi-sp-ih">{selection.date} <small>{events.length} events{events.length !== all.length ? ` of ${all.length}` : ""}</small></h2><AskAgentButton ask={() => dayContext({ date: selection.date, today: new Date().toLocaleDateString("en-CA"), commits: all.filter(e => e.kind === "commit").map(e => ({ sha: e.ref, subject: e.title })), events: all.filter(e => e.kind !== "commit"), threads: index.threads })} />{events.length === 0 ? <p className="oi-sp-note">{all.length ? "Nothing of this kind on this day." : "Nothing recorded."}</p> : <DayEvents key={selection.date} events={events} filter={filter} linked={<DayLinked index={index} date={selection.date} onOpenThread={onOpenThread} onSelectDay={onSelectDay} />} onOpenThread={onOpenThread} onOpenBead={onOpenBead} beads={dayBeads} citedBy={e => [...new Map(adrIdsIn(e.title).flatMap(id => threadsCitingAdr(index, id)).map(t => [t.id, t] as const)).values()]} onOpenCommit={onOpenCommit} onOpenDoc={onOpenDoc} />}</div>;
   }
   if (section === "health" && selection?.kind === "check") {
     const h = index.health.find(x => x.check === selection.check);

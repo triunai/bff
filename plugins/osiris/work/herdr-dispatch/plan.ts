@@ -74,3 +74,7 @@ export function splitPaneOf(stdout: string): string | null {
 }
 export type HerdrDispatchRequest = { prompt: string; cli: HerdrCli; title: string; repo?: string };
 export type HerdrDispatchResult = { ok: true; paneId: string } | { ok: false; reason: string; /** herdr could not be driven: the client falls back to copy + Terminal tab */ fallback: boolean };
+
+/** What the dispatch dialog says about the program list. A failed lookup is an ERROR with its reason, never "none found" (D-138). */
+export const cliListProblem = (found: { clis: readonly string[]; error?: string } | null): string | null =>
+  !found ? null : found.error ? `Couldn't list agent programs: ${found.error}` : found.clis.length ? null : `No agent program (${HERDR_CLIS.join(", ")}) was found`;

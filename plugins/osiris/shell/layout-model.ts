@@ -6,8 +6,21 @@ import {DEFAULT_THEME,resolveTheme} from "../theme/tokens.ts";
 import {SLOTS, type Layout, type LayoutAction, type PanelDef, type SlotId, type SlotState, type ViewOptions} from "./layout-types.ts";
 
 export const TERMINAL_ID = "terminal";
-/** The beady-eye Work tree: always in the bottom strip (owner td-osi.1), never in the left sidebar. */
+/** The beady-eye Work tree: a tab of the ONE right-side panel (owner 2026-10-11, "combine bottom pane and rightbar"), never in the left sidebar. */
 export const WORK_TREE_ID = "work.tree";
+/** Tab order of the one right panel (owner mockup): Inspector, Factory, Day, Work tree. A panel not named here goes after them. */
+export const RIGHT_TAB_ORDER: readonly string[] = ["inspector", "work.factory", "calendar.day", WORK_TREE_ID];
+const tabRank = (id: string): number => { const i = RIGHT_TAB_ORDER.indexOf(id); return i < 0 ? RIGHT_TAB_ORDER.length : i; };
+/** Insert `id` into a right-slot tab list at its rank: before the first tab that ranks after it (unranked ids append). Pure. */
+export const insertRightTab = (panels: readonly string[], id: string): string[] => {
+  const rest = panels.filter(p => p !== id), r = tabRank(id);
+  if (r >= RIGHT_TAB_ORDER.length) return [...rest, id];
+  const at = rest.findIndex(p => tabRank(p) > r);
+  return at < 0 ? [...rest, id] : [...rest.slice(0, at), id, ...rest.slice(at)];
+};
+/** The bottom strip is retired (owner 2026-10-11): the slot id stays in the persisted shape for compatibility, but it never holds a panel;
+ * anything addressed to it lands in the right panel. */
+const retiredSlot = (slot: SlotId): SlotId => (slot === "bottom" ? "right" : slot);
 export const ZOOM_MIN = 0.7, ZOOM_MAX = 1.6, ZOOM_STEP = 0.1;
 const MAX_PER_SLOT = 32, MAX_SPACES = 64, MAX_ID = 64;
 
@@ -28,8 +41,8 @@ export const DEFAULT_LAYOUT: Layout = deepFreeze({
   slots: {
     left: {panels: ["sidebar"], active: "sidebar"},
     centre: {panels: [TERMINAL_ID], active: TERMINAL_ID},
-    right: {panels: ["inspector"], active: "inspector"},
-    bottom: {panels: [WORK_TREE_ID], active: WORK_TREE_ID},
+    right: {panels: ["inspector", WORK_TREE_ID], active: "inspector"},
+    bottom: {panels: [], active: null},
   },
   view: {...DEFAULT_VIEW},
   focus: {bySlot: {}, bySpace: {}, last: null},
@@ -43,7 +56,7 @@ export const slotOf = (l: Layout, panel: string): SlotId | null => { for (const 
 export function slotVisible(l: Layout, slot: SlotId): boolean {
   if (slot === "centre") return true;
   if (l.view.zen || l.slots[slot].panels.length === 0) return false;
-  if (slot === "bottom") return l.view.bottomPanel;
+  if (slot === "bottom") return false; // retired: the one right panel replaced it
   const primary: SlotId = l.view.primaryRight ? "right" : "left";
   return slot === primary ? l.view.primarySideBar : l.view.secondarySideBar;
 }
@@ -59,7 +72,7 @@ const withSlot = (l: Layout, slot: SlotId, s: SlotState): Layout => ({...l, slot
 
 /** Show the slot a panel just landed in (a closed bottom or a hidden side bar would otherwise swallow the move). */
 const reveal = (v: ViewOptions, slot: SlotId): ViewOptions => {
-  if (slot === "bottom") return v.bottomPanel ? v : {...v, bottomPanel: true};
+  if (slot === "bottom") return reveal(v, "right");
   if (slot === "centre") return v;
   const primary = (v.primaryRight ? "right" : "left") === slot;
   if (primary ? v.primarySideBar : v.secondarySideBar) return v;
@@ -68,8 +81,16 @@ const reveal = (v: ViewOptions, slot: SlotId): ViewOptions => {
 
 /** Invariants every action ends with: each slot's active is one of its panels; the terminal exists; the centre is not empty. */
 function settle(l: Layout): Layout {
-  let slots = l.slots, changed = false;
+  let slots = l.slots, changed = false, view = l.view;
   const set = (slot: SlotId, s: SlotState) => { slots = {...slots, [slot]: s}; changed = true; };
+  // The bottom strip is retired: whatever a stored or hand-built layout parks there moves into the right panel, in tab order.
+  if (slots.bottom.panels.length > 0 || slots.bottom.active !== null) {
+    const r = slots.right, was = slots.bottom;
+    const merged = [...r.panels, ...was.panels.filter(p => !r.panels.includes(p))].map((id, i) => ({id, i})).sort((a, b) => tabRank(a.id) - tabRank(b.id) || a.i - b.i).map(e => e.id);
+    set("right", {panels: merged, active: r.active ?? was.active});
+    set("bottom", {panels: [], active: null});
+    if (l.view.bottomPanel) view = reveal(view, "right"); // the strip was on screen: its tabs must not vanish behind a hidden right bar
+  }
   for (const slot of SLOTS) {
     const s = slots[slot];
     if (s.panels.length > 0 ? (s.active === null || !s.panels.includes(s.active)) : s.active !== null) set(slot, {panels: s.panels, active: s.panels[0] ?? null});
@@ -81,7 +102,7 @@ function settle(l: Layout): Layout {
     set(at, without(slots[at], TERMINAL_ID));
     set("centre", {panels: [TERMINAL_ID], active: TERMINAL_ID});
   }
-  const out = changed ? {...l, slots} : l;
+  const out = changed ? {...l, slots, view} : l;
   const focus = pruneFocus(out);
   return focus === out.focus ? out : {...out, focus};
 }
@@ -105,13 +126,13 @@ function activate(l: Layout, panel: string): Layout {
   return withSlot(l, slot, {...l.slots[slot], active: panel});
 }
 
-function moveTo(l: Layout, panel: string, slot: SlotId): Layout {
-  const from = slotOf(l, panel);
+function moveTo(l: Layout, panel: string, target: SlotId): Layout {
+  const slot = retiredSlot(target), from = slotOf(l, panel);
   if (from === slot) return reduce(l, {type: "activate", panel});
   let next = from ? withSlot(l, from, without(l.slots[from], panel)) : l;
   const dst = next.slots[slot];
   if (dst.panels.length >= MAX_PER_SLOT) return l;
-  next = withSlot(next, slot, {panels: [...dst.panels, panel], active: panel});
+  next = withSlot(next, slot, {panels: slot === "right" ? insertRightTab(dst.panels, panel) : [...dst.panels, panel], active: panel});
   return settle({...next, view: reveal(next.view, slot)});
 }
 
@@ -134,9 +155,9 @@ export function reduce(l: Layout, a: LayoutAction): Layout {
     case "swapWithCentre": return swapWithCentre(l, a.panel);
     case "moveTo": return SLOTS.includes(a.slot) ? moveTo(l, a.panel, a.slot) : l;
     case "open": {
-      const at = slotOf(l, a.panel);
-      if (at === null) return moveTo(l, a.panel, a.slot ?? focusedSlot(l));
-      if (a.slot && a.slot !== at) return moveTo(l, a.panel, a.slot);
+      const at = slotOf(l, a.panel), want = a.slot ? retiredSlot(a.slot) : undefined;
+      if (at === null) return moveTo(l, a.panel, want ?? focusedSlot(l));
+      if (want && want !== at) return moveTo(l, a.panel, want);
       // W-11 MED-1: opening a panel that sits in a hidden slot shows that slot, like moveTo does; otherwise the open is silent.
       const n = activate(l, a.panel), v = reveal(n.view, at);
       return v === n.view ? n : {...n, view: v};
@@ -212,14 +233,13 @@ export function sanitizeView(raw: unknown, base: ViewOptions = DEFAULT_VIEW): Vi
   };
 }
 
-/** A layout saved before the Work tree moved to the bottom strip has no `bottomSeeded` flag: put the tree there ONCE (and show the strip),
- * then mark it seeded so a user who later closes it is not given it back on every reload. A tree already placed somewhere stays put. */
+/** A layout saved before the Work tree got a home has no `bottomSeeded` flag (name kept for the stored shape): put the tree in the right panel
+ * ONCE (and show that panel), then mark it seeded so a user who later closes it is not given it back on every reload. A tree already placed stays put. */
 function seedWorkTree(l: Layout, registered: boolean): Layout {
   if (l.view.bottomSeeded || !registered) return {...l, view: {...l.view, bottomSeeded: true}};
-  const view = {...l.view, bottomSeeded: true, bottomPanel: true};
   if (slotOf(l, WORK_TREE_ID) !== null) return {...l, view: {...l.view, bottomSeeded: true}};
-  const b = l.slots.bottom;
-  return {...l, view, slots: {...l.slots, bottom: {panels: [WORK_TREE_ID, ...b.panels], active: b.active ?? WORK_TREE_ID}}};
+  const view = reveal({...l.view, bottomSeeded: true}, "right");
+  return {...l, view, slots: {...l.slots, right: {panels: insertRightTab(l.slots.right.panels, WORK_TREE_ID), active: l.slots.right.active ?? WORK_TREE_ID}}};
 }
 
 /** Make ANY value a valid Layout for this registry: unknown/duplicate panels dropped, actives repaired, terminal in the

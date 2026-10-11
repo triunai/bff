@@ -130,3 +130,11 @@ export function railHover(prev: RailOwn, ev: RailHoverEvent): RailHoverStep {
   if (!prev || prev.id !== ev.id || prev.via !== via) return { next: prev, emit: null };
   return { next: null, emit: ev.floorHoverId ? null : "clear" };
 }
+
+/** How far a scroller must move so `item` is inside `view` (same axis, same coordinate space); 0 when it already is. Pure, so the rail
+ * can scroll its OWN body to a selected row without scrollIntoView (which also scrolls every ancestor, the whole floor page). */
+export function scrollDelta(view: { start: number; end: number }, item: { start: number; end: number }): number {
+  if (item.start < view.start) return item.start - view.start;
+  if (item.end > view.end) return Math.min(item.end - view.end, item.start - view.start);
+  return 0;
+}

@@ -8,12 +8,12 @@ import type { TelemetryMaps, WorkTelemetry } from "../work/telemetry-model.ts";
 export type TelemetryCaller = { call(name: "workTelemetry", args: { repo: string; range?: RangeId }): Promise<unknown> };
 export type WorkTelemetryState = { telemetry: WorkTelemetry | null; error: string | null; maps: TelemetryMaps | null };
 
-/** Polls the workTelemetry RPC for one repo while `enabled` (every 10 s, paused while the tab is hidden, numbered so an older answer
+/** Polls the workTelemetry RPC for one repo (or, with repo "", for the transcript-only read that needs no tracker) while `enabled` (every 10 s, paused while the tab is hidden, numbered so an older answer
  *  never overwrites a newer one). Cost, critical path and live lanes stay null until the first answer: the Factory then says "not connected". */
 export function useWorkTelemetry(rpc: TelemetryCaller, repo: string, enabled: boolean, range: RangeId = DEFAULT_RANGE): WorkTelemetryState {
   const [state, setState] = useState<{ repo: string; telemetry: WorkTelemetry | null; error: string | null }>({ repo: "", telemetry: null, error: null });
   useEffect(() => {
-    if (!enabled || !repo) return;
+    if (!enabled) return;
     let off = false;
     const seq = makeSeqGuard();
     const load = () => {

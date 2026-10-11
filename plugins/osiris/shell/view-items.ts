@@ -1,6 +1,6 @@
 // View menu model (pure). The menu is data: each item names what it does, either a LayoutAction (the reducer handles it)
 // or a command id string (the shell handles it: zen/search palette/Open View…/redraw/font size/workbench actions).
-import type { ActivityBarPosition, Layout, LayoutAction, PanelAlign, PanelPosition, TabBarMode } from "./layout-types.ts";
+import type { ActivityBarPosition, Layout, LayoutAction, PanelAlign, TabBarMode } from "./layout-types.ts";
 import { CMD, chordFor } from "./keymap.ts";
 import { THEME_LABEL, THEME_NAMES } from "../theme/tokens.ts";
 import { CUSTOM_THEME } from "../theme/derive-theme.ts";
@@ -32,13 +32,11 @@ export function viewItems(layout: Layout, opts: ViewOpts = {}): ViewItem[] {
   const v = layout.view;
   const items: ViewItem[] = [
     { id: "primarySideBar", label: "Primary Side Bar", shortcut: chordFor(CMD.primarySideBar), checked: v.primarySideBar, onSelect: set({ primarySideBar: !v.primarySideBar }) },
-    { id: "secondarySideBar", label: "Secondary Side Bar", shortcut: chordFor(CMD.secondarySideBar), checked: v.secondarySideBar, onSelect: set({ secondarySideBar: !v.secondarySideBar }) },
+    { id: "secondarySideBar", label: "Side Panel", shortcut: chordFor(CMD.secondarySideBar), checked: v.secondarySideBar, onSelect: set({ secondarySideBar: !v.secondarySideBar }) },
     { id: "statusBar", label: "Status Bar", checked: v.statusBar, onSelect: set({ statusBar: !v.statusBar }) },
-    { id: "bottomPanel", label: "Bottom Panel", shortcut: chordFor(CMD.bottomPanel), checked: v.bottomPanel, onSelect: set({ bottomPanel: !v.bottomPanel }) },
     { id: "movePrimary", label: v.primaryRight ? "Move Primary Side Bar Left" : "Move Primary Side Bar Right", onSelect: set({ primaryRight: !v.primaryRight }) },
     sep("s1"),
     { id: "activityBar", label: "Activity Bar Position", submenu: (["side", "top", "hidden"] as ActivityBarPosition[]).map(x => choice(`activityBar.${x}`, x === "side" ? "Side" : x === "top" ? "Top" : "Hidden", v.activityBar, x, "activityBar")) },
-    { id: "panelPosition", label: "Panel Position", submenu: (["bottom", "left", "right"] as PanelPosition[]).map(x => choice(`panelPosition.${x}`, x[0].toUpperCase() + x.slice(1), v.panelPosition, x, "panelPosition")) },
     { id: "panelAlign", label: "Align Panel", submenu: (["centre", "justify"] as PanelAlign[]).map(x => choice(`panelAlign.${x}`, x === "centre" ? "Centre" : "Justify", v.panelAlign, x, "panelAlign")) },
     { id: "tabBar", label: "Tab Bar", submenu: (["pills", "single", "hidden"] as TabBarMode[]).map(x => choice(`tabBar.${x}`, x === "pills" ? "Pill tabs" : x === "single" ? "Single" : "Hidden", v.tabBar, x, "tabBar")) },
     { id: "theme", label: "Theme", submenu: [

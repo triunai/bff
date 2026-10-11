@@ -10,6 +10,12 @@ import { staleSinceText } from "./calls-range.ts";
 
 const DASH = "—";
 export const NO_FLEET_TEXT = "Fleet count is not available yet. Restart Osiris, or choose a tracker in Work.";
+/** First-load honesty: while the server is still on its first transcript read (STILL_READING lands in useFleet's `error`), say that, never
+ *  the "Restart Osiris" advice. Null when a fleet already exists or the error is a real failure. The error carries no file counts, so none are invented. */
+export const FLEET_READING_TEXT = "Still reading agent history";
+export function fleetReadingText(fleet: FleetSnapshot | null | undefined, error: string | null | undefined): string | null {
+  return !fleet && typeof error === "string" && /^still reading transcript history/i.test(error) ? FLEET_READING_TEXT : null;
+}
 const mins = (ms: number) => `${Math.round(ms / 60_000)} min`;
 
 /** Largest-remainder apportionment (Claude-Code-Usage-Monitor's stacked bar): integer shares of `total` that sum to EXACTLY `total`
@@ -76,8 +82,8 @@ export interface ChipView {
   /** "Stale since 22:30:05: recomputing" when the server served its last good fleet (D-138), else null. */
   stale: string | null;
 }
-export function chipView(fleet?: FleetSnapshot | null): ChipView {
-  if (!fleet) return { needsYou: 0, needsText: "", chipNeedsText: "", needsTitle: "", unread: 0, unreadText: "", big: DASH, sub: "", window: "", segments: [], providerBar: [], roles: [], title: NO_FLEET_TEXT, empty: NO_FLEET_TEXT, live: 0, spark: [], definition: LIVE_DEFINITION, stale: null };
+export function chipView(fleet?: FleetSnapshot | null, reading?: string | null): ChipView {
+  if (!fleet) return reading ? { ...chipView(null), title: reading, empty: reading } : { needsYou: 0, needsText: "", chipNeedsText: "", needsTitle: "", unread: 0, unreadText: "", big: DASH, sub: "", window: "", segments: [], providerBar: [], roles: [], title: NO_FLEET_TEXT, empty: NO_FLEET_TEXT, live: 0, spark: [], definition: LIVE_DEFINITION, stale: null };
   const s = fleet.summary;
   const roles = rolesOf(s.byRole);
   const roleWords = roles.filter(r => r.live > 0).map(r => `${r.live} ${r.role}`).join(", ");
