@@ -67,8 +67,15 @@ def _leave_the_old_second(path, before_ns):
     done within the same second as the previous write it keeps the mtime too, so every Python process that follows (the unit tests and the interpreters THEY
     spawn, with any cache layout) would import the OLD __version__ from the stale cache. Moving the mtime past the old second invalidates every such cache."""
     second = 10 ** 9
-    target = max(time.time_ns(), (before_ns // second + 1) * second)
-    os.utime(path, ns=(target, target))
+    old_second = before_ns // second
+    stat = path.stat()
+    target = max(time.time_ns(), (old_second + 1) * second)
+    for step in (0, 2, 4):  # a filesystem that truncates mtimes (FAT stores 2 s) can hand the old second back: verify, then advance
+        wanted = target + step * second
+        os.utime(path, ns=(stat.st_atime_ns, wanted))
+        if path.stat().st_mtime_ns // second != old_second:
+            return
+    raise OSError("cannot move the mtime of %s out of its old whole second (%d); a stale .pyc would stay valid" % (path, old_second))
 
 
 def apply_version(root, version):
