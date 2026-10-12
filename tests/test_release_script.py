@@ -1,6 +1,7 @@
 """scripts/release.py: bump, pin rewrite, notes extraction, printed commands and publish guards."""
 import contextlib
 import io
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -136,6 +137,46 @@ class MainTests(unittest.TestCase):
                     self.run_main(root, "--publish", "--output", str(Path(directory) / "out"))
             publish_calls = [c for c in calls if c[0] in ("git", "gh")]
             self.assertEqual(publish_calls, [["git", "push"], ["git", "tag"]])
+
+
+class StaleBytecodeTests(unittest.TestCase):
+    """The release rewrites __version__ in place (same size, same mtime second); every Python process after it, however deep, must see the new one."""
+
+    @staticmethod
+    def python(root, code):
+        env = {k: v for k, v in os.environ.items() if k != "SOURCE_DATE_EPOCH" and not k.startswith("PYTHON")}  # timestamp bytecode, default cache location
+        done = subprocess.run([sys.executable, "-c", code], cwd=str(root), env=env, capture_output=True, text=True)
+        assert done.returncode == 0, done.stderr
+        return done.stdout.strip()
+
+    def test_a_plain_grandchild_sees_the_rewritten_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = scratch(directory)
+            source = root / versioning.SOURCE_FILE
+            old_text = source.read_text(encoding="utf-8")
+            old = versioning.read_version(root)
+            new = old[:-1] + str((int(old[-1]) + 1) % 10)  # same byte size, so only the mtime can tell the files apart
+            self.python(root, "import py_compile; py_compile.compile('bff/__init__.py', doraise=True, "
+                              "invalidation_mode=py_compile.PycInvalidationMode.TIMESTAMP)")
+            stamp = source.stat().st_mtime_ns
+            read = "import bff; print(bff.__version__)"
+            self.assertEqual(self.python(root, read), old)
+            # Control: a same-size rewrite that keeps the mtime is exactly what the bug was, and a plain child falls for it.
+            source.write_text(old_text.replace(old, new), encoding="utf-8")
+            os.utime(source, ns=(stamp, stamp))
+            self.assertEqual(self.python(root, read), old, "the control must reproduce the stale cache, or this test proves nothing")
+            source.write_text(old_text, encoding="utf-8")
+            os.utime(source, ns=(stamp, stamp))
+            # The real rewriter, forced to write within the old second.
+            real_write = Path.write_bytes
+
+            def same_second_write(path, data):
+                result = real_write(path, data)
+                os.utime(path, ns=(stamp, stamp))
+                return result
+            with mock.patch.object(Path, "write_bytes", same_second_write):
+                versioning.apply_version(root, new)
+            self.assertEqual(self.python(root, read), new)
 
 
 if __name__ == "__main__":

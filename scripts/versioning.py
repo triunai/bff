@@ -4,8 +4,10 @@ Used by the release builder (reads the version), `scripts/release.py` (rewrites 
 `tests/test_version.py` (fails when a pin drifts). Standard library only.
 """
 import json
+import os
 from pathlib import Path
 import re
+import time
 
 SEMVER = re.compile(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)")
 SOURCE_FILE = "bff/__init__.py"
@@ -58,6 +60,17 @@ def check_pins(root):
             for description, name, value in pins(root) if value != version]
 
 
+def _leave_the_old_second(path, before_ns):
+    """Make `path`'s mtime fall in a later whole second than `before_ns`.
+
+    Python trusts a cached .pyc whose recorded source mtime (whole seconds) and size match the source. A version rewrite ("0.3.1" -> "0.3.2") keeps the size, and
+    done within the same second as the previous write it keeps the mtime too, so every Python process that follows (the unit tests and the interpreters THEY
+    spawn, with any cache layout) would import the OLD __version__ from the stale cache. Moving the mtime past the old second invalidates every such cache."""
+    second = 10 ** 9
+    target = max(time.time_ns(), (before_ns // second + 1) * second)
+    os.utime(path, ns=(target, target))
+
+
 def apply_version(root, version):
     """Rewrite every pin (and the source) to `version`. Returns the list of changed paths."""
     if not SEMVER.fullmatch(version):
@@ -67,7 +80,10 @@ def apply_version(root, version):
 
     def rewrite(name, text):
         if text != _read(root, name):
-            (root / name).write_bytes(text.encode("utf-8"))
+            path = root / name
+            before = path.stat().st_mtime_ns
+            path.write_bytes(text.encode("utf-8"))
+            _leave_the_old_second(path, before)
             changed.append(name)
 
     rewrite(SOURCE_FILE, SOURCE_PATTERN.sub('__version__ = "' + version + '"', _read(root, SOURCE_FILE)))
