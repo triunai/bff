@@ -15,7 +15,6 @@ import os
 from pathlib import Path
 import re
 import sys
-import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -76,16 +75,11 @@ def run_command(command, **kwargs):
 
 
 def run_checks(root, python=sys.executable):
-    """Full unit suite, then the credential canary on its own so its result is visible.
-
-    The version rewrite above can leave a stale .pyc: Python trusts a cache whose source mtime (whole seconds) and size match, and a "0.3.1" -> "0.3.2" rewrite
-    keeps the size and, within one second, the mtime. So the children get a fresh, empty bytecode cache. `-X pycache_prefix` is the flag form because
-    trusted_bin refuses PYTHON* environment variables by design (loader variables), and the cache is thrown away with the directory."""
-    with tempfile.TemporaryDirectory(prefix="bff-release-pyc-") as fresh_cache:
-        for command in ([python, "-X", "pycache_prefix=" + fresh_cache, "-m", "unittest", "discover", "-s", "tests"],
-                        [python, "-X", "pycache_prefix=" + fresh_cache, "-m", "unittest", "discover", "-s", "tests", "-p", "test_release.py", "-v"]):
-            if run_command(command, cwd=str(root)).returncode:
-                raise SystemExit("Checks failed: " + " ".join(command))
+    """Full unit suite, then the credential canary on its own so its result is visible."""
+    for command in ([python, "-m", "unittest", "discover", "-s", "tests"],
+                    [python, "-m", "unittest", "discover", "-s", "tests", "-p", "test_release.py", "-v"]):
+        if run_command(command, cwd=str(root)).returncode:
+            raise SystemExit("Checks failed: " + " ".join(command))
 
 
 def build_archive(root, output, python=sys.executable):

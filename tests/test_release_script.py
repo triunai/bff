@@ -2,7 +2,6 @@
 import contextlib
 import io
 import os
-import py_compile
 from pathlib import Path
 import shutil
 import subprocess
@@ -141,23 +140,43 @@ class MainTests(unittest.TestCase):
 
 
 class StaleBytecodeTests(unittest.TestCase):
-    """The release rewrites __version__ in place ("0.3.1" -> "0.3.2": same size, same mtime second); run_checks must not trust the old .pyc."""
+    """The release rewrites __version__ in place (same size, same mtime second); every Python process after it, however deep, must see the new one."""
 
-    def test_run_checks_sees_the_rewritten_version_not_a_stale_cache(self):
+    @staticmethod
+    def python(root, code):
+        env = {k: v for k, v in os.environ.items() if k != "SOURCE_DATE_EPOCH" and not k.startswith("PYTHON")}  # timestamp bytecode, default cache location
+        done = subprocess.run([sys.executable, "-c", code], cwd=str(root), env=env, capture_output=True, text=True)
+        assert done.returncode == 0, done.stderr
+        return done.stdout.strip()
+
+    def test_a_plain_grandchild_sees_the_rewritten_version(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory).resolve()  # the cache is keyed by the real path (macOS /var -> /private/var)
-            (root / "tests").mkdir()
-            module = root / "fakepkg.py"
-            module.write_text('__version__ = "0.3.1"\n', encoding="utf-8")
-            (root / "tests" / "test_release.py").write_text(
-                "import unittest\nimport fakepkg\n\n\nclass V(unittest.TestCase):\n    def test_version(self):\n"
-                "        self.assertEqual(fakepkg.__version__, '0.3.2')\n", encoding="utf-8")
-            py_compile.compile(str(module), doraise=True)  # the cache release.py's own import leaves behind
-            stamp = module.stat().st_mtime_ns
-            module.write_text('__version__ = "0.3.2"\n', encoding="utf-8")
-            os.utime(module, ns=(stamp, stamp))  # same size, same mtime: Python accepts the old .pyc
-            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                release.run_checks(root)  # SystemExit (failing test) if the stale cache was trusted
+            root = scratch(directory)
+            source = root / versioning.SOURCE_FILE
+            old_text = source.read_text(encoding="utf-8")
+            old = versioning.read_version(root)
+            new = old[:-1] + str((int(old[-1]) + 1) % 10)  # same byte size, so only the mtime can tell the files apart
+            self.python(root, "import py_compile; py_compile.compile('bff/__init__.py', doraise=True, "
+                              "invalidation_mode=py_compile.PycInvalidationMode.TIMESTAMP)")
+            stamp = source.stat().st_mtime_ns
+            read = "import bff; print(bff.__version__)"
+            self.assertEqual(self.python(root, read), old)
+            # Control: a same-size rewrite that keeps the mtime is exactly what the bug was, and a plain child falls for it.
+            source.write_text(old_text.replace(old, new), encoding="utf-8")
+            os.utime(source, ns=(stamp, stamp))
+            self.assertEqual(self.python(root, read), old, "the control must reproduce the stale cache, or this test proves nothing")
+            source.write_text(old_text, encoding="utf-8")
+            os.utime(source, ns=(stamp, stamp))
+            # The real rewriter, forced to write within the old second.
+            real_write = Path.write_bytes
+
+            def same_second_write(path, data):
+                result = real_write(path, data)
+                os.utime(path, ns=(stamp, stamp))
+                return result
+            with mock.patch.object(Path, "write_bytes", same_second_write):
+                versioning.apply_version(root, new)
+            self.assertEqual(self.python(root, read), new)
 
 
 if __name__ == "__main__":

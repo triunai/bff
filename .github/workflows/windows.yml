@@ -27,7 +27,7 @@ jobs:
   parse:
     # install.ps1 must at least parse under Windows PowerShell 5.1 and PowerShell 7 (and stay ASCII for 5.1).
     runs-on: windows-latest
-    timeout-minutes: 10  # ~4x the normal job time; a hang (unit 3.9 once ran >35 min) fails fast instead of burning runner hours
+    timeout-minutes: 10  # parse jobs take 14-31 s
     strategy:
       fail-fast: false
       matrix:
@@ -83,7 +83,7 @@ jobs:
 
   unit:
     runs-on: windows-latest
-    timeout-minutes: 15  # ~4x the normal job time; a hang (unit 3.9 once ran >35 min) fails fast instead of burning runner hours
+    timeout-minutes: 20  # unit jobs take 1m30s-3m51s; one slow PR run took 33m38s while tests still passed, so this is a cap, not a hang detector
     strategy:
       fail-fast: false
       matrix:
@@ -98,13 +98,13 @@ jobs:
           node-version: "22"
       - name: Unit tests (real Windows, standard library only)
         shell: cmd
-        timeout-minutes: 10  # normally ~2.5 min; -v prints each test as it starts, so the last line of a cancelled log names the hang
+        timeout-minutes: 15  # step takes 1m16s-2m48s; the one slow run's step took 32m42s while tests still passed (slow runner, not a deadlock); -v names the last test started
         run: python -m unittest discover -s tests -v
 
   smoke:
     needs: parse
     runs-on: windows-latest
-    timeout-minutes: 25  # ~4x the normal job time; a hang (unit 3.9 once ran >35 min) fails fast instead of burning runner hours
+    timeout-minutes: 25  # smoke jobs take 3m37s-5m51s
     strategy:
       fail-fast: false
       matrix:
@@ -282,7 +282,7 @@ jobs:
     # The exact one-liner a user pastes, against the published release. Temp prefix, so nothing outside the runner temp dir is touched.
     if: ${{ inputs.published }}
     runs-on: windows-latest
-    timeout-minutes: 10  # ~4x the normal job time; a hang (unit 3.9 once ran >35 min) fails fast instead of burning runner hours
+    timeout-minutes: 10  # published jobs take 32-40 s
     strategy:
       fail-fast: false
       matrix:

@@ -7,8 +7,8 @@ Versioning policy: [Semantic Versioning](https://semver.org/). While BFF is 0.x,
 ## [Unreleased]
 
 ### Fixed
-- `scripts/release.py` runs its pre-release checks with a fresh bytecode cache, so the in-place version rewrite can no longer make the version tests read the old `__version__` from a stale `.pyc`.
-- The Windows CI jobs now have timeouts (the unit step 10 minutes), so a hung run fails fast.
+- The release version rewrite now moves each rewritten file's mtime into a later whole second, so a same-size `0.3.1` -> `0.3.2` rewrite can no longer leave a stale `.pyc` that every test (and every interpreter it spawns) trusts.
+- The Windows CI jobs now have timeouts (the unit step 15 minutes), so a hung run fails fast.
 
 ## [0.3.2] - 2026-10-12
 
