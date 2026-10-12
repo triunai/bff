@@ -1,6 +1,8 @@
 """scripts/release.py: bump, pin rewrite, notes extraction, printed commands and publish guards."""
 import contextlib
 import io
+import os
+import py_compile
 from pathlib import Path
 import shutil
 import subprocess
@@ -136,6 +138,26 @@ class MainTests(unittest.TestCase):
                     self.run_main(root, "--publish", "--output", str(Path(directory) / "out"))
             publish_calls = [c for c in calls if c[0] in ("git", "gh")]
             self.assertEqual(publish_calls, [["git", "push"], ["git", "tag"]])
+
+
+class StaleBytecodeTests(unittest.TestCase):
+    """The release rewrites __version__ in place ("0.3.1" -> "0.3.2": same size, same mtime second); run_checks must not trust the old .pyc."""
+
+    def test_run_checks_sees_the_rewritten_version_not_a_stale_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()  # the cache is keyed by the real path (macOS /var -> /private/var)
+            (root / "tests").mkdir()
+            module = root / "fakepkg.py"
+            module.write_text('__version__ = "0.3.1"\n', encoding="utf-8")
+            (root / "tests" / "test_release.py").write_text(
+                "import unittest\nimport fakepkg\n\n\nclass V(unittest.TestCase):\n    def test_version(self):\n"
+                "        self.assertEqual(fakepkg.__version__, '0.3.2')\n", encoding="utf-8")
+            py_compile.compile(str(module), doraise=True)  # the cache release.py's own import leaves behind
+            stamp = module.stat().st_mtime_ns
+            module.write_text('__version__ = "0.3.2"\n', encoding="utf-8")
+            os.utime(module, ns=(stamp, stamp))  # same size, same mtime: Python accepts the old .pyc
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                release.run_checks(root)  # SystemExit (failing test) if the stale cache was trusted
 
 
 if __name__ == "__main__":
