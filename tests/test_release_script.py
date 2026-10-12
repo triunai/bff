@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -177,6 +178,46 @@ class StaleBytecodeTests(unittest.TestCase):
             with mock.patch.object(Path, "write_bytes", same_second_write):
                 versioning.apply_version(root, new)
             self.assertEqual(self.python(root, read), new)
+
+
+class CoarseFilesystemTests(unittest.TestCase):
+    """_leave_the_old_second must verify what the filesystem stored, not what it asked for."""
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = Path(self.directory.name) / "f.py"
+        self.path.write_text("x\n", encoding="utf-8")
+        self.old_ns = (int(time.time()) // 2 * 2 + 100) * 10 ** 9  # an even second ahead of now, so old+1 truncates straight back to it
+        os.utime(self.path, ns=(self.old_ns, self.old_ns))
+
+    @staticmethod
+    def truncating(real, seconds):
+        def utime(path, ns=None, **kwargs):
+            atime, mtime = ns
+            return real(path, ns=(atime, mtime // (seconds * 10 ** 9) * (seconds * 10 ** 9)), **kwargs)
+        return utime
+
+    def test_a_two_second_filesystem_still_ends_in_a_different_second(self):
+        real = os.utime
+        with mock.patch.object(os, "utime", self.truncating(real, 2)):
+            versioning._leave_the_old_second(self.path, self.old_ns)
+        self.assertNotEqual(self.path.stat().st_mtime_ns // 10 ** 9, self.old_ns // 10 ** 9)
+
+    def test_the_atime_is_left_alone(self):
+        atime = self.path.stat().st_atime_ns
+        versioning._leave_the_old_second(self.path, self.old_ns)
+        self.assertEqual(self.path.stat().st_atime_ns, atime)
+
+    def test_a_filesystem_that_never_changes_the_second_raises(self):
+        real = os.utime
+
+        def stuck(path, ns=None, **kwargs):
+            return real(path, ns=(ns[0], self.old_ns), **kwargs)
+        with mock.patch.object(os, "utime", stuck):
+            with self.assertRaises(OSError) as raised:
+                versioning._leave_the_old_second(self.path, self.old_ns)
+        self.assertIn("f.py", str(raised.exception))
 
 
 if __name__ == "__main__":
