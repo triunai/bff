@@ -27,6 +27,7 @@ jobs:
   parse:
     # install.ps1 must at least parse under Windows PowerShell 5.1 and PowerShell 7 (and stay ASCII for 5.1).
     runs-on: windows-latest
+    timeout-minutes: 10  # ~4x the normal job time; a hang (unit 3.9 once ran >35 min) fails fast instead of burning runner hours
     strategy:
       fail-fast: false
       matrix:
@@ -82,6 +83,7 @@ jobs:
 
   unit:
     runs-on: windows-latest
+    timeout-minutes: 15  # ~4x the normal job time; a hang (unit 3.9 once ran >35 min) fails fast instead of burning runner hours
     strategy:
       fail-fast: false
       matrix:
@@ -96,11 +98,13 @@ jobs:
           node-version: "22"
       - name: Unit tests (real Windows, standard library only)
         shell: cmd
+        timeout-minutes: 10  # normally ~2.5 min; -v prints each test as it starts, so the last line of a cancelled log names the hang
         run: python -m unittest discover -s tests -v
 
   smoke:
     needs: parse
     runs-on: windows-latest
+    timeout-minutes: 25  # ~4x the normal job time; a hang (unit 3.9 once ran >35 min) fails fast instead of burning runner hours
     strategy:
       fail-fast: false
       matrix:
@@ -278,6 +282,7 @@ jobs:
     # The exact one-liner a user pastes, against the published release. Temp prefix, so nothing outside the runner temp dir is touched.
     if: ${{ inputs.published }}
     runs-on: windows-latest
+    timeout-minutes: 10  # ~4x the normal job time; a hang (unit 3.9 once ran >35 min) fails fast instead of burning runner hours
     strategy:
       fail-fast: false
       matrix:
