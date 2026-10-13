@@ -38,7 +38,6 @@ UNPUBLISHED = ("Osiris is not publicly released yet; nothing to install. "
 UNPUBLISHED_EXIT = 4  # distinct from 3, which means a prerequisite is missing
 NEEDED_FOR = {"bd": "needed for the Work tab", "herdr": "needed to join terminal panes"}
 NO_BB = "BB not found: run bff osiris setup to see what to install"
-WINDOWS_NO_HERDR = "herdr has no Windows build; nothing to install. Use bff osiris factory directly."
 # BB ships a Windows x64 installer (bb-<version>-x64.exe on https://github.com/get-bb/bb/releases) and its npm package lists win32; it needs Node 22.19+.
 POSIX_HINTS = {"node": "Install Node yourself: https://nodejs.org or brew install node",
                "bb": "Install BB yourself: npx bb-app@latest (needs {minimum} or newer)",
@@ -46,7 +45,8 @@ POSIX_HINTS = {"node": "Install Node yourself: https://nodejs.org or brew instal
 WINDOWS_HINTS = {"node": "Install Node 22.19 or newer yourself: winget install OpenJS.NodeJS.LTS",
                  "bb": "Install BB yourself: npx bb-app@latest, or the Windows installer (bb-<version>-x64.exe) from https://github.com/get-bb/bb/releases (needs {minimum} or newer)",
                  "git": "Install git yourself: winget install Git.Git",
-                 "gh": "Optional, verifies update provenance: winget install GitHub.cli"}
+                 "gh": "Optional, verifies update provenance: winget install GitHub.cli",
+                 "herdr": "Optional, joins terminal panes. Install Herdr for Windows from https://herdr.dev (Windows installer script: https://herdr.dev/install.ps1; read it before running)"}
 
 
 def load_compat(root=None):
@@ -169,10 +169,9 @@ def prerequisites(system=None, which=_which, run=_run, compat=None, bb=None):
     if windows:
         gh = which("gh")
         row("gh", gh, False, hints["gh"], _tool_version([gh, "--version"], run) if gh else None)
-        row("herdr", None, False, WINDOWS_NO_HERDR, ok=True)
-        rows[-1]["note"] = "no Windows build (not needed)"
-    else:
-        row("herdr", which("herdr"), False, "Install herdr yourself; bff doctor explains how")
+    herdr = which("herdr")
+    row("herdr", herdr, False, hints["herdr"] if windows else "Install herdr yourself; bff doctor explains how",
+        _tool_version([herdr, "--version"], run) if windows and herdr else None)
     row("bd", which("bd"), False, "Install bd (beads) yourself; bff doctor explains how")
     row("bdi", which("bdi"), False, "Optional" + ("" if system == "Darwin" else " off macOS") + ": install bdi yourself if you use it")
     return rows

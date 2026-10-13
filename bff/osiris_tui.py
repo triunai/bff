@@ -33,7 +33,7 @@ def tool_inherit(platform=None):
 
 
 def windows_tool_dirs(home=None, expand=glob.glob):
-    """FIXED Windows install locations for node, git, gh, bb and the terminal launcher, in preference order. Derived only from the user's home and constant
+    """FIXED Windows install locations for node, git, gh, bb, herdr and the terminal launcher, in preference order. Derived only from the user's home and constant
     Program Files paths (never PATH, never an environment override); version-manager directories are expanded by glob at call time, newest name first.
     Every hit still goes through trusted_bin's vetting, so this widens WHERE to look, never what is accepted."""
     home = str(home or Path.home()).rstrip("\\/")
@@ -41,7 +41,8 @@ def windows_tool_dirs(home=None, expand=glob.glob):
     fixed = ["C:\\Program Files\\nodejs", "C:\\Program Files (x86)\\nodejs", "C:\\Program Files\\Git\\cmd", "C:\\Program Files\\GitHub CLI",
              local + "\\Programs\\Git\\cmd", local + "\\Programs\\GitHub CLI", local + "\\Volta\\bin", local + "\\Microsoft\\WinGet\\Links",
              local + "\\Microsoft\\WindowsApps", roaming + "\\npm", home + "\\scoop\\shims", home + "\\scoop\\apps\\nodejs\\current",
-             home + "\\scoop\\apps\\nodejs-lts\\current", "C:\\nvm4w\\nodejs"]
+             home + "\\scoop\\apps\\nodejs-lts\\current", "C:\\nvm4w\\nodejs",
+             local + "\\Programs\\Herdr\\bin"]
     patterns = [local + "\\fnm\\node-versions\\*\\installation", roaming + "\\fnm\\node-versions\\*\\installation", roaming + "\\nvm\\v*", local + "\\nvm\\v*"]
     found = []
     for pattern in patterns:

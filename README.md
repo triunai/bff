@@ -26,7 +26,7 @@ irm https://raw.githubusercontent.com/triunai/bff-install/main/install.ps1 | iex
 
 Re-running either line updates in place. They offer to add the bin directory to your `PATH` once (they ask, and print the line instead if you decline), then run `bff osiris setup`. If the GitHub CLI is installed and signed in it is used for the download instead; `BFF_DOWNLOAD=https` forces the plain download. The scripts live in [triunai/bff-install](https://github.com/triunai/bff-install); read them first, they are short.
 
-**Windows limits:** `herdr` has no Windows build, the `caffeinate` keep-awake is macOS only, and BB (so Osiris inside BB) is not supported on Windows. `bff`, `bff doctor`, `bff update`, `bff check` and the terminal apps `bff osiris factory | worktrees | prune` work (the terminal apps need Node 22.6 or newer).
+**Windows limits:** `herdr` is optional on Windows (install it from <https://herdr.dev>), the `caffeinate` keep-awake is macOS only, and BB (so Osiris inside BB) is not supported on Windows. `bff`, `bff doctor`, `bff update`, `bff check` and the terminal apps `bff osiris factory | worktrees | prune` work (the terminal apps need Node 22.6 or newer).
 
 BFF is a portable CLI and a set of repo conventions for running coding agents without losing the plot. Osiris, its workbench, shows what the agents actually did. It runs inside **BB**, a separate desktop workbench app that hosts Osiris as a plugin; BFF does not install BB, so install it first if you want Osiris (the CLI works without it). The Osiris plugin itself is included in the bff release: `bff osiris setup` installs it into BB, no separate download. [Install the CLI](#install-in-30-seconds) below.
 

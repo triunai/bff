@@ -32,7 +32,7 @@ RECIPES = (
                "The upstream README documents no global package-manager install."},
     {"component": "Herdr", "executables": ("herdr",), "routes": (("brew", "herdr"),),
      "source": "https://herdr.dev",
-     "windows_manual": "herdr has no Windows build; use bff osiris factory directly (nothing to install)."},
+     "windows_manual": "Install Herdr for Windows from https://herdr.dev (Windows installer script: https://herdr.dev/install.ps1; read it before running)."},
     {"component": "Beads", "executables": ("bd", "br"), "routes": (("brew", "beads"), ("npm", "@beads/bd")),
      "source": "https://github.com/gastownhall/beads"},
     {"component": "OMC", "executables": ("omc",), "routes": (("npm", "oh-my-claude-sisyphus"),),
