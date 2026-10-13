@@ -12,7 +12,7 @@ import tempfile
 from . import osiris_tui, trusted_bin
 
 OWNED_MARKER = "#!/bin/sh\n# BFF-owned Herdr launcher v1\n"
-NO_HERDR_ON_WINDOWS = "herdr has no Windows build; use bff osiris factory directly (the text Factory runs in this terminal)."
+HERDR_MISSING_ON_WINDOWS = "Herdr not found. Install Herdr for Windows from https://herdr.dev (Windows installer script: https://herdr.dev/install.ps1; read it before running), or use bff osiris factory directly."
 DETACHED = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP: a new terminal must outlive this command
 
 
@@ -100,7 +100,7 @@ def start(args, url, open_observer):
         failed = True
     component = plan["herdr"]
     if component["argv"] is None:
-        print(NO_HERDR_ON_WINDOWS if osiris_tui.is_windows() else "Herdr executable unavailable; install it separately.", file=sys.stderr)
+        print(HERDR_MISSING_ON_WINDOWS if osiris_tui.is_windows() else "Herdr executable unavailable; install it separately.", file=sys.stderr)
         return 1
     try:
         if sys.platform == "darwin":

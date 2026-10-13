@@ -1,6 +1,7 @@
-"""Simulated-Windows `bff start`: terminal choice, the herdr-has-no-Windows-build message and the detached launch."""
+"""Simulated-Windows `bff start`: terminal choice, the herdr-missing install hint and the detached launch."""
 import contextlib
 import io
+import json
 from pathlib import Path
 import sys
 import unittest
@@ -45,7 +46,7 @@ class WindowsLaunch(unittest.TestCase):
     def test_herdr_missing_names_the_alternative_and_launches_nothing(self):
         (result, stdout, stderr), popen, run = self.start({"wt": WT, "cmd": CMD})
         self.assertEqual(result, 1)
-        self.assertIn("herdr has no Windows build", stderr)
+        self.assertIn("https://herdr.dev/install.ps1", stderr)
         self.assertIn("bff osiris factory", stderr)
         popen.assert_not_called()
         run.assert_not_called()
@@ -63,6 +64,14 @@ class WindowsLaunch(unittest.TestCase):
         (result, _, _), popen, _ = self.start({"herdr": HERDR, "cmd": CMD})
         self.assertEqual(result, 0)
         self.assertEqual(popen.call_args[0][0], [CMD, "/c", "start", "", HERDR])
+
+    def test_print_plan_reports_herdr_available_when_found(self):
+        (result, stdout, _), popen, _ = self.start({"herdr": HERDR, "wt": WT, "cmd": CMD}, ("start", "--print-plan"))
+        self.assertEqual(result, 0)
+        plan = json.loads(stdout)
+        self.assertEqual(plan["herdr"]["availability"], "available")
+        self.assertEqual(plan["herdr"]["argv"], [HERDR])
+        self.assertEqual(plan["herdr"]["terminal"], WT)
 
     def test_no_terminal_at_all_prints_a_copyable_windows_command(self):
         (result, stdout, _), popen, _ = self.start({"herdr": "C:\\Program Files\\herdr.exe"})

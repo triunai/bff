@@ -65,6 +65,7 @@ class Allowlist(WindowsCase):
         self.assertTrue(any("fnm" in p for p in seen) and any("nvm" in p for p in seen))
         self.assertIn("C:\\Users\\me\\AppData\\Local\\Volta\\bin", dirs)
         self.assertNotIn("C:\\nvm4w\\nodejs", dirs)  # under C:\, writable by any signed-in user
+        self.assertIn("C:\\Users\\me\\AppData\\Local\\Programs\\Herdr\\bin", dirs)
         self.assertIn("C:\\Users\\me\\AppData\\Local\\nvm\\v*", seen)
 
     def test_a_hostile_PATH_and_PATHEXT_change_nothing(self):

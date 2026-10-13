@@ -22,7 +22,7 @@ class WindowsToolDirs(unittest.TestCase):
         dirs = osiris_tui.windows_tool_dirs(HOME, expand=lambda pattern: [])
         for wanted in ("C:\\Program Files\\nodejs", "C:\\Program Files\\Git\\cmd", "C:\\Program Files\\GitHub CLI",
                        HOME + "\\AppData\\Local\\Volta\\bin", HOME + "\\AppData\\Local\\Microsoft\\WinGet\\Links",
-                       HOME + "\\AppData\\Roaming\\npm", HOME + "\\scoop\\shims"):
+                       HOME + "\\AppData\\Roaming\\npm", HOME + "\\scoop\\shims", HOME + "\\AppData\\Local\\Programs\\Herdr\\bin"):
             self.assertIn(wanted, dirs)
         # nvm-windows' C:\nvm4w\nodejs link sits under C:\, which any signed-in user may modify; the nvm version dirs it points into are listed instead.
         self.assertNotIn("C:\\nvm4w\\nodejs", dirs)
@@ -159,14 +159,21 @@ class WindowsPrerequisites(unittest.TestCase):
         self.assertIn("x64.exe", rows["BB"]["how"])
         self.assertIn("0.45.0", rows["BB"]["how"])
 
-    def test_herdr_is_reported_as_not_applicable_not_as_a_failure(self):
+    def test_herdr_missing_is_optional_with_a_windows_install_hint(self):
         herdr = {r["name"]: r for r in self.rows(set())}["herdr"]
-        self.assertTrue(herdr["ok"])
+        self.assertFalse(herdr["found"])
         self.assertFalse(herdr["required"])
-        self.assertIn("no Windows build", herdr["how"])
+        self.assertIn("https://herdr.dev/install.ps1", herdr["how"])
+        self.assertNotIn("no Windows build", herdr["how"])
         out = io.StringIO()
         osiris._print_plan(self.rows(set()), out)
-        self.assertIn("no Windows build (not needed)", out.getvalue())
+        self.assertNotIn("no Windows build", out.getvalue())
+
+    def test_herdr_found_shows_its_version(self):
+        herdr = {r["name"]: r for r in self.rows({"herdr"})}["herdr"]
+        self.assertTrue(herdr["found"])
+        self.assertTrue(herdr["ok"])
+        self.assertEqual(herdr["version"], "9.9.9")
 
     def test_macos_rows_are_unchanged(self):
         names = [r["name"] for r in self.rows({"brew"}, system="Darwin")]
@@ -194,7 +201,7 @@ class WindowsDoctor(unittest.TestCase):
         with mock.patch("bff.doctor.trusted_bin", fake), mock.patch("bff.osiris_tui.sys.platform", "win32"):
             rows = {r["component"]: r for r in doctor.survey()}
         self.assertEqual(rows["Herdr"]["action"], "manual")
-        self.assertIn("bff osiris factory", rows["Herdr"]["reason"])
+        self.assertIn("https://herdr.dev/install.ps1", rows["Herdr"]["reason"])
         self.assertEqual(rows["BB"]["action"], "manual")
         self.assertEqual(rows["Beads"]["action"], "install")
         self.assertEqual(rows["Beads"]["argv"][0], "C:\\Program Files\\nodejs\\npm.cmd")
