@@ -22,7 +22,7 @@ class WindowsToolDirs(unittest.TestCase):
         dirs = osiris_tui.windows_tool_dirs(HOME, expand=lambda pattern: [])
         for wanted in ("C:\\Program Files\\nodejs", "C:\\Program Files\\Git\\cmd", "C:\\Program Files\\GitHub CLI",
                        HOME + "\\AppData\\Local\\Volta\\bin", HOME + "\\AppData\\Local\\Microsoft\\WinGet\\Links",
-                       HOME + "\\AppData\\Roaming\\npm", HOME + "\\scoop\\shims"):
+                       HOME + "\\AppData\\Roaming\\npm", HOME + "\\scoop\\shims", "C:\\nvm4w\\nodejs"):
             self.assertIn(wanted, dirs)
         self.assertTrue(all(os.path.isabs(d) or d[1:3] == ":\\" for d in dirs))
 

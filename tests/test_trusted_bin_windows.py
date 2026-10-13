@@ -64,6 +64,8 @@ class Allowlist(WindowsCase):
         self.assertIn("C:\\Program Files\\Python3*", seen)
         self.assertTrue(any("fnm" in p for p in seen) and any("nvm" in p for p in seen))
         self.assertIn("C:\\Users\\me\\AppData\\Local\\Volta\\bin", dirs)
+        self.assertIn("C:\\nvm4w\\nodejs", dirs)
+        self.assertIn("C:\\Users\\me\\AppData\\Local\\nvm\\v*", seen)
 
     def test_a_hostile_PATH_and_PATHEXT_change_nothing(self):
         before = trusted_bin.default_dirs("C:\\Users\\me", WIN)

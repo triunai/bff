@@ -41,8 +41,8 @@ def windows_tool_dirs(home=None, expand=glob.glob):
     fixed = ["C:\\Program Files\\nodejs", "C:\\Program Files (x86)\\nodejs", "C:\\Program Files\\Git\\cmd", "C:\\Program Files\\GitHub CLI",
              local + "\\Programs\\Git\\cmd", local + "\\Programs\\GitHub CLI", local + "\\Volta\\bin", local + "\\Microsoft\\WinGet\\Links",
              local + "\\Microsoft\\WindowsApps", roaming + "\\npm", home + "\\scoop\\shims", home + "\\scoop\\apps\\nodejs\\current",
-             home + "\\scoop\\apps\\nodejs-lts\\current"]
-    patterns = [local + "\\fnm\\node-versions\\*\\installation", roaming + "\\fnm\\node-versions\\*\\installation", roaming + "\\nvm\\v*"]
+             home + "\\scoop\\apps\\nodejs-lts\\current", "C:\\nvm4w\\nodejs"]
+    patterns = [local + "\\fnm\\node-versions\\*\\installation", roaming + "\\fnm\\node-versions\\*\\installation", roaming + "\\nvm\\v*", local + "\\nvm\\v*"]
     found = []
     for pattern in patterns:
         found.extend(sorted(expand(pattern), reverse=True))

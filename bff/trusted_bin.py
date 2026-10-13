@@ -153,11 +153,11 @@ def _win_tool_dirs(home, env, globber):
     roaming = _win_env_dir(env, "APPDATA") or home + "\\AppData\\Roaming"
     files = [d for d in (_win_env_dir(env, "ProgramFiles"), _win_env_dir(env, "ProgramW6432")) if d] or ["C:\\Program Files"]
     fixed = [local + "\\Microsoft\\WinGet\\Links", home + "\\scoop\\shims", roaming + "\\npm", local + "\\Volta\\bin", home + "\\.volta\\bin",
-             home + "\\.cargo\\bin", home + "\\.bun\\bin"]
+             home + "\\.cargo\\bin", home + "\\.bun\\bin", "C:\\nvm4w\\nodejs"]
     patterns = [local + "\\Programs\\Python\\Python3*", local + "\\Programs\\Python\\Python3*\\Scripts"]
     for base in files:
         patterns += [base + "\\Python3*", base + "\\Python3*\\Scripts"]
-    patterns += [local + "\\fnm\\node-versions\\*\\installation", roaming + "\\fnm\\node-versions\\*\\installation", roaming + "\\nvm\\v*"]
+    patterns += [local + "\\fnm\\node-versions\\*\\installation", roaming + "\\fnm\\node-versions\\*\\installation", roaming + "\\nvm\\v*", local + "\\nvm\\v*"]
     found = []
     for pattern in patterns:
         found.extend(sorted(globber(pattern), reverse=True))

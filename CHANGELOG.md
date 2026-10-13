@@ -9,6 +9,7 @@ Versioning policy: [Semantic Versioning](https://semver.org/). While BFF is 0.x,
 ### Fixed
 - The release version rewrite now moves each rewritten file's mtime into a later whole second, so a same-size `0.3.1` -> `0.3.2` rewrite can no longer leave a stale `.pyc` that every test (and every interpreter it spawns) trusts. This covers timestamp-based bytecode (Python's default); `unchecked-hash` pycs ignore source changes by design and are not covered. The new mtime is verified after it is set and advanced if the filesystem rounds it back (FAT), failing loudly if it cannot move.
 - The Windows CI jobs now have timeouts (the unit step 15 minutes), so a hung run fails fast.
+- Windows: Node and BB installed through nvm-windows are now found. nvm-windows keeps its versions in `%LOCALAPPDATA%\nvm\v*` and links the active one at `C:\nvm4w\nodejs` (`NVM_SYMLINK`); neither was searched, so `bff osiris setup` reported Node and BB as missing and the version probes were refused under the default policy. Both folders are now in the fixed directory lists in `trusted_bin.py` and `osiris_tui.py`.
 
 ## [0.3.2] - 2026-10-12
 
