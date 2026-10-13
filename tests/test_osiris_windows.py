@@ -22,8 +22,10 @@ class WindowsToolDirs(unittest.TestCase):
         dirs = osiris_tui.windows_tool_dirs(HOME, expand=lambda pattern: [])
         for wanted in ("C:\\Program Files\\nodejs", "C:\\Program Files\\Git\\cmd", "C:\\Program Files\\GitHub CLI",
                        HOME + "\\AppData\\Local\\Volta\\bin", HOME + "\\AppData\\Local\\Microsoft\\WinGet\\Links",
-                       HOME + "\\AppData\\Roaming\\npm", HOME + "\\scoop\\shims", "C:\\nvm4w\\nodejs", HOME + "\\AppData\\Local\\Programs\\Herdr\\bin"):
+                       HOME + "\\AppData\\Roaming\\npm", HOME + "\\scoop\\shims", HOME + "\\AppData\\Local\\Programs\\Herdr\\bin"):
             self.assertIn(wanted, dirs)
+        # nvm-windows' C:\nvm4w\nodejs link sits under C:\, which any signed-in user may modify; the nvm version dirs it points into are listed instead.
+        self.assertNotIn("C:\\nvm4w\\nodejs", dirs)
         self.assertTrue(all(os.path.isabs(d) or d[1:3] == ":\\" for d in dirs))
 
     def test_version_manager_directories_are_globbed_newest_first(self):
