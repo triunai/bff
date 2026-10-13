@@ -157,7 +157,7 @@ def _win_tool_dirs(home, env, globber):
     patterns = [local + "\\Programs\\Python\\Python3*", local + "\\Programs\\Python\\Python3*\\Scripts"]
     for base in files:
         patterns += [base + "\\Python3*", base + "\\Python3*\\Scripts"]
-    patterns += [local + "\\fnm\\node-versions\\*\\installation", roaming + "\\fnm\\node-versions\\*\\installation", roaming + "\\nvm\\v*"]
+    patterns += [local + "\\fnm\\node-versions\\*\\installation", roaming + "\\fnm\\node-versions\\*\\installation", roaming + "\\nvm\\v*", local + "\\nvm\\v*"]
     found = []
     for pattern in patterns:
         found.extend(sorted(globber(pattern), reverse=True))
