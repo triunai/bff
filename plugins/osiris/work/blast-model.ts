@@ -23,7 +23,7 @@ export type BlastTarget = { id: string; title: string; sinceMs: number | null; h
 /** The slice of a FloorFrame the selection reads (structural, so tests need no full frame). */
 export type BlastFrame = {
   heatMode: HeatMode;
-  tokens: readonly Pick<FloorToken, "id" | "title" | "station" | "stage" | "blocked" | "waitingOn" | "sinceMs" | "heatStep" | "gateRole">[];
+  tokens: readonly Pick<FloorToken, "id" | "title" | "station" | "stage" | "blocked" | "waitingOn" | "sinceMs" | "heatStep" | "gateRole" | "built">[];
   workers: readonly Pick<FloorWorker, "beadId" | "presence" | "cost">[];
   locks: readonly Pick<FloorLock, "key" | "beadId" | "sinceMs">[];
 };
@@ -34,7 +34,7 @@ export const ghostWorkers = <W extends { presence: string }>(workers: readonly W
 const oldestFirst = (a: BlastTarget, b: BlastTarget): number => (b.sinceMs ?? -1) - (a.sinceMs ?? -1) || a.id.localeCompare(b.id);
 
 /** Every bead a silo's Blast could act on, oldest first (no band, no cap). Ready = Intake and nothing unmet blocks it; a ghost claim = a bead
- * at Claim, or whose agent is a ghost, with no live agent; waiting = held at the Gate for a reviewer; locks = the bead each lock holds. */
+ * at Claim, or whose agent is a ghost, with no live agent; waiting = held at the Gate for a reviewer AND built (in_progress; an open bead with only a review label has nothing to review); locks = the bead each lock holds. */
 export function blastSilo(f: BlastFrame, silo: BlastSilo): BlastTarget[] {
   const tok = new Map(f.tokens.map(t => [t.id, t]));
   const live = new Set(f.workers.filter(w => w.presence === "live").map(w => w.beadId));
@@ -43,7 +43,7 @@ export function blastSilo(f: BlastFrame, silo: BlastSilo): BlastTarget[] {
   let out: BlastTarget[];
   if (silo === "intake") out = f.tokens.filter(t => t.station === "intake" && t.stage === "ready" && !t.blocked && t.waitingOn.length === 0).map(of);
   else if (silo === "claim") out = f.tokens.filter(t => !live.has(t.id) && ((t.station === "claim") || ((t.station === "build") && ghost.has(t.id)))).map(of);
-  else if (silo === "gate") out = f.tokens.filter(t => t.station === "gate" && t.gateRole === "held").map(of);
+  else if (silo === "gate") out = f.tokens.filter(t => t.station === "gate" && t.gateRole === "held" && t.built).map(of);
   else {
     const seen = new Set<string>();
     out = f.locks.filter(l => !seen.has(l.beadId) && (seen.add(l.beadId), true)).map(l => { const t = tok.get(l.beadId); return { id: l.beadId, title: t?.title ?? l.beadId, sinceMs: l.sinceMs ?? t?.sinceMs ?? null, heatStep: t?.heatStep ?? null }; });

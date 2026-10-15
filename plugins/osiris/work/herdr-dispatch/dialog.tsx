@@ -6,7 +6,7 @@ import { DEMO_OFF, useDemoOn } from "../../demo/client.ts";
 import { SUGGESTED_MODELS } from "../runtime-models.ts";
 import { ANYWAY_LABEL, DOUBLE_CHECK_LABEL, anywayEnabled, doubleCheckPrompt, understandText, warningText, type DispatchGuard } from "../dispatch-guard.ts";
 import { BLAST_LABEL, BLAST_ROLE, reconcileBlast, skippedText, type BlastPlan } from "../blast-model.ts";
-import { TEAM_DEFAULT_LEAD, TEAM_DEFAULT_WORKER, TEAM_MAX_WORKERS, buildTeamPlan, clampWorkers, type TeamCard } from "../team-dispatch/plan.ts";
+import { TEAM_DEFAULT_LEAD, TEAM_DEFAULT_WORKER, TEAM_MAX_WORKERS, BLAST_MAX_TARGETS, buildTeamPlan, clampWorkers, type TeamCard } from "../team-dispatch/plan.ts";
 
 type Found = { clis: HerdrCli[]; paths: Partial<Record<HerdrCli, string>>; error?: string };
 /** Model choices per CLI come from data (runtime-models.ts); a CLI with no list just runs its own default. */
@@ -34,7 +34,8 @@ function BlastSummary(p: { plan: BlastPlan; demo: boolean }) {
  *  `subject` names what is being sent ("the status" by default). Team mode (an Opus lead + workers on these cards) is the same dialog, extended; never a second dialog. */
 export function HerdrDispatchDialog(p: { prompt: string; title: string; subject?: string; team?: { cards: TeamCard[]; epic?: string | null }; /** A Factory Blast (work/blast-model.ts): the SAME team dispatch, prefilled. `recheck` returns the silo's membership NOW so a bead that changed state since the dialog opened is skipped loudly (D-138). */ blast?: { plan: BlastPlan; recheck(): readonly { id: string }[] }; /** A locked / owner-gated / blocked / critical item (work/dispatch-guard.ts): warns, defaults to a read-only double-check, and gates "Dispatch anyway" behind a checkbox. */ guard?: DispatchGuard | null; onClose(): void; onDone?(o: DispatchOutcome): void }) {
   const [lead, setLead] = useState(p.blast ? p.blast.plan.lead : TEAM_DEFAULT_LEAD), [worker, setWorker] = useState(p.blast ? p.blast.plan.worker : TEAM_DEFAULT_WORKER);
-  const [count, setCount] = useState(() => clampWorkers(undefined, p.team?.cards.length ?? 1, p.blast ? p.blast.plan.targets.length : undefined));
+  const maxWorkers = p.blast ? BLAST_MAX_TARGETS : TEAM_MAX_WORKERS; // ONE cap per mode: a blast takes up to BLAST_MAX_TARGETS workers (blast-silos.ts)
+  const [count, setCount] = useState(() => clampWorkers(undefined, p.team?.cards.length ?? 1, maxWorkers));
   const [teamMsg, setTeamMsg] = useState<{ ok: boolean; message: string } | null>(null);
   const built = useMemo(() => p.team ? buildTeamPlan({ cards: p.team.cards, lead, worker, workers: count, epic: p.team.epic, preset: p.blast?.plan.silo ?? null }) : null, [p.team, p.blast, lead, worker, count]);
   const [found, setFound] = useState<Found | null>(null);
@@ -97,7 +98,7 @@ export function HerdrDispatchDialog(p: { prompt: string; title: string; subject?
       <div className="oi-hd-sub">Opens a new tab in your default Herdr session with one lead pane and one pane per worker. The agents claim their own beads; Osiris changes nothing in the tracker. Nothing runs until you confirm.</div>
       {hasClis && <><Member label="Lead" pinned={p.blast?.plan.lead.model} value={lead} clis={found!.clis} disabled={busy || done || !!p.blast} onChange={setLead} />
         <Member label="Workers" pinned={p.blast?.plan.worker.model} value={worker} clis={found!.clis} disabled={busy || done || !!p.blast} onChange={setWorker} />
-        <label className="oi-hd-row">Worker count <input type="number" aria-label="Worker count" min={1} max={TEAM_MAX_WORKERS} value={count} disabled={busy || done || !!p.blast} onChange={e => setCount(clampWorkers(Number(e.target.value), p.team!.cards.length))} /><small className="oi-hd-note">{p.team.cards.length} card{p.team.cards.length === 1 ? "" : "s"} selected, at most {TEAM_MAX_WORKERS} workers</small></label></>}
+        <label className="oi-hd-row">Worker count <input type="number" aria-label="Worker count" min={1} max={maxWorkers} value={count} disabled={busy || done || !!p.blast} onChange={e => setCount(clampWorkers(Number(e.target.value), p.team!.cards.length, maxWorkers))} /><small className="oi-hd-note">{p.team.cards.length} card{p.team.cards.length === 1 ? "" : "s"} selected, at most {maxWorkers} workers</small></label></>}
       {problem && <p className="oi-hd-err" role="alert">{problem}, so a team cannot be started here.</p>}
       {built && !built.ok && <p className="oi-hd-err" role="alert">{built.reason}</p>}
       {built?.ok && [built.plan.lead, ...built.plan.workers].map((pane, i) => <details key={i} className="oi-hd-text"><summary>{pane.label} ({pane.cli}{pane.model ? ` / ${pane.model}` : ""}, {pane.cards.length} card{pane.cards.length === 1 ? "" : "s"})</summary><pre>{pane.role === "lead" ? "Coordinates and reviews; does not implement." : "Works its own cards in its own git worktree."}{"\n"}{pane.cards.map(c => `${c.id}: ${c.title}`).join("\n")}{"\n"}The full instructions are written and sealed by Osiris when you dispatch.</pre></details>)}

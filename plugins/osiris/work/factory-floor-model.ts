@@ -91,6 +91,8 @@ export type FloorToken = {
   lock: string | null;
   /** At the Gate: "review" for the first R beads (ASSUMED under review: beads carry no review-start signal yet), "held" for the rest. */
   gateRole: "review" | "held" | null;
+  /** FactoryCard.built: status in_progress. The Gate Blast only takes built beads. */
+  built: boolean;
 };
 /** A lock: a bead that cannot move because of something else. blocked = an unmet `blocks` dependency; scope = a write-scope lease
  * another bead holds (Dispatch queued it); gate = waiting at the Gate while every reviewer is busy. */
@@ -542,7 +544,7 @@ export function floorAt(s: WorkSurfaceSnapshot, events: readonly HistoryEvent[],
       const downstream = downstreamOf(graph, c.id, isDone), rw = reworkOf(c.id, x), cost = costOf(c.id, join.get(c.id)?.paneId ?? null);
       const raw = heatMode === "age" ? (c.stage === "done" ? 0 : c.sinceMs) : heatMode === "rework" ? rw : heatMode === "impact" ? downstream : cost;
       const heat = raw === null ? null : clamp01(raw / HEAT_FULL[heatMode]);
-      tokens.push({ id: c.id, shortId: c.shortId, title: c.title, stage: c.stage, station: x, shape: card ? "card" : "crate", density, ...p, ...size, gateRole: x !== "gate" ? null : k < th.gate ? "review" : "held", group: group.get(c.id) ?? 0, blocked: c.blocked, hot: c.hot, critical: critical?.has(c.id) ?? false, priority: c.priority, sinceMs: c.sinceMs, pane: c.pane, motion, waitingOn: (waiting.get(c.id) ?? []).sort(cmp), downstream, rework: rw, heat, heatStep: heatStep(heat), lock: lockOf.get(c.id) ?? null, blocks: c.stage === "done" ? [] : directBlocks(graph, c.id).dependents.filter(d => !isDone(d)), caption: null }); // a landed bead holds nothing up
+      tokens.push({ id: c.id, shortId: c.shortId, title: c.title, stage: c.stage, station: x, shape: card ? "card" : "crate", density, ...p, ...size, gateRole: x !== "gate" ? null : k < th.gate ? "review" : "held", built: c.built, group: group.get(c.id) ?? 0, blocked: c.blocked, hot: c.hot, critical: critical?.has(c.id) ?? false, priority: c.priority, sinceMs: c.sinceMs, pane: c.pane, motion, waitingOn: (waiting.get(c.id) ?? []).sort(cmp), downstream, rework: rw, heat, heatStep: heatStep(heat), lock: lockOf.get(c.id) ?? null, blocks: c.stage === "done" ? [] : directBlocks(graph, c.id).dependents.filter(d => !isDone(d)), caption: null }); // a landed bead holds nothing up
     });
     if (isCardStation(x)) { // the agent occupies its bead's card: its badge sits inside the card, left
       list.slice(0, shown).forEach((c, k) => {

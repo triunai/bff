@@ -10,7 +10,8 @@ import { boardCards, plainTitle, shortId } from "./surface-model.ts";
 
 export const MAX_ROWS = 12, HOT_MS = 24 * 3600_000, UNFILED = "__unfiled";
 export type FactoryRow = { key: string; label: string; toneIndex: number };
-export type FactoryCard = { id: string; shortId: string; title: string; fullTitle: string; stage: Stage; prevStage: Stage | null; blocked: boolean; hot: boolean; pane: string | null; sinceMs: number | null; priority: number };
+export type FactoryCard = { id: string; shortId: string; title: string; fullTitle: string; stage: Stage; prevStage: Stage | null; blocked: boolean; hot: boolean; pane: string | null; sinceMs: number | null; priority: number;
+  /** Work has started on it (status in_progress). A bead with a review label but status open was never built, so there is nothing to review. */ built: boolean };
 export type FactoryAt = { rows: FactoryRow[]; cells: Map<string, Map<Stage, FactoryCard[]>>; counts: Record<Stage, number>; hiddenRows: number;
   /** Cards of the groups past MAX_ROWS. The classic view still shows MAX_ROWS rows; the Factory floor draws EVERY eligible bead, so it reads these too (and `hiddenTone`, their group colours). */
   hiddenCards: FactoryCard[]; hiddenTone: Map<string, number> };
@@ -42,7 +43,7 @@ export function factoryAt(s: WorkSurfaceSnapshot, events: readonly HistoryEvent[
   for (const i of s.issues) {
     const stage = stages.get(i.id); if (!stage || containers.has(i.id)) continue; // not yet created / an epic is a row, not a card
     const since = sinceIn(i, stage, t);
-    const card: FactoryCard = { id: i.id, shortId: shortId(i.id), title: plainTitle(i.title), fullTitle: i.title, stage, prevStage: stage === "ready" && blockedBy.has(i.id) ? "waiting" : UPSTREAM[stage], blocked: stage === "waiting", hot: (stage === "building" || stage === "review") && since !== null && since > HOT_MS, pane: pane.get(i.id) ?? null, sinceMs: since, priority: i.priority };
+    const card: FactoryCard = { id: i.id, shortId: shortId(i.id), title: plainTitle(i.title), fullTitle: i.title, stage, prevStage: stage === "ready" && blockedBy.has(i.id) ? "waiting" : UPSTREAM[stage], blocked: stage === "waiting", hot: (stage === "building" || stage === "review") && since !== null && since > HOT_MS, pane: pane.get(i.id) ?? null, sinceMs: since, priority: i.priority, built: i.status === "in_progress" };
     const key = parents.get(i.id) ?? UNFILED;
     (groups.get(key) ?? groups.set(key, []).get(key)!).push(card); counts[stage]++;
   }
